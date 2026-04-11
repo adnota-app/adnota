@@ -78,6 +78,20 @@ Basic sleek styling for the popup, matching the premium "Vellum" aesthetic.
 - **Concept:** Drop persistent text notes anchored to specific elements on the page.
 - **Placement & Layout:** Notes spawn intelligently in the left or right margins connected via an SVG leader line. Positions are stored as responsive percentages linked to named regions, ensuring stability across viewports.
 - **Future-Proof Schema:** Note content uses a structured `comments: []` Array + `createdAt` / `updatedAt` timestamps for upcoming team threading and popup sorting workflows.
-- **UI Design:** A crisp, flat yellow card (`#fff59d`) with a 1px border. 
+- **UI Design:** Force all notes to classic yellow for MVP to ensure immediate recognizability, scaling to customized logic later.
 - **UX Protections:** Autosaves aggressively via a 1.5s debounce. The "Trash" icon utilizes an instant visual wipe paired with a 5s delayed storage removal to allow immediate "Oops, Undo" safety. Active notes are auto-elevated via a smart Z-Index state manager.
 - **Presentation Mode:** `Alt+V` globally toggles the visibility of notes on the current page.
+
+### The Highlighter (Text Annotation) 
+- **Concept:** Select range of text to organically highlight it, without mutating the host DOM.
+- **Architecture:** Uses the CSS Custom Highlights API (`CSS.highlights`) to inject rendering layers natively via the browser engine instead of wrapping text in `<mark>` elements (which instantly crashes React/Vue SPAs).
+- **Graceful Fallbacks:** CSS.highlights is Chrome 105+. Include code comments noting this constraint.
+- **Schema & Serialization:** Store the `FuzzyAnchor` of the closest block-level parent HTML element. Inside the schema, save the text node's raw string, the `occurrenceIndex`, AND the `startOffset` & `endOffset` character constraints to precisely rebuild W3C-standard text ranges internally.
+- **Relationship Schema:** Prepare the schema to accept an `attachedNoteId` flag natively to support upcoming "Note on this highlight" cross-pollination.
+- **UX Options:** 4-5 Pastel themes (matching sticky aesthetics). Yellow is the default, but we persist the user's last-chosen color locally to honor mental models across sessions.
+
+### The Marking Engine (Freehand Canvas)
+- **Concept:** Draw robust, scroll-safe shapes or arrows over the webpage safely.
+- **Architecture:** Binds an absolute-positioned responsive transparent `<svg>` canvas mapped directly onto the `FuzzyAnchor` of the nearest underlying block element at mouse capture. By locking the SVG viewport strictly to the HTML node's boundary or percentage, panning/scrolling is decoupled from breaking the drawing alignment.
+- **Compression:** Massive raw strokes collected via pointer events are ruthlessly smoothed and truncated using the Ramer-Douglas-Peucker algorithm before storage, protecting the 5MB `chrome.storage.local` cap. 
+- **Smart Formatting:** The engine defaults to raw red freehand paths, but will perform elementary path geometry detection. If the 1D path calculates to a nearly straight line with a hook or arrow terminal curve, automatically snap it into a clean bezier arrow shape.

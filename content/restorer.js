@@ -28,6 +28,12 @@ async function performRestoration() {
            }
         }
         notesCount++;
+      } else if (item.action === 'HIGHLIGHT') {
+        if (!processedItems.has(id)) {
+           if (window.VellumHighlighter) {
+             window.VellumHighlighter.applyStoredHighlight(match.element, item);
+           }
+        }
       } else {
         match.element.style.setProperty('display', 'none', 'important');
         erasuresCount++;

@@ -33,6 +33,13 @@
       },
       "description": "Toggle Sticky Notes Mode"
     },
+    "toggle-highlighter": {
+      "suggested_key": {
+        "default": "Alt+H",
+        "mac": "Alt+H"
+      },
+      "description": "Toggle Highlighter Mode"
+    },
     "toggle-view": {
       "suggested_key": {
         "default": "Alt+V",
@@ -49,10 +56,12 @@
         "content/fuzzyAnchor.js",
         "content/eraser.js",
         "content/sticky.js",
+        "content/highlighter.js",
         "content/restorer.js"
       ],
       "css": [
-        "content/sticky.css"
+        "content/sticky.css",
+        "content/highlighter.css"
       ],
       "run_at": "document_idle"
     }
