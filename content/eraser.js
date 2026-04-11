@@ -41,7 +41,8 @@ document.addEventListener('keydown', (e) => {
   if (e.altKey && e.key.toLowerCase() === 'e') {
     // Rely mostly on the background script intercept, but we can do a localized toggle if needed
   }
-  if (isEraserMode && e.ctrlKey && e.key.toLowerCase() === 'z') {
+  if (isEraserMode && (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
+    e.preventDefault();
     undoLastRemoval();
   }
 });
@@ -87,7 +88,7 @@ document.addEventListener('click', async (e) => {
     // Undo stack push
     sessionUndoStack.push({
       element: target,
-      displayStyle: target.style.display,
+      cssText: target.style.cssText,
       storageDomain: domain,
       storageId: anchor._id
     });
@@ -106,7 +107,7 @@ async function undoLastRemoval() {
   const entry = sessionUndoStack.pop();
   if (entry && entry.element) {
     // Restore element
-    entry.element.style.display = entry.displayStyle;
+    entry.element.style.cssText = entry.cssText;
     
     // Attempt to remove from DB for MVP so it's a true undo
     if (window.VellumStorage) {

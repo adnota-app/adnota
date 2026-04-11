@@ -62,5 +62,10 @@ async function performRestoration() {
   });
 }
 
-// Run slightly after DOMContentLoaded so layout is accessible
-window.addEventListener('load', performRestoration);
+// In Manifest V3, "document_idle" means the script might be injected AFTER the load event.
+// We should check the readyState and execute immediately if it's already loaded or interactive.
+if (document.readyState === 'complete' || document.readyState === 'interactive') {
+  performRestoration();
+} else {
+  window.addEventListener('load', performRestoration);
+}
