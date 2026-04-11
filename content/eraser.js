@@ -50,7 +50,8 @@ document.addEventListener('keydown', (e) => {
 document.addEventListener('mousemove', (e) => {
   if (!isEraserMode) return;
   const target = document.elementFromPoint(e.clientX, e.clientY);
-  if (target && target !== highlightOverlay) {
+  
+  if (target && target !== highlightOverlay && !target.closest('.vellum-toast') && !target.closest('.vellum-sticky-container')) {
     hoveredElement = target;
     const rect = target.getBoundingClientRect();
     const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
@@ -63,6 +64,9 @@ document.addEventListener('mousemove', (e) => {
       width: `${rect.width}px`,
       height: `${rect.height}px`
     });
+  } else {
+    hoveredElement = null;
+    highlightOverlay.style.display = 'none';
   }
 }, { passive: true });
 
@@ -100,6 +104,30 @@ document.addEventListener('click', async (e) => {
     if (window.VellumStorage) {
       await window.VellumStorage.saveAnchor(domain, pathScope, anchor);
     }
+
+    let existingToast = document.getElementById('vellum-eraser-toast');
+    if (existingToast) existingToast.remove();
+
+    const toast = document.createElement('div');
+    toast.id = 'vellum-eraser-toast';
+    toast.className = 'vellum-toast';
+    toast.innerHTML = `<span>Element erased</span> <span class="vellum-toast-undo">Undo</span>`;
+    document.body.appendChild(toast);
+    
+    let undoClicked = false;
+    toast.querySelector('.vellum-toast-undo').addEventListener('click', () => {
+      undoClicked = true;
+      undoLastRemoval();
+      toast.style.opacity = '0';
+      setTimeout(() => toast.remove(), 300);
+    });
+    
+    setTimeout(() => {
+      if (toast.parentNode && !undoClicked) {
+        toast.style.opacity = '0';
+        setTimeout(() => toast.remove(), 300);
+      }
+    }, 5000);
   }
 }, true); // Use capture phase
 
@@ -109,6 +137,10 @@ async function undoLastRemoval() {
     // Restore element
     entry.element.style.cssText = entry.cssText;
     
+    // Clean up any orphaned amber UI alerts
+    const orphanedAlert = document.getElementById(`vellum-alert-${entry.storageId}`);
+    if (orphanedAlert) orphanedAlert.remove();
+
     // Attempt to remove from DB for MVP so it's a true undo
     if (window.VellumStorage) {
       const data = await chrome.storage.local.get(entry.storageDomain);
