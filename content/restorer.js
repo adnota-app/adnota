@@ -22,7 +22,10 @@ async function performRestoration() {
     if (match.confidence >= 70 && match.element) {
       if (item.action === 'NOTE') {
         if (!processedItems.has(id)) {
-           window.StickyEngine.renderNote(match.element, item, item.placement, item.comments, item.uuid);
+           const existing = document.querySelector(`.vellum-sticky-container[data-uuid="${item.uuid}"]`);
+           if (!existing) {
+             window.StickyEngine.renderNote(match.element, item, item.placement, item.comments, item.uuid);
+           }
         }
         notesCount++;
       } else {
@@ -30,34 +33,9 @@ async function performRestoration() {
         erasuresCount++;
       }
       processedItems.add(id);
-    } else if (match.element && match.confidence > 0 && match.confidence < 70 && item.action !== 'NOTE') {
-      if (!processedItems.has(id)) {
-        match.element.style.outline = '3px solid orange';
-        match.element.style.backgroundColor = 'rgba(255, 165, 0, 0.2)';
-        
-        const conf = document.createElement('div');
-        conf.innerText = 'Vellum Alert: Delete this?';
-        Object.assign(conf.style, {
-          position: 'absolute', background: 'orange', color: 'black', padding: '4px',
-          zIndex: '999999', fontSize: '12px', fontWeight: 'bold', cursor: 'pointer', borderRadius: '3px'
-        });
-        
-        const rect = match.element.getBoundingClientRect();
-        const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
-        const scrollLeft = window.pageXOffset || document.documentElement.scrollLeft;
-        conf.style.top = `${rect.top + scrollTop}px`;
-        conf.style.left = `${rect.left + scrollLeft}px`;
-        
-        conf.onclick = (e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          match.element.style.setProperty('display', 'none', 'important');
-          conf.remove();
-        };
-        document.documentElement.appendChild(conf);
-        processedItems.add(id);
-      }
     }
+    // We intentionally fail silently on eroded anchors (< 70% confidence) 
+    // to preserve page aesthetics, rather than aggressively drawing amber bounding boxes.
   }
 
   chrome.storage.local.set({ 

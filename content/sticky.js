@@ -34,7 +34,8 @@ chrome.runtime.onMessage.addListener((request) => {
 document.addEventListener('mousemove', (e) => {
   if (!isStickyMode) return;
   const target = document.elementFromPoint(e.clientX, e.clientY);
-  if (target && !target.closest('.vellum-sticky-container') && target !== stickyHighlight) {
+  
+  if (target && !target.closest('.vellum-sticky-container') && !target.closest('.vellum-toast') && target !== stickyHighlight) {
     hoveredStickyTarget = target;
     const rect = target.getBoundingClientRect();
     const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
@@ -47,6 +48,9 @@ document.addEventListener('mousemove', (e) => {
       width: `${rect.width}px`,
       height: `${rect.height}px`
     });
+  } else {
+    hoveredStickyTarget = null;
+    stickyHighlight.style.display = 'none';
   }
 }, { passive: true });
 
@@ -96,16 +100,25 @@ window.StickyEngine = {
     if (!targetElement) return;
     
     const container = document.createElement('div');
-    container.className = 'vellum-sticky-container' + (areNotesVisible ? '' : ' hidden');
+    
+    // Force all post-it notes to be yellow for MVP
+    const theme = 'vellum-theme-yellow';
+    
+    container.className = 'vellum-sticky-container ' + theme + (areNotesVisible ? '' : ' hidden');
     container.dataset.uuid = uuid;
     
     const initialText = comments && comments.length > 0 ? comments[0].text : '';
+    const noteCount = document.querySelectorAll('.vellum-sticky-container').length + 1;
     
     container.innerHTML = `
       <svg class="vellum-leader-line-svg" style="position: absolute; pointer-events: none; z-index: -1;"></svg>
       <div class="vellum-sticky-card">
         <div class="vellum-sticky-header">
-          <button class="vellum-trash-btn" title="Delete Note">×</button>
+          <div class="vellum-header-left">Note ${noteCount}</div>
+          <div class="vellum-header-right">
+            <div class="vellum-header-pill">Type <span>T</span></div>
+            <button class="vellum-trash-btn" title="Delete Note">✕</button>
+          </div>
         </div>
         <textarea class="vellum-sticky-textarea" placeholder="Take a note...">${initialText}</textarea>
       </div>
