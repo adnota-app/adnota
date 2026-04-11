@@ -60,5 +60,24 @@ Basic sleek styling for the popup, matching the premium "Vellum" aesthetic.
 - **Interaction Check**: Activate "Eraser Mode" via `Alt+E`. Hover to see highlighted targets, click to delete. Press `Ctrl+Z` to verify session-level undo.
 - **Advanced Deletion**: `Shift+Click` an element to test domain-wide deletion.
 - **Persistence Check**: Refresh the page and verify deleted elements (>=70% confidence) vanish.
-- **Selector Drift Check**: Modify the DOM slightly in DevTools to ensure the Fuzzy Anchor successfully finds the element.
 - **Threshold Check**: Break an anchor drastically in DevTools to trigger the <70% match condition and ensure the amber confirmation highlight appears. Check popup for "Broken Anchor" state.
+
+---
+
+## Features Roadmap (V1.1 & Beyond)
+
+### The Redactor (Privacy Blackout Tool)
+- **Concept:** Select text to black it out permanently.
+- **Architecture:** Uses a standard `TreeWalker` to traverse text nodes rather than `.innerHTML` regexes to prevent breaking virtual DOMs natively (React/Vue).
+- **Occurrence Indexing:** Saves the *Nth occurrence* of a string within the parent container to ensure only the selected text is redacted, not every identical word.
+- **CSS Hardening:** Adds `user-select: none`, `background-color: black`, and `color: black` to successfully prevent copying the hidden text.
+- **UX Context:** Floats a brief "Redacted ✓" confirmation pip. Safeguards visually reject cross-block boundaries to protect Restoration integrity.
+- **Dynamic Content Handling:** Equips `restorer.js` with a `MutationObserver` to watch for lazy-loaded single-page content.
+
+### The Sticky Note (Contextual Annotations)
+- **Concept:** Drop persistent text notes anchored to specific elements on the page.
+- **Placement & Layout:** Notes spawn intelligently in the left or right margins connected via an SVG leader line. Positions are stored as responsive percentages linked to named regions, ensuring stability across viewports.
+- **Future-Proof Schema:** Note content uses a structured `comments: []` Array + `createdAt` / `updatedAt` timestamps for upcoming team threading and popup sorting workflows.
+- **UI Design:** A crisp, flat yellow card (`#fff59d`) with a 1px border. 
+- **UX Protections:** Autosaves aggressively via a 1.5s debounce. The "Trash" icon utilizes an instant visual wipe paired with a 5s delayed storage removal to allow immediate "Oops, Undo" safety. Active notes are auto-elevated via a smart Z-Index state manager.
+- **Presentation Mode:** `Alt+V` globally toggles the visibility of notes on the current page.
