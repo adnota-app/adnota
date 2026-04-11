@@ -1,0 +1,42 @@
+{
+  "manifest_version": 3,
+  "name": "Vellum",
+  "version": "0.1.0",
+  "description": "The Persistent Canvas. Erase distracting elements from the web permanently.",
+  "permissions": [
+    "storage",
+    "activeTab",
+    "scripting"
+  ],
+  "host_permissions": [
+    "*://*/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup": "popup/index.html",
+    "default_title": "Vellum"
+  },
+  "commands": {
+    "toggle-eraser": {
+      "suggested_key": {
+        "default": "Alt+E",
+        "mac": "Alt+E"
+      },
+      "description": "Toggle Eraser Mode"
+    }
+  },
+  "content_scripts": [
+    {
+      "matches": ["*://*/*"],
+      "js": [
+        "lib/storage.js",
+        "content/fuzzyAnchor.js",
+        "content/eraser.js",
+        "content/restorer.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ]
+}

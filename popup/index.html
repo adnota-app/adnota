@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Vellum</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="header">
+    <h1>Vellum</h1>
+    <p class="subtitle">The Persistent Canvas</p>
+  </div>
+  
+  <div class="main-content">
+    <button id="toggle-eraser" class="primary-btn">Toggle Eraser Mode</button>
+    <p class="shortcut-tip">Tip: Press <strong>Alt+E</strong> to toggle</p>
+  </div>
+  
+  <div class="stats-box">
+    <div class="stat">
+      <span id="success-count" class="count success">0</span>
+      <span class="label">Edits Applied</span>
+    </div>
+    <div id="broken-alert" class="broken-alert hidden">
+      <span id="broken-count" class="count broken">0</span> edits couldn't be automatically applied.
+    </div>
+  </div>
+
+  <div class="footer">
+    <button id="clear-page" class="secondary-btn">Clear Edits for this Page</button>
+  </div>
+
+  <script src="../lib/storage.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>
