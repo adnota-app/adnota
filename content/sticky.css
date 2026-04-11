@@ -1,0 +1,95 @@
+/* content/sticky.css */
+
+.vellum-sticky-container {
+  position: absolute;
+  z-index: 2147483640; /* High enough to be on top */
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  transition: opacity 0.2s ease;
+}
+
+.vellum-sticky-container.hidden {
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
+.vellum-sticky-card {
+  width: 240px;
+  min-height: 100px;
+  background-color: #fff59d;
+  border: 1px solid #e6c514;
+  border-radius: 4px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.vellum-sticky-header {
+  height: 24px;
+  background-color: #fff176;
+  border-bottom: 1px solid #e1c015;
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  padding: 0 8px;
+  cursor: grab;
+}
+
+.vellum-trash-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 14px;
+  color: #a88a0b;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 3px;
+  width: 18px; height: 18px;
+}
+
+.vellum-trash-btn:hover {
+  background: rgba(0,0,0,0.05);
+  color: #d32f2f;
+}
+
+.vellum-sticky-textarea {
+  flex: 1;
+  width: 100%;
+  box-sizing: border-box;
+  background: transparent;
+  border: none;
+  resize: vertical;
+  padding: 10px;
+  font-size: 14px;
+  line-height: 1.4;
+  color: #333;
+  min-height: 80px;
+  outline: none;
+  font-family: inherit;
+}
+
+.vellum-toast {
+  position: fixed;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #333;
+  color: white;
+  padding: 12px 20px;
+  border-radius: 6px;
+  font-size: 14px;
+  z-index: 2147483647;
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+  transition: opacity 0.3s;
+}
+
+.vellum-toast-undo {
+  color: #64b5f6;
+  cursor: pointer;
+  font-weight: bold;
+}

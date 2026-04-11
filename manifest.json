@@ -25,6 +25,20 @@
         "mac": "Alt+E"
       },
       "description": "Toggle Eraser Mode"
+    },
+    "toggle-sticky": {
+      "suggested_key": {
+        "default": "Alt+S",
+        "mac": "Alt+S"
+      },
+      "description": "Toggle Sticky Notes Mode"
+    },
+    "toggle-view": {
+      "suggested_key": {
+        "default": "Alt+V",
+        "mac": "Alt+V"
+      },
+      "description": "Toggle Annotations Visibility"
     }
   },
   "content_scripts": [
@@ -34,7 +48,11 @@
         "lib/storage.js",
         "content/fuzzyAnchor.js",
         "content/eraser.js",
+        "content/sticky.js",
         "content/restorer.js"
+      ],
+      "css": [
+        "content/sticky.css"
       ],
       "run_at": "document_idle"
     }

@@ -12,21 +12,26 @@
   
   <div class="main-content">
     <button id="toggle-eraser" class="primary-btn">Toggle Eraser Mode</button>
-    <p class="shortcut-tip">Tip: Press <strong>Alt+E</strong> to toggle</p>
+    <button id="toggle-sticky" class="primary-btn" style="margin-top: 10px; background-color: #ffca28; color: #333; border: 1px solid #e1c015; text-shadow: none;">Toggle Sticky Mode</button>
+    <p class="shortcut-tip">Shortcuts: <strong>Alt+E</strong> (Erase), <strong>Alt+S</strong> (Note)<br/><strong>Alt+V</strong> toggles visibility for notes.</p>
   </div>
   
   <div class="stats-box">
     <div class="stat">
       <span id="success-count" class="count success">0</span>
-      <span class="label">Edits Applied</span>
+      <span class="label">Erasures</span>
+    </div>
+    <div class="stat" style="margin-top: 8px;">
+      <span id="notes-count" class="count" style="color:#e4b301;">0</span>
+      <span class="label">Active Notes</span>
     </div>
     <div id="broken-alert" class="broken-alert hidden">
-      <span id="broken-count" class="count broken">0</span> edits couldn't be automatically applied.
+      <span id="broken-count" class="count broken">0</span> broken links observed.
     </div>
   </div>
 
   <div class="footer">
-    <button id="clear-page" class="secondary-btn">Clear Edits for this Page</button>
+    <button id="clear-page" class="secondary-btn">Clear Page Edits</button>
   </div>
 
   <script src="../lib/storage.js"></script>
