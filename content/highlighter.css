@@ -14,6 +14,12 @@
   background-color: rgba(233, 30, 99, 0.4) !important;
 }
 
+/* Redaction — fully opaque black background + black text = completely hidden */
+::highlight(vellum-theme-black) {
+  background-color: #000 !important;
+  color: #000 !important;
+}
+
 /* Fallback/UI elements if we add a color picker widget later */
 #vellum-highlighter-widget {
   position: absolute;
@@ -42,6 +48,17 @@
 
 .vellum-color-swatch.active {
   border-color: #333;
+}
+
+/* Black/redaction swatch needs a light border to be visible on the white toolbar */
+.vellum-swatch-black {
+  border-color: #bbb;
+}
+
+/* White ring so the selected state reads clearly against the dark swatch */
+.vellum-swatch-black.active {
+  border-color: #fff;
+  box-shadow: 0 0 0 2px #555;
 }
 
 .vellum-mode-btn {
