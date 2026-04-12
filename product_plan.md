@@ -1,6 +1,6 @@
 # Vellum MVP: The Persistent Canvas (Eraser & Local Sync)
 
-Vellum is a Manifest V3 Chrome Extension that allows users to permanently delete distracting elements from any webpage ("The Eraser"). For the MVP, these changes will be persisted entirely locally (`chrome.storage.local`), ensuring privacy and a fast iteration cycle before introducing cloud sync.
+Vellum is a Manifest V3 Chrome Extension that allows users to TREAT ANY WEBSITE LIKE THEIR CANVAS. They can permanently delete distracting elements from any webpage ("The Eraser"). They can add sicky notes anywhere on the page for their own research. They can highlight or markup any page as desired. The extension tracks edits to any site so it's always easy to navigate any past changes to all your edited websites. For the MVP, these changes will be persisted entirely locally (`chrome.storage.local`), ensuring privacy and a fast iteration cycle before introducing cloud sync.
 
 ## Proposed Architecture
 
