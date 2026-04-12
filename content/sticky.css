@@ -7,6 +7,7 @@
   --btn-hover: rgba(122, 91, 21, 0.1);
   --btn-bg: rgba(122, 91, 21, 0.08);
 }
+
 .vellum-theme-green {
   --bg: #B8F5B8;
   --text: #2A6A2A;
@@ -14,6 +15,7 @@
   --btn-hover: rgba(42, 106, 42, 0.1);
   --btn-bg: rgba(42, 106, 42, 0.08);
 }
+
 .vellum-theme-blue {
   --bg: #A3DDFB;
   --text: #1C5A85;
@@ -21,6 +23,7 @@
   --btn-hover: rgba(28, 90, 133, 0.1);
   --btn-bg: rgba(28, 90, 133, 0.08);
 }
+
 .vellum-theme-pink {
   --bg: #FFC0C8;
   --text: #9E1F2F;
@@ -31,7 +34,8 @@
 
 .vellum-sticky-container {
   position: absolute;
-  z-index: 2147483640; /* High enough to be on top */
+  z-index: 2147483640;
+  /* High enough to be on top */
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   transition: opacity 0.2s ease;
 }
@@ -49,82 +53,72 @@
   background-color: var(--bg, #FBE6A1);
   color: var(--text, #7A5B15);
   border-radius: 10px;
-  box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  resize: both; /* Allow resizing the entire card constraints */
+  resize: both;
+  /* Allow resizing the entire card constraints */
 }
 
 /* Custom 3-line slice Resizer for sticky note bottom corner */
 .vellum-sticky-card::-webkit-resizer {
   background-color: transparent;
-  background-image: repeating-linear-gradient(
-    135deg,
-    transparent,
-    transparent 3px,
-    var(--line) 3px,
-    var(--line) 4px
-  );
+  background-image: repeating-linear-gradient(135deg,
+      transparent,
+      transparent 3px,
+      var(--line) 3px,
+      var(--line) 4px);
   background-position: calc(100% - 2px) calc(100% - 2px);
   background-size: 12px 12px;
   background-repeat: no-repeat;
 }
 
 .vellum-sticky-header {
-  height: 38px;
+  height: 28px;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 0 12px;
+  padding: 0 8px 0 10px;
   cursor: grab;
   border-bottom: 1px solid var(--line);
+  flex-shrink: 0;
 }
 
 .vellum-sticky-header:active {
   cursor: grabbing;
 }
 
-.vellum-header-left {
-  font-weight: 700;
-  font-size: 14px;
-}
-
-.vellum-header-right {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.vellum-header-pill {
-  background-color: var(--btn-bg);
-  padding: 4px 8px;
-  border-radius: 12px;
-  font-size: 11px;
-  font-weight: 600;
-  display: flex;
-  align-items: center;
-  gap: 4px;
+.vellum-timestamp {
+  font-size: 10px;
+  font-family: 'SF Mono', 'Menlo', 'Monaco', 'Consolas', monospace;
+  letter-spacing: 0.02em;
+  opacity: 0.5;
+  font-weight: 500;
+  user-select: none;
+  line-height: 1;
 }
 
 .vellum-trash-btn {
   background: none;
   border: none;
   cursor: pointer;
-  font-size: 16px;
   color: var(--text);
-  opacity: 0.6;
+  opacity: 0.5;
   padding: 0;
   display: flex;
   align-items: center;
   justify-content: center;
   border-radius: 4px;
-  width: 20px; height: 20px;
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  transition: opacity 0.15s, background 0.15s;
 }
 
 .vellum-trash-btn:hover {
   background: var(--btn-hover);
-  opacity: 1;
+  opacity: 0.9;
 }
 
 .vellum-sticky-textarea {
@@ -133,7 +127,8 @@
   box-sizing: border-box;
   background: transparent;
   border: none;
-  resize: none; /* Disable native resize on textarea since card handles it */
+  resize: none;
+  /* Disable native resize on textarea since card handles it */
   padding: 12px;
   font-size: 14px;
   line-height: 1.4;
@@ -163,7 +158,7 @@
   display: flex;
   gap: 12px;
   align-items: center;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
   transition: opacity 0.3s;
 }
 
