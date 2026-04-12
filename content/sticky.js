@@ -17,7 +17,7 @@ let hoveredStickyTarget = null;
 
 // Route the keyboard shortcut through VellumState — toggles sticky off if already active,
 // which automatically deactivates any other tool that was running.
-chrome.runtime.onMessage.addListener((request) => {
+chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === 'toggle-sticky') {
     window.VellumState.set({ mode: window.VellumState.mode === 'sticky' ? null : 'sticky' });
   }
@@ -26,6 +26,12 @@ chrome.runtime.onMessage.addListener((request) => {
     document.querySelectorAll('.vellum-sticky-container').forEach(el => {
       el.classList.toggle('hidden', !areNotesVisible);
     });
+    // Persist so the popup icon reflects the current visibility state.
+    chrome.storage.local.set({ vellumHidden: !areNotesVisible });
+  }
+  if (request.action === 'get-view') {
+    sendResponse({ hidden: !areNotesVisible });
+    return true;
   }
 });
 

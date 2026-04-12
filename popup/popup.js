@@ -37,7 +37,28 @@ document.addEventListener('DOMContentLoaded', async () => {
   });
 
   // ─── Visibility toggle ────────────────────────────────────────────────────
+  function setVisibilityBtn(isHidden) {
+    btnVisibility.classList.toggle('hidden', isHidden);
+    btnVisibility.title = isHidden
+      ? 'Show changes (Alt+V)'
+      : 'Hide changes (Alt+V)';
+  }
+
+  // Seed from content script on open — reads the actual live areNotesVisible value,
+  // not storage (which can be stale from a previous page navigation).
+  chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+    if (!tabs.length) return;
+    chrome.tabs.sendMessage(tabs[0].id, { action: 'get-view' }, (response) => {
+      void chrome.runtime.lastError;
+      setVisibilityBtn(!!response?.hidden);
+    });
+  });
+
   btnVisibility.addEventListener('click', () => {
+    // Optimistically flip state immediately so the button responds on click,
+    // rather than waiting for the async message → storage → onChanged round-trip.
+    setVisibilityBtn(!btnVisibility.classList.contains('hidden'));
+
     chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
       if (!tabs.length) return;
       chrome.tabs.sendMessage(tabs[0].id, { action: 'toggle-view' }, () => {
@@ -55,12 +76,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
   });
 
-  // ─── Live mode updates — react to keyboard shortcuts while popup is open ──
-  // VellumState.set() now writes 'vellumActiveMode' to storage on every mode
-  // change, so we can listen here and update without any polling.
+  // ─── Live updates — react to keyboard shortcuts while popup is open ────────
   chrome.storage.onChanged.addListener((changes, area) => {
-    if (area === 'local' && 'vellumActiveMode' in changes) {
+    if (area !== 'local') return;
+    if ('vellumActiveMode' in changes) {
       setActiveCard(changes.vellumActiveMode.newValue);
+    }
+    if ('vellumHidden' in changes) {
+      setVisibilityBtn(!!changes.vellumHidden.newValue);
     }
   });
 
