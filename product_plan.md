@@ -2,6 +2,10 @@
 
 Vellum is a Manifest V3 Chrome Extension that allows users to TREAT ANY WEBSITE LIKE THEIR CANVAS. They can permanently delete distracting elements from any webpage ("The Eraser"). They can add sicky notes anywhere on the page for their own research. They can highlight or markup any page as desired. The extension tracks edits to any site so it's always easy to navigate any past changes to all your edited websites. For the MVP, these changes will be persisted entirely locally (`chrome.storage.local`), ensuring privacy and a fast iteration cycle before introducing cloud sync.
 
+> Treat any website like your personal canvas. Erase what you don't need. Annotate what matters. Highlight, redact, and draw — all persistent across sessions, all stored privately on your machine.
+
+Vellum is a Manifest V3 Chrome Extension built around a single core idea: **your annotations live with the page, not in a silo.** Every change you make to a website persists automatically, restores on the next visit, and is instantly accessible from a dedicated history view. No accounts, no cloud, no data leaving the browser.
+
 ## Proposed Architecture
 
 ---
