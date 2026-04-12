@@ -92,10 +92,40 @@ window.VellumState.subscribe(state => {
   if (swatches[state.color]) swatches[state.color].classList.add('active');
 });
 
+let areHighlightsVisible = true;
+
 // Keyboard shortcut / popup toggle — switches to highlight mode, or off if already active.
 chrome.runtime.onMessage.addListener((request) => {
   if (request.action === 'toggle-highlighter') {
     window.VellumState.set({ mode: window.VellumState.mode === 'highlight' ? null : 'highlight' });
+  }
+
+  if (request.action === 'toggle-view') {
+    areHighlightsVisible = !areHighlightsVisible;
+
+    // Fallback overlay divs: standard display toggle.
+    document.querySelectorAll('.vellum-highlight-fallback').forEach(el => {
+      el.style.display = areHighlightsVisible ? '' : 'none';
+    });
+
+    // CSS Custom Highlights can't be toggled via display — inject/remove a stylesheet
+    // that overrides every theme's background-color to transparent when hidden.
+    const SHEET_ID = 'vellum-highlights-hidden';
+    const existingSheet = document.getElementById(SHEET_ID);
+    if (!areHighlightsVisible && !existingSheet) {
+      const style = document.createElement('style');
+      style.id = SHEET_ID;
+      style.textContent = `
+        ::highlight(vellum-theme-yellow) { background-color: transparent !important; }
+        ::highlight(vellum-theme-green)  { background-color: transparent !important; }
+        ::highlight(vellum-theme-blue)   { background-color: transparent !important; }
+        ::highlight(vellum-theme-pink)   { background-color: transparent !important; }
+        ::highlight(vellum-theme-black)  { background-color: transparent !important; color: inherit !important; }
+      `;
+      document.head.appendChild(style);
+    } else if (areHighlightsVisible && existingSheet) {
+      existingSheet.remove();
+    }
   }
 });
 
