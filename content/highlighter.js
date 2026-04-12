@@ -5,7 +5,8 @@ const highlightRegistries = {
   'vellum-theme-yellow': new Highlight(),
   'vellum-theme-green': new Highlight(),
   'vellum-theme-blue': new Highlight(),
-  'vellum-theme-pink': new Highlight()
+  'vellum-theme-pink': new Highlight(),
+  'vellum-theme-black': new Highlight()
 };
 
 if (typeof CSS !== 'undefined' && 'highlights' in CSS) {
@@ -49,7 +50,8 @@ const themes = {
   'vellum-theme-yellow': 'rgb(255, 235, 59)',
   'vellum-theme-green': 'rgb(76, 175, 80)',
   'vellum-theme-blue': 'rgb(33, 150, 243)',
-  'vellum-theme-pink': 'rgb(233, 30, 99)'
+  'vellum-theme-pink': 'rgb(233, 30, 99)',
+  'vellum-theme-black': '#111'
 };
 
 const swatches = {};
@@ -57,6 +59,11 @@ for (const [themeClass, colorHex] of Object.entries(themes)) {
   const swatch = document.createElement('div');
   swatch.className = 'vellum-color-swatch';
   swatch.style.backgroundColor = colorHex;
+  // Black swatch: add a class (not inline style) so the CSS active-state override can take effect.
+  if (themeClass === 'vellum-theme-black') {
+    swatch.classList.add('vellum-swatch-black');
+    swatch.title = 'Redact (great for sharing screenshots without sensitive info)';
+  }
   swatch.onclick = () => window.VellumState.set({ color: themeClass });
   swatches[themeClass] = swatch;
   highlightToolbar.appendChild(swatch);
@@ -71,11 +78,11 @@ window.VellumState.subscribe(state => {
 
   // Central cursor management for every mode.
   switch (state.mode) {
-    case 'highlight': document.body.style.cursor = 'text';      break;
-    case 'pen':       document.body.style.cursor = 'crosshair'; break;
-    case 'eraser':    document.body.style.cursor = 'crosshair'; break;
-    case 'sticky':    document.body.style.cursor = 'crosshair'; break;
-    default:          document.body.style.cursor = '';          break; // null — no tool
+    case 'highlight': document.body.style.cursor = 'text'; break;
+    case 'pen': document.body.style.cursor = 'crosshair'; break;
+    case 'eraser': document.body.style.cursor = 'crosshair'; break;
+    case 'sticky': document.body.style.cursor = 'crosshair'; break;
+    default: document.body.style.cursor = ''; break; // null — no tool
   }
 
   // Update mode button active states
@@ -106,12 +113,12 @@ function getOccurrenceIndex(range, anchorElement) {
     preSelectionRange.selectNodeContents(anchorElement);
     preSelectionRange.setEnd(range.startContainer, range.startOffset);
   } catch (e) {
-    return 0; 
+    return 0;
   }
-  
+
   const textBefore = preSelectionRange.toString();
   const highlightText = range.toString();
-  
+
   if (!highlightText) return 0;
 
   let count = 0;
@@ -125,7 +132,7 @@ function getOccurrenceIndex(range, anchorElement) {
 
 document.addEventListener('mouseup', async (e) => {
   if (window.VellumState.mode !== 'highlight') return;
-  
+
   if (e.target.closest('#vellum-highlighter-widget')) return;
 
   const selection = window.getSelection();
@@ -141,56 +148,56 @@ document.addEventListener('mouseup', async (e) => {
   if (anchorElement.nodeType !== Node.ELEMENT_NODE) {
     anchorElement = anchorElement.parentNode;
   }
-  
+
   const blockElement = anchorElement.closest('p, div, section, article, main, li, h1, h2, h3, h4, td') || document.body;
 
   const anchor = window.FuzzyAnchor.generate(blockElement);
   anchor._id = Date.now() + Math.random().toString();
-  
+
   const payload = {
     ...anchor,
     action: 'HIGHLIGHT',
     text: range.toString(),
     occurrenceIndex: getOccurrenceIndex(range, blockElement),
     color: window.VellumState.color,
-    attachedNoteId: null 
+    attachedNoteId: null
   };
 
   if (typeof CSS !== 'undefined' && 'highlights' in CSS) {
     const registry = highlightRegistries[window.VellumState.color];
     if (registry) {
-       try {
-           // Keep a ref to the cloned range so undo can delete it from the registry.
-           const clonedRange = range.cloneRange();
-           registry.add(clonedRange);
-           payload._clonedRange = clonedRange;
-       } catch (e) {
-           console.warn("Vellum: CSS Highlight API rejected range, likely crossing a Shadow DOM boundary. Range:", range);
-           payload.isFallback = true;
-           const box = blockElement.getBoundingClientRect();
-           payload.fallbackRects = Array.from(range.getClientRects()).map(r => ({
-               left: ((r.left - box.left) / box.width) * 100,
-               top: ((r.top - box.top) / box.height) * 100,
-               width:  (r.width / box.width) * 100,
-               height: (r.height / box.height) * 100
-           }));
-           if (window.VellumHighlighter && window.VellumHighlighter.renderFallback) {
-               window.VellumHighlighter.renderFallback(blockElement, payload);
-           }
-       }
+      try {
+        // Keep a ref to the cloned range so undo can delete it from the registry.
+        const clonedRange = range.cloneRange();
+        registry.add(clonedRange);
+        payload._clonedRange = clonedRange;
+      } catch (e) {
+        console.warn("Vellum: CSS Highlight API rejected range, likely crossing a Shadow DOM boundary. Range:", range);
+        payload.isFallback = true;
+        const box = blockElement.getBoundingClientRect();
+        payload.fallbackRects = Array.from(range.getClientRects()).map(r => ({
+          left: ((r.left - box.left) / box.width) * 100,
+          top: ((r.top - box.top) / box.height) * 100,
+          width: (r.width / box.width) * 100,
+          height: (r.height / box.height) * 100
+        }));
+        if (window.VellumHighlighter && window.VellumHighlighter.renderFallback) {
+          window.VellumHighlighter.renderFallback(blockElement, payload);
+        }
+      }
     }
   }
-  
+
   try {
-      selection.removeAllRanges();
-  } catch (e) {}
+    selection.removeAllRanges();
+  } catch (e) { }
 
   if (window.VellumStorage) {
     await window.VellumStorage.saveAnchor(location.hostname, location.pathname, payload);
   }
 
   // Push to the central undo stack so Ctrl+Z can remove this highlight.
-  const capturedId    = anchor._id;
+  const capturedId = anchor._id;
   const capturedColor = window.VellumState.color;
   const capturedRange = payload._clonedRange || null;
   const capturedFallback = payload.isFallback || false;
@@ -210,65 +217,69 @@ document.addEventListener('mouseup', async (e) => {
 });
 
 window.VellumHighlighter = {
-  renderFallback: function(anchorElement, payload) {
-      if (!payload.fallbackRects) return;
-      const themeColors = {
-        'vellum-theme-yellow': 'rgba(255, 235, 59, 0.4)',
-        'vellum-theme-green': 'rgba(76, 175, 80, 0.4)',
-        'vellum-theme-blue': 'rgba(33, 150, 243, 0.4)',
-        'vellum-theme-pink': 'rgba(233, 30, 99, 0.4)'
-      };
-      
-      const wrapper = document.createElement('div');
-      wrapper.className = 'vellum-highlight-fallback';
-      wrapper.dataset.highlightId = payload._id; // Needed for undo lookup.
-      wrapper.style.position = 'absolute';
-      wrapper.style.pointerEvents = 'none';
-      wrapper.style.zIndex = '2147483640'; 
-      document.documentElement.appendChild(wrapper);
-      
-      payload.fallbackRects.forEach(rect => {
-          const div = document.createElement('div');
-          div.style.position = 'absolute';
-          div.style.backgroundColor = themeColors[payload.color] || themeColors['vellum-theme-yellow'];
-          div.style.mixBlendMode = 'multiply'; 
-          wrapper.appendChild(div);
-      });
-      
-      function syncBounds() {
-          if (!wrapper.parentNode) return;
-          const box = anchorElement.getBoundingClientRect();
-          const children = wrapper.children;
-          for (let i = 0; i < children.length; i++) {
-              const r = payload.fallbackRects[i];
-              children[i].style.left = `${box.left + window.pageXOffset + (r.left / 100) * box.width}px`;
-              children[i].style.top = `${box.top + window.pageYOffset + (r.top / 100) * box.height}px`;
-              children[i].style.width = `${(r.width / 100) * box.width}px`;
-              children[i].style.height = `${(r.height / 100) * box.height}px`;
-          }
+  renderFallback: function (anchorElement, payload) {
+    if (!payload.fallbackRects) return;
+    const themeColors = {
+      'vellum-theme-yellow': 'rgba(255, 235, 59, 0.4)',
+      'vellum-theme-green': 'rgba(76, 175, 80, 0.4)',
+      'vellum-theme-blue': 'rgba(33, 150, 243, 0.4)',
+      'vellum-theme-pink': 'rgba(233, 30, 99, 0.4)',
+      // Redaction: fully opaque, no blend mode — must completely cover the text.
+      'vellum-theme-black': '#000'
+    };
+    const isSolidRedaction = payload.color === 'vellum-theme-black';
+
+    const wrapper = document.createElement('div');
+    wrapper.className = 'vellum-highlight-fallback';
+    wrapper.dataset.highlightId = payload._id; // Needed for undo lookup.
+    wrapper.style.position = 'absolute';
+    wrapper.style.pointerEvents = 'none';
+    wrapper.style.zIndex = '2147483640';
+    document.documentElement.appendChild(wrapper);
+
+    payload.fallbackRects.forEach(rect => {
+      const div = document.createElement('div');
+      div.style.position = 'absolute';
+      div.style.backgroundColor = themeColors[payload.color] || themeColors['vellum-theme-yellow'];
+      // Redaction must be fully opaque — mix-blend-mode: multiply lets the text bleed through.
+      if (!isSolidRedaction) div.style.mixBlendMode = 'multiply';
+      wrapper.appendChild(div);
+    });
+
+    function syncBounds() {
+      if (!wrapper.parentNode) return;
+      const box = anchorElement.getBoundingClientRect();
+      const children = wrapper.children;
+      for (let i = 0; i < children.length; i++) {
+        const r = payload.fallbackRects[i];
+        children[i].style.left = `${box.left + window.pageXOffset + (r.left / 100) * box.width}px`;
+        children[i].style.top = `${box.top + window.pageYOffset + (r.top / 100) * box.height}px`;
+        children[i].style.width = `${(r.width / 100) * box.width}px`;
+        children[i].style.height = `${(r.height / 100) * box.height}px`;
       }
-      
-      syncBounds();
-      window.addEventListener('resize', syncBounds);
-      // Bug 4 fix: Re-sync on scroll so fallback highlight rects don't drift on long pages.
-      window.addEventListener('scroll', syncBounds, { passive: true });
-      const observer = new ResizeObserver(() => syncBounds());
-      observer.observe(anchorElement);
+    }
+
+    syncBounds();
+    window.addEventListener('resize', syncBounds);
+    // Bug 4 fix: Re-sync on scroll so fallback highlight rects don't drift on long pages.
+    window.addEventListener('scroll', syncBounds, { passive: true });
+    const observer = new ResizeObserver(() => syncBounds());
+    observer.observe(anchorElement);
   },
 
-  applyStoredHighlight: function(anchorElement, payload) {
+  applyStoredHighlight: function (anchorElement, payload) {
     if (payload.isFallback && payload.fallbackRects) {
-       this.renderFallback(anchorElement, payload);
-       return true;
+      this.renderFallback(anchorElement, payload);
+      return true;
     }
 
     if (typeof CSS === 'undefined' || !('highlights' in CSS)) return false;
-    
+
     const treeWalker = document.createTreeWalker(anchorElement, NodeFilter.SHOW_TEXT, null, false);
     let node;
     let currentText = '';
     const textNodes = [];
-    
+
     while ((node = treeWalker.nextNode())) {
       textNodes.push({
         node: node,
@@ -277,22 +288,22 @@ window.VellumHighlighter = {
       });
       currentText += node.nodeValue;
     }
-    
+
     const textToFind = payload.text;
     let pos = -1;
     for (let i = 0; i <= payload.occurrenceIndex; i++) {
       pos = currentText.indexOf(textToFind, pos + 1);
       if (pos === -1) break;
     }
-    
+
     if (pos !== -1) {
       const startOffsetGlobals = pos;
       const endOffsetGlobals = pos + textToFind.length;
-      
+
       const range = new Range();
       let startSet = false;
       let endSet = false;
-      
+
       for (const info of textNodes) {
         if (!startSet && startOffsetGlobals >= info.start && startOffsetGlobals < info.end) {
           range.setStart(info.node, startOffsetGlobals - info.start);
@@ -303,7 +314,7 @@ window.VellumHighlighter = {
           endSet = true;
         }
       }
-      
+
       if (startSet && endSet) {
         highlightRegistries[payload.color].add(range);
         return true;

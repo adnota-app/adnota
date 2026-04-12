@@ -61,7 +61,8 @@ function getStrokeColor() {
     'vellum-theme-yellow': '#fbc02d',
     'vellum-theme-green': '#388e3c',
     'vellum-theme-blue': '#1976d2',
-    'vellum-theme-pink': '#c2185b'
+    'vellum-theme-pink': '#c2185b',
+    'vellum-theme-black': '#111'
   };
   return themes[window.VellumState.color] || '#fbc02d';
 }
