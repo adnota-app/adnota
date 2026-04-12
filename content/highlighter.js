@@ -22,7 +22,7 @@ highlightToolbar.style.position = 'fixed';
 highlightToolbar.style.bottom = '20px';
 highlightToolbar.style.left = '50%';
 highlightToolbar.style.transform = 'translateX(-50%)';
-highlightToolbar.style.zIndex = '2147483647';
+highlightToolbar.style.zIndex = '2147483646'; // One below max — toast is always on top.
 highlightToolbar.style.cursor = 'default';
 document.documentElement.appendChild(highlightToolbar);
 
@@ -160,7 +160,10 @@ document.addEventListener('mouseup', async (e) => {
     const registry = highlightRegistries[window.VellumState.color];
     if (registry) {
        try {
-           registry.add(range.cloneRange()); 
+           // Keep a ref to the cloned range so undo can delete it from the registry.
+           const clonedRange = range.cloneRange();
+           registry.add(clonedRange);
+           payload._clonedRange = clonedRange;
        } catch (e) {
            console.warn("Vellum: CSS Highlight API rejected range, likely crossing a Shadow DOM boundary. Range:", range);
            payload.isFallback = true;
@@ -185,6 +188,25 @@ document.addEventListener('mouseup', async (e) => {
   if (window.VellumStorage) {
     await window.VellumStorage.saveAnchor(location.hostname, location.pathname, payload);
   }
+
+  // Push to the central undo stack so Ctrl+Z can remove this highlight.
+  const capturedId    = anchor._id;
+  const capturedColor = window.VellumState.color;
+  const capturedRange = payload._clonedRange || null;
+  const capturedFallback = payload.isFallback || false;
+  window.VellumUndo.push({
+    undo: async () => {
+      if (capturedFallback) {
+        const fallbackEl = document.querySelector(`.vellum-highlight-fallback[data-highlight-id="${capturedId}"]`);
+        if (fallbackEl) fallbackEl.remove();
+      } else if (capturedRange) {
+        highlightRegistries[capturedColor]?.delete(capturedRange);
+      }
+      if (window.VellumStorage) {
+        await window.VellumStorage.deleteItem(location.hostname, '_id', capturedId);
+      }
+    }
+  });
 });
 
 window.VellumHighlighter = {
@@ -199,6 +221,7 @@ window.VellumHighlighter = {
       
       const wrapper = document.createElement('div');
       wrapper.className = 'vellum-highlight-fallback';
+      wrapper.dataset.highlightId = payload._id; // Needed for undo lookup.
       wrapper.style.position = 'absolute';
       wrapper.style.pointerEvents = 'none';
       wrapper.style.zIndex = '2147483640'; 

@@ -1,7 +1,5 @@
 // content/eraser.js
 
-let sessionUndoStack = [];
-
 // Overlay to indicate the current erase target
 const highlightOverlay = document.createElement('div');
 highlightOverlay.id = 'vellum-highlight-overlay';
@@ -34,27 +32,18 @@ function isVellumElement(el) {
   );
 }
 
-// Route the keyboard shortcut through VellumState — toggles eraser off if already active,
-// which also automatically deactivates any other tool that was running.
+// Route the keyboard shortcut through VellumState — toggles eraser off if already active.
 chrome.runtime.onMessage.addListener((request) => {
   if (request.action === 'toggle-eraser') {
     window.VellumState.set({ mode: window.VellumState.mode === 'eraser' ? null : 'eraser' });
   }
 });
 
-// React to VellumState changes — clean up highlight overlay whenever eraser is not the active mode.
+// React to VellumState changes — clean up overlay whenever eraser is not the active mode.
 window.VellumState.subscribe(state => {
   if (state.mode !== 'eraser') {
     highlightOverlay.style.display = 'none';
     hoveredElement = null;
-  }
-});
-
-// Ctrl/Cmd+Z undo (session-only, eraser mode only)
-document.addEventListener('keydown', (e) => {
-  if (window.VellumState.mode === 'eraser' && (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
-    e.preventDefault();
-    undoLastRemoval();
   }
 });
 
@@ -94,21 +83,12 @@ document.addEventListener('click', async (e) => {
 
     const target = hoveredElement;
 
-    // Generate anchor before mutating the DOM
+    // Capture state before any mutation.
+    const savedCssText = target.style.cssText;
     const anchor = window.FuzzyAnchor.generate(target);
-
-    // Scope: exact path or domain-wide on Shift+Click
     const pathScope = e.shiftKey ? '*' : location.pathname;
     const domain = location.hostname;
-
     anchor._id = Date.now() + Math.random().toString();
-
-    sessionUndoStack.push({
-      element: target,
-      cssText: target.style.cssText,
-      storageDomain: domain,
-      storageId: anchor._id
-    });
 
     target.style.setProperty('display', 'none', 'important');
     highlightOverlay.style.display = 'none';
@@ -117,6 +97,30 @@ document.addEventListener('click', async (e) => {
       await window.VellumStorage.saveAnchor(domain, pathScope, anchor);
     }
 
+    // Build shared undo closure — used by BOTH the toast button and Ctrl+Z.
+    // The `consumed` flag prevents a double-undo if both fire.
+    let consumed = false;
+    const undoEntry = {
+      undo: async () => {
+        if (consumed) return;
+        consumed = true;
+        target.style.cssText = savedCssText;
+        const orphanedAlert = document.getElementById(`vellum-alert-${anchor._id}`);
+        if (orphanedAlert) orphanedAlert.remove();
+        if (window.VellumStorage) {
+          const data = await chrome.storage.local.get(domain);
+          if (data[domain]) {
+            data[domain].items = data[domain].items.filter(i => i._id !== anchor._id);
+            await chrome.storage.local.set({ [domain]: data[domain] });
+          }
+        }
+        // Pull the entry out of the global stack so Ctrl+Z can't hit it again.
+        window.VellumUndo.remove(undoEntry);
+      }
+    };
+    window.VellumUndo.push(undoEntry);
+
+    // Toast — calls the same closure so Ctrl+Z and toast are always in sync.
     let existingToast = document.getElementById('vellum-eraser-toast');
     if (existingToast) existingToast.remove();
 
@@ -126,37 +130,17 @@ document.addEventListener('click', async (e) => {
     toast.innerHTML = `<span>Element erased</span> <span class="vellum-toast-undo">Undo</span>`;
     document.body.appendChild(toast);
 
-    let undoClicked = false;
     toast.querySelector('.vellum-toast-undo').addEventListener('click', () => {
-      undoClicked = true;
-      undoLastRemoval();
+      undoEntry.undo();
       toast.style.opacity = '0';
       setTimeout(() => toast.remove(), 300);
     });
 
     setTimeout(() => {
-      if (toast.parentNode && !undoClicked) {
+      if (toast.parentNode) {
         toast.style.opacity = '0';
         setTimeout(() => toast.remove(), 300);
       }
     }, 5000);
   }
 }, true); // Capture phase so we intercept before page handlers
-
-async function undoLastRemoval() {
-  const entry = sessionUndoStack.pop();
-  if (entry && entry.element) {
-    entry.element.style.cssText = entry.cssText;
-
-    const orphanedAlert = document.getElementById(`vellum-alert-${entry.storageId}`);
-    if (orphanedAlert) orphanedAlert.remove();
-
-    if (window.VellumStorage) {
-      const data = await chrome.storage.local.get(entry.storageDomain);
-      if (data[entry.storageDomain]) {
-        data[entry.storageDomain].items = data[entry.storageDomain].items.filter(i => i._id !== entry.storageId);
-        await chrome.storage.local.set({ [entry.storageDomain]: data[entry.storageDomain] });
-      }
-    }
-  }
-}

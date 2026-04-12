@@ -1,18 +1,6 @@
 // content/sticky.js
 
 let areNotesVisible = true;
-
-// Module-level undo stack for note deletions, consumed by both Ctrl+Z and the toast.
-const stickyUndoStack = [];
-
-// Ctrl+Z undo — mirrors eraser.js's undo shortcut but for sticky note deletions.
-document.addEventListener('keydown', (e) => {
-  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z' && stickyUndoStack.length > 0) {
-    e.preventDefault();
-    const entry = stickyUndoStack.pop();
-    entry.undo();
-  }
-});
 let highestZIndex = 2147483640;
 const DEBOUNCE_MS = 1500;
 const activeNotes = new Map(); // uuid -> note data
@@ -198,13 +186,13 @@ window.StickyEngine = {
         container.style.display = 'block';
         toast.style.opacity = '0';
         setTimeout(() => toast.remove(), 300);
-        // Clean up the stack entry.
-        const idx = stickyUndoStack.findIndex(e => e.uuid === uuid);
-        if (idx !== -1) stickyUndoStack.splice(idx, 1);
+        // Pull the entry out of the global undo stack.
+        window.VellumUndo.remove(undoEntry);
       }
 
-      // Push to module-level stack so Ctrl+Z can reach it.
-      stickyUndoStack.push({ uuid, undo: performUndo });
+      // Push to the central VellumUndo stack so Ctrl+Z works alongside all other tools.
+      const undoEntry = { undo: performUndo };
+      window.VellumUndo.push(undoEntry);
 
       toast.querySelector('.vellum-toast-undo').addEventListener('click', () => {
         performUndo();

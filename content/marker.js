@@ -153,16 +153,28 @@ async function handlePointerUp(e) {
   capturePath = null;
   
   window.VellumMarker.renderMarker(blockElement, payload);
-  
-  // Bug 2 fix: Re-enable overlay based on current VellumState, not unconditionally.
-  // If Escape was pressed or mode changed during the stroke, respect that.
+
+  // Re-enable overlay based on current state (Bug 2 fix: respect any mid-stroke mode change).
   const stillActive = window.VellumState.isVisible && window.VellumState.mode === 'pen';
   captureSvg.style.display = stillActive ? 'block' : 'none';
   captureSvg.style.pointerEvents = stillActive ? 'auto' : 'none';
-  
+
   if (window.VellumStorage) {
     await window.VellumStorage.saveAnchor(location.hostname, location.pathname, payload);
   }
+
+  // Push to the central undo stack — removes the wrapper div and deletes from storage.
+  const capturedUuid   = payload.uuid;
+  const capturedDomain = location.hostname;
+  window.VellumUndo.push({
+    undo: async () => {
+      const el = document.querySelector(`.vellum-marker-wrapper[data-uuid="${capturedUuid}"]`);
+      if (el) el.remove();
+      if (window.VellumStorage) {
+        await window.VellumStorage.deleteItem(capturedDomain, 'uuid', capturedUuid);
+      }
+    }
+  });
 }
 
 function updateLivePath() {
