@@ -114,17 +114,20 @@ window.StickyEngine = {
     container.dataset.uuid = uuid;
 
     const initialText = comments && comments.length > 0 ? comments[0].text : '';
-    const noteCount = document.querySelectorAll('.vellum-sticky-container').length + 1;
+    const createdAt = comments && comments[0]?.createdAt ? new Date(comments[0].createdAt) : new Date();
+    const pad = n => String(n).padStart(2, '0');
+    const ts = `${createdAt.getFullYear()}-${pad(createdAt.getMonth()+1)}-${pad(createdAt.getDate())} ${pad(createdAt.getHours())}:${pad(createdAt.getMinutes())}`;
 
     container.innerHTML = `
       <svg class="vellum-leader-line-svg" style="position: absolute; pointer-events: none; z-index: -1;"></svg>
       <div class="vellum-sticky-card">
         <div class="vellum-sticky-header">
-          <div class="vellum-header-left">Note ${noteCount}</div>
-          <div class="vellum-header-right">
-            <div class="vellum-header-pill">Type <span>T</span></div>
-            <button class="vellum-trash-btn" title="Delete Note">✕</button>
-          </div>
+          <span class="vellum-timestamp">${ts}</span>
+          <button class="vellum-trash-btn" title="Delete note" aria-label="Delete note">
+            <svg width="9" height="9" viewBox="0 0 9 9" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+              <line x1="1" y1="1" x2="8" y2="8"/><line x1="8" y1="1" x2="1" y2="8"/>
+            </svg>
+          </button>
         </div>
         <textarea class="vellum-sticky-textarea" placeholder="Take a note...">${initialText}</textarea>
       </div>
@@ -166,9 +169,8 @@ window.StickyEngine = {
       let committed = false;
       const deleteTimeout = setTimeout(async () => {
         committed = true;
-        // Remove from undo stack so stale entries don't linger.
-        const idx = stickyUndoStack.findIndex(e => e.uuid === uuid);
-        if (idx !== -1) stickyUndoStack.splice(idx, 1);
+        // Remove from the global undo stack so stale entries don’t linger.
+        window.VellumUndo.remove(undoEntry);
 
         toast.style.opacity = '0';
         setTimeout(() => toast.remove(), 300);
