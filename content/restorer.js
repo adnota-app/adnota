@@ -58,42 +58,40 @@ async function performRestoration() {
 
   for (const item of anchors) {
     const id = item.uuid || item.storageId || JSON.stringify(item);
-    if (processedItems.has(id) && item.action !== 'NOTE') continue;
-    // NOTE tracking keeps position updated natively
+    if (processedItems.has(id)) continue;
 
+    // ── Sticky notes: placement is self-contained (percent-based coords). ────
+    // No DOM anchoring needed — notes always restore regardless of page changes.
+    if (item.action === 'NOTE') {
+      if (window.StickyEngine) {
+        window.StickyEngine.renderNote(item.placement, item.comments, item.uuid);
+      }
+      processedItems.add(id);
+      notesCount++;
+      continue;
+    }
+
+    // ── All other items need a DOM match via FuzzyAnchor. ───────────────────
     const match = window.FuzzyAnchor.findMatch(item);
 
     if (match.confidence >= 70 && match.element) {
-      if (item.action === 'NOTE') {
-        if (!processedItems.has(id)) {
-          const existing = document.querySelector(`.vellum-sticky-container[data-uuid="${item.uuid}"]`);
-          if (!existing) {
-            window.StickyEngine.renderNote(match.element, item, item.placement, item.comments, item.uuid);
-          }
-        }
-        notesCount++;
-      } else if (item.action === 'HIGHLIGHT') {
-        if (!processedItems.has(id)) {
-          if (window.VellumHighlighter) {
-            window.VellumHighlighter.applyStoredHighlight(match.element, item);
-          }
+      if (item.action === 'HIGHLIGHT') {
+        if (window.VellumHighlighter) {
+          window.VellumHighlighter.applyStoredHighlight(match.element, item);
         }
       } else if (item.action === 'MARKER') {
-        if (!processedItems.has(id)) {
-          if (window.VellumMarker) {
-            window.VellumMarker.renderMarker(match.element, item);
-          }
+        if (window.VellumMarker) {
+          window.VellumMarker.renderMarker(match.element, item);
         }
       } else {
+        // ERASE
         match.element.style.setProperty('display', 'none', 'important');
         erasuresCount++;
       }
       processedItems.add(id);
     } else {
       // Item hasn't been successfully applied yet — count it as broken for this pass.
-      if (!processedItems.has(id)) {
-        brokenThisPass++;
-      }
+      brokenThisPass++;
     }
   }
 
