@@ -91,20 +91,20 @@ document.addEventListener('click', async (e) => {
 }, true);
 
 function calculatePlacement(target) {
-    const rect = target.getBoundingClientRect();
-    const viewportWidth = window.innerWidth;
+  const rect = target.getBoundingClientRect();
+  const viewportWidth = window.innerWidth;
 
-    const leftMargin = rect.left;
-    const rightMargin = viewportWidth - rect.right;
-    const NOTE_WIDTH = 240;
+  const leftMargin = rect.left;
+  const rightMargin = viewportWidth - rect.right;
+  const NOTE_WIDTH = 240;
 
-    if (rightMargin > NOTE_WIDTH + 20) {
-      return { position: 'margin-right', percentOffset: 100 };
-    } else if (leftMargin > NOTE_WIDTH + 20) {
-      return { position: 'margin-left', percentOffset: 0 };
-    } else {
-      return { position: 'below', percentOffset: 100 };
-    }
+  if (rightMargin > NOTE_WIDTH + 20) {
+    return { position: 'margin-right', percentOffset: 100 };
+  } else if (leftMargin > NOTE_WIDTH + 20) {
+    return { position: 'margin-left', percentOffset: 0 };
+  } else {
+    return { position: 'below', percentOffset: 100 };
+  }
 }
 
 window.StickyEngine = {
@@ -122,7 +122,7 @@ window.StickyEngine = {
     const initialText = comments && comments.length > 0 ? comments[0].text : '';
     const createdAt = comments && comments[0]?.createdAt ? new Date(comments[0].createdAt) : new Date();
     const pad = n => String(n).padStart(2, '0');
-    const ts = `${createdAt.getFullYear()}-${pad(createdAt.getMonth()+1)}-${pad(createdAt.getDate())} ${pad(createdAt.getHours())}:${pad(createdAt.getMinutes())}`;
+    const ts = `${createdAt.getFullYear()}-${pad(createdAt.getMonth() + 1)}-${pad(createdAt.getDate())} ${pad(createdAt.getHours())}:${pad(createdAt.getMinutes())}`;
 
     container.innerHTML = `
       <svg class="vellum-leader-line-svg" style="position: absolute; pointer-events: none; z-index: -1;"></svg>
@@ -144,9 +144,71 @@ window.StickyEngine = {
 
     this.updatePosition(uuid);
 
+    // ── Bring to front on any mousedown ──────────────────────────────────────
     container.addEventListener('mousedown', () => {
       highestZIndex++;
       container.style.zIndex = highestZIndex;
+    });
+
+    // ── Drag-and-drop on the header ───────────────────────────────────────────
+    const header = container.querySelector('.vellum-sticky-header');
+    const leaderSvg = container.querySelector('svg');
+    let isDragging = false;
+    let dragOffsetX = 0;
+    let dragOffsetY = 0;
+
+    header.addEventListener('pointerdown', (e) => {
+      // Don't intercept clicks on the trash button.
+      if (e.target.closest('.vellum-trash-btn')) return;
+
+      isDragging = true;
+      header.setPointerCapture(e.pointerId);
+
+      const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+      const scrollLeft = window.pageXOffset || document.documentElement.scrollLeft;
+      dragOffsetX = e.clientX + scrollLeft - parseFloat(container.style.left || 0);
+      dragOffsetY = e.clientY + scrollTop - parseFloat(container.style.top || 0);
+
+      // Hide the leader line while dragging — it no longer points anywhere meaningful.
+      leaderSvg.style.opacity = '0';
+      container.style.transition = 'none'; // Kill any CSS transitions for fluid drag.
+      e.preventDefault();
+    });
+
+    header.addEventListener('pointermove', (e) => {
+      if (!isDragging) return;
+      const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+      const scrollLeft = window.pageXOffset || document.documentElement.scrollLeft;
+      container.style.left = `${e.clientX + scrollLeft - dragOffsetX}px`;
+      container.style.top = `${e.clientY + scrollTop - dragOffsetY}px`;
+    });
+
+    header.addEventListener('pointerup', async (e) => {
+      if (!isDragging) return;
+      isDragging = false;
+      header.releasePointerCapture(e.pointerId);
+
+      // Switch to manual placement so updatePosition won't clobber the new position.
+      const newTop = parseFloat(container.style.top);
+      const newLeft = parseFloat(container.style.left);
+      const manualPlacement = { position: 'manual', top: newTop, left: newLeft };
+
+      // Update the in-memory record.
+      const noteData = activeNotes.get(uuid);
+      if (noteData) noteData.placement = manualPlacement;
+
+      // Restore transition and hide leader line permanently for manual notes.
+      container.style.transition = '';
+      leaderSvg.style.transition = 'opacity 0.2s';
+      leaderSvg.style.opacity = '0'; // Leader line gone after a drag — note is free-floating.
+
+      // Persist the new position.
+      if (window.VellumStorage) {
+        await window.VellumStorage.saveNote(
+          location.hostname, location.pathname,
+          anchorData, manualPlacement, comments, uuid
+        );
+      }
     });
 
     const textarea = container.querySelector('textarea');
@@ -213,29 +275,40 @@ window.StickyEngine = {
     if (!noteData) return;
 
     const { container, targetElement, placement } = noteData;
+
+    // Manual placement: the user has dragged this note — honour the saved coordinates directly.
+    if (placement.position === 'manual') {
+      container.style.top = `${placement.top}px`;
+      container.style.left = `${placement.left}px`;
+      // Hide the leader line — it doesn't point anywhere meaningful for free-floating notes.
+      const leaderSvg = container.querySelector('svg');
+      if (leaderSvg) leaderSvg.style.opacity = '0';
+      return;
+    }
+
     const rect = targetElement.getBoundingClientRect();
     const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
     const scrollLeft = window.pageXOffset || document.documentElement.scrollLeft;
 
     let top = rect.top + scrollTop;
     let left = rect.left + scrollLeft;
-    let lineStart = {x: 0, y: 0};
-    let lineEnd = {x: 0, y: 0};
+    let lineStart = { x: 0, y: 0 };
+    let lineEnd = { x: 0, y: 0 };
 
     const NOTE_WIDTH = 240;
 
     if (placement.position === 'margin-right') {
       left = rect.right + scrollLeft + 20;
-      lineStart = {x: -20, y: 15};
-      lineEnd = {x: 0, y: 15};
+      lineStart = { x: -20, y: 15 };
+      lineEnd = { x: 0, y: 15 };
     } else if (placement.position === 'margin-left') {
       left = rect.left + scrollLeft - NOTE_WIDTH - 20;
-      lineStart = {x: NOTE_WIDTH + 20, y: 15};
-      lineEnd = {x: NOTE_WIDTH, y: 15};
+      lineStart = { x: NOTE_WIDTH + 20, y: 15 };
+      lineEnd = { x: NOTE_WIDTH, y: 15 };
     } else {
       top = rect.bottom + scrollTop + 10;
-      lineStart = {x: NOTE_WIDTH/2, y: -10};
-      lineEnd = {x: NOTE_WIDTH/2, y: 0};
+      lineStart = { x: NOTE_WIDTH / 2, y: -10 };
+      lineEnd = { x: NOTE_WIDTH / 2, y: 0 };
     }
 
     container.style.top = `${top}px`;
