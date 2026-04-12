@@ -1,6 +1,47 @@
 // content/restorer.js
 
 const processedItems = new Set();
+let initialRestorationDone = false;
+
+function showBrokenAnchorsToast(count) {
+  // De-duplicate: only one broken-anchor toast at a time.
+  if (document.getElementById('vellum-broken-toast')) return;
+
+  const plural = count === 1 ? '' : 's';
+  const toast = document.createElement('div');
+  toast.id = 'vellum-broken-toast';
+  toast.className = 'vellum-toast vellum-toast-broken';
+  toast.setAttribute('data-vellum-ui', '1');
+  toast.innerHTML = `
+    <span>⚠\uFE0F  ${count} saved edit${plural} couldn't be reapplied — this page may have changed since your last visit.</span>
+    <span class="vellum-toast-undo" id="vellum-broken-dismiss">Dismiss</span>
+  `;
+
+  // Wait for body to exist (may be called early on some pages).
+  const attach = () => {
+    (document.body || document.documentElement).appendChild(toast);
+
+    document.getElementById('vellum-broken-dismiss').addEventListener('click', () => {
+      toast.style.opacity = '0';
+      setTimeout(() => toast.remove(), 300);
+    });
+
+    // Auto-dismiss after 14 seconds — longer than the standard 5s delete toast
+    // because this requires the user to actually read and comprehend it.
+    setTimeout(() => {
+      if (toast.parentNode) {
+        toast.style.opacity = '0';
+        setTimeout(() => toast.remove(), 300);
+      }
+    }, 14000);
+  };
+
+  if (document.body) {
+    attach();
+  } else {
+    window.addEventListener('DOMContentLoaded', attach, { once: true });
+  }
+}
 
 async function performRestoration() {
   if (!window.VellumStorage || !window.FuzzyAnchor) return;
@@ -10,6 +51,7 @@ async function performRestoration() {
 
   let erasuresCount = 0;
   let notesCount = 0;
+  let brokenThisPass = 0;
 
   for (const item of anchors) {
     const id = item.uuid || item.storageId || JSON.stringify(item);
@@ -17,44 +59,53 @@ async function performRestoration() {
     // NOTE tracking keeps position updated natively
 
     const match = window.FuzzyAnchor.findMatch(item);
-    
-    // We only process if confidence is solid or if we haven't flagged it broken yet
+
     if (match.confidence >= 70 && match.element) {
       if (item.action === 'NOTE') {
         if (!processedItems.has(id)) {
-           const existing = document.querySelector(`.vellum-sticky-container[data-uuid="${item.uuid}"]`);
-           if (!existing) {
-             window.StickyEngine.renderNote(match.element, item, item.placement, item.comments, item.uuid);
-           }
+          const existing = document.querySelector(`.vellum-sticky-container[data-uuid="${item.uuid}"]`);
+          if (!existing) {
+            window.StickyEngine.renderNote(match.element, item, item.placement, item.comments, item.uuid);
+          }
         }
         notesCount++;
       } else if (item.action === 'HIGHLIGHT') {
         if (!processedItems.has(id)) {
-           if (window.VellumHighlighter) {
-             window.VellumHighlighter.applyStoredHighlight(match.element, item);
-           }
+          if (window.VellumHighlighter) {
+            window.VellumHighlighter.applyStoredHighlight(match.element, item);
+          }
         }
       } else if (item.action === 'MARKER') {
         if (!processedItems.has(id)) {
-           if (window.VellumMarker) {
-             window.VellumMarker.renderMarker(match.element, item);
-           }
+          if (window.VellumMarker) {
+            window.VellumMarker.renderMarker(match.element, item);
+          }
         }
       } else {
         match.element.style.setProperty('display', 'none', 'important');
         erasuresCount++;
       }
       processedItems.add(id);
+    } else {
+      // Item hasn't been successfully applied yet — count it as broken for this pass.
+      if (!processedItems.has(id)) {
+        brokenThisPass++;
+      }
     }
-    // We intentionally fail silently on eroded anchors (< 70% confidence) 
-    // to preserve page aesthetics, rather than aggressively drawing amber bounding boxes.
   }
 
-  chrome.storage.local.set({ 
-    vellum_stats: { 
-      [location.href]: { success: erasuresCount, notes: notesCount }
+  chrome.storage.local.set({
+    vellum_stats: {
+      [location.href]: { success: erasuresCount, notes: notesCount, broken: brokenThisPass }
     }
   });
+
+  // Only toast on the first pass (initial page load).
+  // MutationObserver re-runs silently retry — no toast spam.
+  if (!initialRestorationDone && brokenThisPass > 0) {
+    showBrokenAnchorsToast(brokenThisPass);
+  }
+  initialRestorationDone = true;
 }
 
 // Initial fire

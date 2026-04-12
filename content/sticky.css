@@ -167,3 +167,14 @@
   cursor: pointer;
   font-weight: bold;
 }
+
+/* Broken-anchor warning toast — amber dark to visually distinguish from action confirmations */
+.vellum-toast-broken {
+  background: #78350f;
+  border: 1px solid rgba(251, 191, 36, 0.35);
+  max-width: 420px;
+}
+
+.vellum-toast-broken .vellum-toast-undo {
+  color: #fcd34d;
+}
