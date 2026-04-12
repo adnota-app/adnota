@@ -222,6 +222,7 @@ document.addEventListener('click', async (e) => {
       // Delete the erasure record from storage.
       if (window.VellumStorage) {
         const data = await chrome.storage.local.get(domain);
+        console.log(data);
         if (data[domain]) {
           data[domain].items = data[domain].items.filter(i => i._id !== anchor._id);
           await chrome.storage.local.set({ [domain]: data[domain] });
