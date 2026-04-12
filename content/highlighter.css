@@ -47,19 +47,10 @@
 }
 
 .vellum-color-swatch.active {
-  border-color: #333;
-}
-
-/* Black/redaction swatch needs a light border to be visible on the white toolbar */
-.vellum-swatch-black {
-  border-color: #bbb;
-}
-
-/* White ring so the selected state reads clearly against the dark swatch */
-.vellum-swatch-black.active {
   border-color: #fff;
-  box-shadow: 0 0 0 2px #555;
+  box-shadow: 0 0 0 2px #333;
 }
+
 
 .vellum-mode-btn {
   padding: 4px 8px;

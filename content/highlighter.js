@@ -59,9 +59,8 @@ for (const [themeClass, colorHex] of Object.entries(themes)) {
   const swatch = document.createElement('div');
   swatch.className = 'vellum-color-swatch';
   swatch.style.backgroundColor = colorHex;
-  // Black swatch: add a class (not inline style) so the CSS active-state override can take effect.
+  // Black swatch: tooltip only — appearance is identical to other swatches.
   if (themeClass === 'vellum-theme-black') {
-    swatch.classList.add('vellum-swatch-black');
     swatch.title = 'Redact (great for sharing screenshots without sensitive info)';
   }
   swatch.onclick = () => window.VellumState.set({ color: themeClass });
