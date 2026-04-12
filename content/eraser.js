@@ -241,7 +241,13 @@ document.addEventListener('click', async (e) => {
   toast.id = 'vellum-eraser-toast';
   toast.className = 'vellum-toast';
   toast.setAttribute('data-vellum-ui', '1');
-  toast.innerHTML = `<span>Element erased</span> <span class="vellum-toast-undo">Undo</span>`;
+  toast.innerHTML = `
+    <div class="vellum-toast-logo">V</div>
+    <span class="vellum-toast-message">Element erased</span>
+    <div class="vellum-toast-actions">
+      <span class="vellum-toast-undo">Undo</span>
+    </div>
+  `;
   document.body.appendChild(toast);
 
   toast.querySelector('.vellum-toast-undo').addEventListener('click', () => {
