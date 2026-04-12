@@ -10,11 +10,14 @@ function showBrokenAnchorsToast(count) {
   const plural = count === 1 ? '' : 's';
   const toast = document.createElement('div');
   toast.id = 'vellum-broken-toast';
-  toast.className = 'vellum-toast vellum-toast-broken';
+  toast.className = 'vellum-toast';
   toast.setAttribute('data-vellum-ui', '1');
   toast.innerHTML = `
-    <span>⚠\uFE0F  ${count} saved edit${plural} couldn't be reapplied — this page may have changed since your last visit.</span>
-    <span class="vellum-toast-undo" id="vellum-broken-dismiss">Dismiss</span>
+    <div class="vellum-toast-logo">V</div>
+    <span class="vellum-toast-message">${count} saved edit${plural} couldn't be reapplied — this page may have changed.</span>
+    <div class="vellum-toast-actions">
+      <span class="vellum-toast-btn" id="vellum-broken-dismiss">Dismiss</span>
+    </div>
   `;
 
   // Wait for body to exist (may be called early on some pages).

@@ -230,7 +230,13 @@ window.StickyEngine = {
 
       const toast = document.createElement('div');
       toast.className = 'vellum-toast';
-      toast.innerHTML = `<span>Note deleted</span> <span class="vellum-toast-undo">Undo</span>`;
+      toast.innerHTML = `
+        <div class="vellum-toast-logo">V</div>
+        <span class="vellum-toast-message">Note deleted</span>
+        <div class="vellum-toast-actions">
+          <span class="vellum-toast-undo">Undo</span>
+        </div>
+      `;
       document.body.appendChild(toast);
 
       // Store the timeout ref so both Ctrl+Z and the toast button can cancel it.

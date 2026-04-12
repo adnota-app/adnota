@@ -143,38 +143,109 @@
   opacity: 0.6;
 }
 
+/* ─── Vellum Toast — brand-consistent across all tools ─── */
 .vellum-toast {
   position: fixed;
-  bottom: 20px;
+  bottom: 24px;
   left: 50%;
   transform: translateX(-50%);
-  background: #333;
-  color: white;
-  padding: 12px 20px;
-  border-radius: 6px;
-  font-size: 14px;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   z-index: 2147483647;
   display: flex;
-  gap: 12px;
-  align-items: center;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+  align-items: stretch;
+  min-height: 52px;
+  max-width: 540px;
+  border-radius: 12px;
+  overflow: hidden;                                         /* clips the actions section flush */
+  background: linear-gradient(135deg, #12082b 0%, #0c0519 100%);
+  border: 1px solid rgba(124, 58, 237, 0.3);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(124, 58, 237, 0.08);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   transition: opacity 0.3s;
+  white-space: nowrap;
 }
 
-.vellum-toast-undo {
-  color: #64b5f6;
+/* V logo chip — matches the popup brand monogram exactly */
+.vellum-toast-logo {
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+  background: linear-gradient(135deg, #7c3aed 0%, #4f46e5 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 14px;
+  color: #fff;
+  letter-spacing: -0.5px;
+  flex-shrink: 0;
+  align-self: center;
+  margin-left: 14px;
+  box-shadow: 0 2px 8px rgba(124, 58, 237, 0.45);
+  user-select: none;
+}
+
+/* Message — sits to the right of the logo, fills available width */
+.vellum-toast-message {
+  flex: 1;
+  color: rgba(255, 255, 255, 0.88);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.4;
+  padding: 0 18px 0 12px;
+  display: flex;
+  align-items: center;
+  white-space: normal;                                      /* allow wrapping for longer messages */
+}
+
+/* Actions section — transparent, buttons carry their own gradient */
+.vellum-toast-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 14px;
+  flex-shrink: 0;
+  align-self: stretch;
+}
+
+/* Action buttons — subtle purple gradient pill */
+.vellum-toast-btn {
+  color: rgba(255, 255, 255, 0.95);
+  font-size: 12px;
+  font-weight: 600;
   cursor: pointer;
-  font-weight: bold;
+  padding: 5px 13px;
+  border-radius: 7px;
+  background: linear-gradient(135deg, rgba(124, 58, 237, 0.55) 0%, rgba(79, 70, 229, 0.55) 100%);
+  border: 1px solid rgba(124, 58, 237, 0.4);
+  transition: background 0.15s, border-color 0.15s;
+  letter-spacing: 0.02em;
+  font-family: inherit;
+  user-select: none;
+  white-space: nowrap;
 }
 
-/* Broken-anchor warning toast — amber dark to visually distinguish from action confirmations */
-.vellum-toast-broken {
-  background: #78350f;
-  border: 1px solid rgba(251, 191, 36, 0.35);
-  max-width: 420px;
+.vellum-toast-btn:hover {
+  background: linear-gradient(135deg, rgba(124, 58, 237, 0.8) 0%, rgba(79, 70, 229, 0.8) 100%);
+  border-color: rgba(124, 58, 237, 0.7);
 }
 
-.vellum-toast-broken .vellum-toast-undo {
-  color: #fcd34d;
+/* .vellum-toast-undo: kept for JS querySelector compatibility — same style as .vellum-toast-btn */
+.vellum-toast-undo {
+  color: rgba(255, 255, 255, 0.95);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 5px 13px;
+  border-radius: 7px;
+  background: linear-gradient(135deg, rgba(124, 58, 237, 0.55) 0%, rgba(79, 70, 229, 0.55) 100%);
+  border: 1px solid rgba(124, 58, 237, 0.4);
+  transition: background 0.15s, border-color 0.15s;
+  letter-spacing: 0.02em;
+  user-select: none;
+  white-space: nowrap;
+}
+
+.vellum-toast-undo:hover {
+  background: linear-gradient(135deg, rgba(124, 58, 237, 0.8) 0%, rgba(79, 70, 229, 0.8) 100%);
+  border-color: rgba(124, 58, 237, 0.7);
 }
