@@ -1,0 +1,28 @@
+/* content/marker.css */
+
+#vellum-capture-canvas {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  z-index: 2147483645;
+  pointer-events: auto;
+  touch-action: none; 
+  cursor: crosshair;
+  background: transparent; /* Invisible overlay */
+}
+
+.vellum-marker-wrapper {
+  position: absolute;
+  pointer-events: none;
+  z-index: 2147483640; /* Elevated but slightly under highlighters/toasts */
+  transition: opacity 0.2s ease;
+}
+
+.vellum-marker-wrapper svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible; 
+}

@@ -50,17 +50,22 @@
   },
   "content_scripts": [
     {
-      "matches": ["*://*/*"],
+      "matches": [
+        "*://*/*"
+      ],
       "js": [
         "lib/storage.js",
+        "lib/annotationState.js",
         "content/fuzzyAnchor.js",
         "content/eraser.js",
         "content/sticky.js",
         "content/highlighter.js",
+        "content/marker.js",
         "content/restorer.js"
       ],
       "css": [
         "content/sticky.css",
+        "content/marker.css",
         "content/highlighter.css"
       ],
       "run_at": "document_idle"

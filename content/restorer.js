@@ -34,6 +34,12 @@ async function performRestoration() {
              window.VellumHighlighter.applyStoredHighlight(match.element, item);
            }
         }
+      } else if (item.action === 'MARKER') {
+        if (!processedItems.has(id)) {
+           if (window.VellumMarker) {
+             window.VellumMarker.renderMarker(match.element, item);
+           }
+        }
       } else {
         match.element.style.setProperty('display', 'none', 'important');
         erasuresCount++;

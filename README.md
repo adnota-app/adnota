@@ -9,7 +9,7 @@ To install the Vellum MVP on your local machine for testing, follow these steps:
 1. **Open Extension Settings:** Go to `chrome://extensions` in your Chrome (or Chromium-based) browser.
 2. **Enable Developer Mode:** Toggle the **Developer mode** switch in the top-right corner of the extensions page.
 3. **Load Unpacked Extension:** Click the **Load unpacked** button that appears in the top-left toolbar.
-4. **Select Project Folder:** Navigate to the project root folder (`/Users/saunders/dev/webrevise`), select it, and click **Select**.
+4. **Select Project Folder:** Navigate to the project root folder (`$HOME/webrevise`), select it, and click **Select**.
 5. **Verify Installation:** You should now see the Vellum extension loaded into your installed extension list. You can pin it to your browser toolbar using the puzzle-piece menu for quick access!
 
 ## Basic Usage

@@ -1,17 +1,17 @@
 ::highlight(vellum-theme-yellow) {
-  background-color: rgba(255, 235, 59, 0.4);
+  background-color: rgba(255, 235, 59, 0.4) !important;
 }
 
 ::highlight(vellum-theme-green) {
-  background-color: rgba(76, 175, 80, 0.4);
+  background-color: rgba(76, 175, 80, 0.4) !important;
 }
 
 ::highlight(vellum-theme-blue) {
-  background-color: rgba(33, 150, 243, 0.4);
+  background-color: rgba(33, 150, 243, 0.4) !important;
 }
 
 ::highlight(vellum-theme-pink) {
-  background-color: rgba(233, 30, 99, 0.4);
+  background-color: rgba(233, 30, 99, 0.4) !important;
 }
 
 /* Fallback/UI elements if we add a color picker widget later */
@@ -42,4 +42,31 @@
 
 .vellum-color-swatch.active {
   border-color: #333;
+}
+
+.vellum-mode-btn {
+  padding: 4px 8px;
+  font-family: system-ui, -apple-system, sans-serif;
+  font-size: 13px;
+  font-weight: 500;
+  color: #666;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  transition: all 0.2s;
+  user-select: none;
+}
+
+.vellum-mode-btn:hover {
+  color: #333;
+}
+
+.vellum-mode-btn.active {
+  color: #000;
+  border-bottom-color: #000;
+}
+
+.vellum-toolbar-divider {
+  width: 1px;
+  background: #eee;
+  margin: 0 4px;
 }
