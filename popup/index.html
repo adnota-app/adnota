@@ -1,38 +1,159 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
+  <meta charset="UTF-8">
   <title>Vellum</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <div class="header">
-    <h1>Vellum</h1>
-    <p class="subtitle">The Persistent Canvas</p>
-  </div>
-  
-  <div class="main-content">
-    <button id="toggle-eraser" class="primary-btn">Toggle Eraser Mode</button>
-    <button id="toggle-sticky" class="primary-btn" style="margin-top: 10px; background-color: #ffca28; color: #333; border: 1px solid #e1c015; text-shadow: none;">Toggle Sticky Mode</button>
-    <p class="shortcut-tip">Shortcuts: <strong>Alt+E</strong> (Erase), <strong>Alt+S</strong> (Note)<br/><strong>Alt+V</strong> toggles visibility for notes.</p>
-  </div>
-  
-  <div class="stats-box">
-    <div class="stat">
-      <span id="success-count" class="count success">0</span>
-      <span class="label">Erasures</span>
-    </div>
-    <div class="stat" style="margin-top: 8px;">
-      <span id="notes-count" class="count" style="color:#e4b301;">0</span>
-      <span class="label">Active Notes</span>
-    </div>
-    <div id="broken-alert" class="broken-alert hidden">
-      <span id="broken-count" class="count broken">0</span> broken links observed.
-    </div>
-  </div>
 
-  <div class="footer">
-    <button id="clear-page" class="secondary-btn">Clear Page Edits</button>
-  </div>
+  <!-- ─── Header ─── -->
+  <header class="header">
+    <div class="brand">
+      <div class="brand-monogram">V</div>
+      <div class="brand-text">
+        <div class="brand-name">Vellum</div>
+        <div class="brand-sub">The Persistent Canvas</div>
+      </div>
+    </div>
+    <button id="btn-visibility" class="icon-btn" title="Toggle all annotation visibility (Alt+V)">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+        <circle cx="12" cy="12" r="3"/>
+      </svg>
+    </button>
+  </header>
+
+  <!-- ─── Body ─── -->
+  <div class="body">
+
+    <!-- Tools -->
+    <div class="section">
+      <div class="section-label">Tools</div>
+      <div class="tools-list">
+
+        <!-- Eraser — mode 'eraser' -->
+        <button class="tool-card" id="btn-eraser" data-action="toggle-eraser" data-mode="eraser">
+          <div class="tool-icon-wrap" style="--chip-bg:rgba(239,68,68,0.12);--chip-color:#ef4444;">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="m7 21-4.3-4.3c-1-1-1-2.5 0-3.4l9.6-9.6c1-1 2.5-1 3.4 0l5.6 5.6c1 1 1 2.5 0 3.4L13 21"/>
+              <path d="M22 21H7"/><path d="m5 11 9 9"/>
+            </svg>
+          </div>
+          <div class="tool-info">
+            <div class="tool-name">Eraser</div>
+            <div class="tool-desc">Permanently hide page elements</div>
+          </div>
+          <kbd class="shortcut">Alt+E</kbd>
+          <span class="active-badge"><span class="pulse-dot"></span>Active</span>
+          <div class="tool-accent" style="--accent:#ef4444;"></div>
+        </button>
+
+        <!-- Sticky — mode 'sticky' -->
+        <button class="tool-card" id="btn-sticky" data-action="toggle-sticky" data-mode="sticky">
+          <div class="tool-icon-wrap" style="--chip-bg:rgba(245,158,11,0.12);--chip-color:#f59e0b;">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M15.5 3H5a2 2 0 0 0-2 2v14c0 1.1.9 2 2 2h14a2 2 0 0 0 2-2V8.5L15.5 3z"/>
+              <polyline points="15 3 15 9 21 9"/>
+              <line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="12" y2="17"/>
+            </svg>
+          </div>
+          <div class="tool-info">
+            <div class="tool-name">Sticky Note</div>
+            <div class="tool-desc">Drop anchored text annotations</div>
+          </div>
+          <kbd class="shortcut">Alt+S</kbd>
+          <span class="active-badge"><span class="pulse-dot"></span>Active</span>
+          <div class="tool-accent" style="--accent:#f59e0b;"></div>
+        </button>
+
+        <!-- Highlight & Pen — mode 'highlight' or 'pen' -->
+        <button class="tool-card" id="btn-highlighter" data-action="toggle-highlighter" data-mode="highlight pen">
+          <div class="tool-icon-wrap" style="--chip-bg:rgba(124,58,237,0.12);--chip-color:#7c3aed;">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 20h9"/>
+              <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
+            </svg>
+          </div>
+          <div class="tool-info">
+            <div class="tool-name">Highlight &amp; Pen</div>
+            <div class="tool-desc">Mark text or draw freehand strokes</div>
+          </div>
+          <kbd class="shortcut">Alt+H</kbd>
+          <span class="active-badge"><span class="pulse-dot"></span>Active</span>
+          <div class="tool-accent" style="--accent:#7c3aed;"></div>
+        </button>
+
+      </div>
+    </div>
+
+    <!-- Stats: the entire card is clickable; number cross-fades to a trash icon on hover -->
+    <div class="section">
+      <div class="section-label">This Page</div>
+      <div class="stats-grid">
+
+        <div class="stat-card" id="clear-erasures" data-clear-action="ERASE">
+          <div class="stat-display">
+            <span class="stat-value" id="count-erasures" style="color:#ef4444;">0</span>
+            <svg class="stat-trash" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+              <path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/>
+            </svg>
+          </div>
+          <span class="stat-label">Erased</span>
+        </div>
+
+        <div class="stat-card" id="clear-notes" data-clear-action="NOTE">
+          <div class="stat-display">
+            <span class="stat-value" id="count-notes" style="color:#f59e0b;">0</span>
+            <svg class="stat-trash" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+              <path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/>
+            </svg>
+          </div>
+          <span class="stat-label">Notes</span>
+        </div>
+
+        <div class="stat-card" id="clear-highlights" data-clear-action="HIGHLIGHT">
+          <div class="stat-display">
+            <span class="stat-value" id="count-highlights" style="color:#7c3aed;">0</span>
+            <svg class="stat-trash" viewBox="0 0 24 24" fill="none" stroke="#7c3aed" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+              <path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/>
+            </svg>
+          </div>
+          <span class="stat-label">Highlights</span>
+        </div>
+
+        <div class="stat-card" id="clear-strokes" data-clear-action="MARKER">
+          <div class="stat-display">
+            <span class="stat-value" id="count-strokes" style="color:#10b981;">0</span>
+            <svg class="stat-trash" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+              <path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/>
+            </svg>
+          </div>
+          <span class="stat-label">Strokes</span>
+        </div>
+
+      </div>
+    </div>
+
+  </div><!-- /body -->
+
+  <!-- ─── Footer ─── -->
+  <footer class="footer">
+    <button id="btn-clear" class="danger-btn">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+        <path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/>
+      </svg>
+      Clear All Page Edits
+    </button>
+  </footer>
 
   <script src="../lib/storage.js"></script>
   <script src="popup.js"></script>
