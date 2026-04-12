@@ -3,6 +3,13 @@
 document.addEventListener('DOMContentLoaded', async () => {
   const btnClear      = document.getElementById('btn-clear');
   const btnVisibility = document.getElementById('btn-visibility');
+  const btnMySites    = document.getElementById('btn-my-sites');
+
+  // ─── Open the Sites history page ──────────────────────────────────────────
+  btnMySites.addEventListener('click', () => {
+    chrome.tabs.create({ url: chrome.runtime.getURL('pages/sites.html') });
+    window.close();
+  });
 
   // ─── Utility: mark the active tool card by mode string ───────────────────
   function setActiveCard(mode) {

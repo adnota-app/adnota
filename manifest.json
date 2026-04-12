@@ -6,10 +6,17 @@
   "permissions": [
     "storage",
     "activeTab",
-    "scripting"
+    "scripting",
+    "tabs"
   ],
   "host_permissions": [
     "*://*/*"
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["pages/*"],
+      "matches": ["<all_urls>"]
+    }
   ],
   "background": {
     "service_worker": "background.js"
