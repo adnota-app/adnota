@@ -102,9 +102,9 @@ Confidence threshold: **≥ 70%** to auto-apply a restoration. Below that, the i
 
 #### `content/sticky.js` — `window.StickyEngine`
 - Activated via popup or `Alt+S`
-- Click anywhere on the page to drop an anchored sticky note
-- Notes spawn in the optimal margin (right → left → below) connected by a dashed SVG leader line
-- **Drag and Drop**: pointer-event drag on the header repositions notes freely. On drop, switches the `placement` schema to `{ position: 'manual', top, left }` and persists the new coordinates. `updatePosition` respects manual placement and hides the leader line for free-floating notes
+- Click anywhere on the page to drop a free-floating sticky note
+- **Coordinate model**: position is stored as `{ xPct, yScrollPct }` — percentages of total page scroll width/height — not a DOM anchor. This means notes survive any page restructure; the worst case is a note floats ~100px from its original spot if content above it shifts significantly.
+- **Drag and Drop**: pointer-event drag on the header repositions notes freely. On drop, new coordinates are converted back to percentages and persisted.
 - Autosaves content on a 1.5s debounce
 - Delete: instant visual hide + 5s undo window before storage commit
 - `Alt+V` toggles all note visibility. Visibility state (`vellumHidden`) is persisted to storage and queried live by the popup via `get-view` message
@@ -139,7 +139,7 @@ Confidence threshold: **≥ 70%** to auto-apply a restoration. Below that, the i
 - **MutationObserver** with 1s debounce watches for SPA/lazy-loaded content and re-runs restoration — handles React, Vue, and infinite-scroll sites
 - Dispatches to the correct engine by `action` type:
   - `ERASE` → `element.style.setProperty('display', 'none', 'important')`
-  - `NOTE` → `StickyEngine.renderNote()`
+  - `NOTE` → `StickyEngine.renderNote()` directly from stored `placement` — **bypasses FuzzyAnchor entirely** since position is self-contained percentage coordinates
   - `HIGHLIGHT` → `VellumHighlighter.applyStoredHighlight()`
   - `MARKER` → `VellumMarker.renderMarker()`
 - Deduplicates with a `processedItems` Set so MutationObserver re-runs don't re-render already-applied annotations

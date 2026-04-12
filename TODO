@@ -1,0 +1,114 @@
+- fix stroke paths: Marker paths are the biggest risk. Even with RDP, complex strokes can produce 50+ points × 2 floats × 2 coords. That's ~800 bytes per stroke uncompressed. Store at reduced precision (2 decimal places max).
+
+1. Is 70% Confidence Good Enough?
+No. Not really — but it's the right starting point for a graceful system.
+
+70% sounds like a passing grade. In practice, it means you're auto-applying restorations where nearly 1 in 3 signals disagrees. For an eraser specifically, that's a dangerous tolerance — a false positive means you silently delete something the user didn't intend to delete on this reload.
+
+The real problem is that the threshold is binary and uniform across wildly different site behaviors:
+
+A static documentation site (MDN, Stripe docs) → virtually zero churn. 70% is overkill.
+A news homepage (NYT, Reddit) → DOM restructures on every deploy. 70% is reckless.
+A React SPA that dynamically renders based on server state → anchors may be irreproducible.
+Site refactoring is brutal. A major redesign can blow out every anchor simultaneously:
+
+IDs get renamed or dropped
+XPaths change as layout structure changes
+Text content gets reworded, internationalized, or A/B tested
+Visual geometry shifts with responsive redesigns
+A site like Reddit or Twitter does rolling deployments daily. Your confidence scores could degrade to 30% across the board overnight, and nothing tells the user.
+
+The deeper issue: confidence is a signal about which anchor field survived, not about whether the right element was found. A 90% match that resolves to the wrong element (because a sibling element inherited the same ID after a CMS change) is worse than a 65% match that correctly finds the target. The score is a proxy, not a guarantee.
+
+2. Options for Dealing with Churn
+Here are practical strategies, ranked by implementation effort:
+
+A. Domain-Aware Staleness Tracking (low effort, high value) Record the last successful restoration timestamp per domain. If a domain hasn't had a successful restoration in 30 days, badge it as "stale" in the Sites history page. At minimum, you know the data is aging.
+
+B. Re-identification on User Visit (medium effort) When confidence drops below threshold, instead of silently skipping, store a needsReview: true flag. On next visit, surface a subtle floating indicator: "1 edit on this page couldn't be found — tap to review." Let the user either dismiss it (abandon the edit) or re-pin it by clicking the element they meant.
+
+C. The "Snapshot Hash" Strategy (medium effort) At save time, also record a hash of the parent DOM subtree neighborhood (not just the element). On restore, if the anchor resolves but the hash doesn't match, flag it as potentially drifted rather than confident. This adds a secondary sanity check independent of the layered confidence score.
+
+D. Passive Drift Detection (harder) Keep a lightweight record of which anchors restored successfully on the previous visit. On the next visit, compare. If previously-healthy anchors are now failing, the page likely changed. Surface a domain-level warning: "This site may have been redesigned."
+
+E. User-Pinnable Re-anchoring UI (hardest, most trustworthy) The broken anchor review workflow you described in the original product plan but cut: amber highlight + tooltip confirmation. This is the right long-term answer. When anchors fail, show the best candidate in amber and ask the user to confirm or re-select. It respects user intent and builds trust.
+
+The toast notification you added (better than before, as you note) is the right short-term move. The amber re-pinning workflow is where you eventually want to land.
+
+3. Is a Separate Floating UI for Anomalies Worth It?
+Yes — but scope it tightly.
+
+A full "Edit Review" panel would be over-engineering for an MVP. But a persistent floating chip (not a toast — toasts disappear) for broken-anchor sessions has real value:
+
+┌─────────────────────────────────┐
+│  V  2 edits couldn't be applied │  [Review]  ✕
+└─────────────────────────────────┘
+Persists until dismissed (unlike a toast)
+"Review" opens a modal listing the failed anchors with their last-known description
+User can delete stale anchors or attempt to manually re-pin
+The human-readable data problem (your ["github.com"].items[19] example) is real. A raw anchor object tells a user nothing. They need something like:
+
+"Erased: sidebar nav element — last seen at github.com/pulls"
+
+That means you need to store at save time:
+
+A short human-readable description (e.g., element.tagName + textContent?.slice(0, 40))
+The URL it was applied to
+The action type
+That description doesn't need to be long. "DIV · Trending repositories" is 26 bytes. At scale across hundreds of edits, this adds maybe 50–200 bytes per item — well within budget. The description field is worth storing. It's the thing that makes the broken-anchor review workflow humane.
+
+
+
+
+
+
+
+
+
+
+6. DOM Restructuring — Drag to Reorder Elements
+Is it possible? Yes. Is it crazy? A little. Is it worth it? Potentially, for a specific use case.
+
+What's Technically Possible
+Rearranging DOM elements is straightforward in principle:
+
+js
+// Simplified: move element to new parent or new position in same parent
+targetParent.insertBefore(draggedElement, referenceElement);
+The problems are in the details:
+
+1. CSS layout breaks. Most modern page layouts use Flexbox or Grid. Moving an element outside its flex/grid context destroys its styling. Moved elements often collapse to zero height, overflow their container, or lose their visual identity entirely.
+
+2. JavaScript event listeners/state. React, Vue, and Angular components aren't just DOM nodes — they're instances with state. Moving the DOM node does NOT move the component state. This results in broken UI, blank components, or hydration errors.
+
+3. Restoration is exponentially harder. Storing "erase this element" is already difficult. Storing "move this element from position A to position B and restore that on next load" is dramatically harder — you need to anchor both the element and its target insertion point, and both can drift independently.
+
+4. display: flex/grid containers. Moving a sidebar from right to left often isn't a DOM position change at all — it's a CSS order property change, or a flex-direction reverse, or a grid column reassignment. The element may already be in the right DOM position, just visually placed by CSS.
+
+The Easier Path: CSS Manipulation Instead of DOM Mutation
+For many common restructuring desires ("I want the right sidebar on the left"), CSS is the right tool, not DOM reordering:
+
+css
+/* Flip a two-column layout */
+.page-container { flex-direction: row-reverse !important; }
+/* Change a sticky sidebar's side */
+.sidebar { order: -1 !important; }
+/* Move something to a fixed position */
+.sidebar { position: fixed !important; left: 0 !important; top: 80px !important; }
+This is far more resilient than DOM reordering:
+
+It survives React re-renders (the CSS rule persists, the DOM mutation doesn't)
+It persists via a <style> tag injection with a predictable id
+It's easier to store (a CSS rule string is 50 bytes)
+It's easier to undo
+A "CSS Reorder" tool that lets users visually inspect what CSS property controls the layout position of a selected element and edit it would be more powerful and more reliable than raw DOM drag-and-drop.
+
+Where Raw DOM Reordering Does Work
+Static HTML pages with no framework (documentation pages, GitHub rendered markdown, Wikipedia) are the sweet spot. If the page is server-rendered HTML with no SPA reactivity, a DOM insertBefore will work and stay working until the user reloads. The restoration problem is still real, but at least the initial manipulation doesn't crash.
+
+The Verdict
+Don't build DOM drag-and-drop as a general tool. It will be brittle on the sites users most want to rearrange (Reddit, Twitter, news sites — all React/Vue/Next.js).
+
+Do consider a "CSS Nudge" tool — a more constrained, more reliable version of the same idea. Let users select an element, see a set of preset layout transforms (Swap sides, Float left, Float right, Flatten to full-width, Pin to top), and apply them as persisted CSS injections. That's a genuinely novel and useful feature that no other extension does well.
+
+The sidebar-swapping use case you described ("I want my news feed on the left") is almost always a one-line CSS change. Build a tool that finds and applies that one line reliably.
