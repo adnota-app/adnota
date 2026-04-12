@@ -1,8 +1,5 @@
 // content/highlighter.js
 
-let isHighlightMode = false;
-let activeHighlightColor = 'vellum-theme-yellow';
-
 // Setup CSS Highlight Registry (Requires Chrome 105+)
 const highlightRegistries = {
   'vellum-theme-yellow': new Highlight(),
@@ -11,23 +8,13 @@ const highlightRegistries = {
   'vellum-theme-pink': new Highlight()
 };
 
-// Graceful fallback check
 if (typeof CSS !== 'undefined' && 'highlights' in CSS) {
   for (const [theme, highlightObj] of Object.entries(highlightRegistries)) {
     CSS.highlights.set(theme, highlightObj);
   }
-} else {
-  console.warn("Vellum Highlighter requires Chrome 105+. CSS Custom Highlights API not supported in this browser.");
 }
 
-// Check storage for persisted color preference
-chrome.storage.local.get(['vellumHighlightColor'], (result) => {
-  if (result.vellumHighlightColor) {
-    activeHighlightColor = result.vellumHighlightColor;
-  }
-});
-
-// Create Toolbar
+// Create Toolbar UI
 const highlightToolbar = document.createElement('div');
 highlightToolbar.id = 'vellum-highlighter-widget';
 highlightToolbar.style.display = 'none';
@@ -36,8 +23,28 @@ highlightToolbar.style.bottom = '20px';
 highlightToolbar.style.left = '50%';
 highlightToolbar.style.transform = 'translateX(-50%)';
 highlightToolbar.style.zIndex = '2147483647';
+highlightToolbar.style.cursor = 'default';
 document.documentElement.appendChild(highlightToolbar);
 
+// Mode UI
+const modePen = document.createElement('div');
+modePen.className = 'vellum-mode-btn';
+modePen.innerText = 'Pen';
+modePen.onclick = () => window.VellumState.set({ mode: 'pen' });
+
+const modeHighlighter = document.createElement('div');
+modeHighlighter.className = 'vellum-mode-btn';
+modeHighlighter.innerText = 'Highlight';
+modeHighlighter.onclick = () => window.VellumState.set({ mode: 'highlight' });
+
+highlightToolbar.appendChild(modePen);
+highlightToolbar.appendChild(modeHighlighter);
+
+const divider = document.createElement('div');
+divider.className = 'vellum-toolbar-divider';
+highlightToolbar.appendChild(divider);
+
+// Color UI
 const themes = {
   'vellum-theme-yellow': 'rgb(255, 235, 59)',
   'vellum-theme-green': 'rgb(76, 175, 80)',
@@ -45,42 +52,61 @@ const themes = {
   'vellum-theme-pink': 'rgb(233, 30, 99)'
 };
 
+const swatches = {};
 for (const [themeClass, colorHex] of Object.entries(themes)) {
   const swatch = document.createElement('div');
   swatch.className = 'vellum-color-swatch';
   swatch.style.backgroundColor = colorHex;
-  if (themeClass === activeHighlightColor) swatch.classList.add('active');
-  
-  swatch.onclick = () => {
-    activeHighlightColor = themeClass;
-    chrome.storage.local.set({ vellumHighlightColor: themeClass });
-    Array.from(highlightToolbar.children).forEach(c => c.classList.remove('active'));
-    swatch.classList.add('active');
-  };
+  swatch.onclick = () => window.VellumState.set({ color: themeClass });
+  swatches[themeClass] = swatch;
   highlightToolbar.appendChild(swatch);
 }
 
+// Global VellumState Subscription — single place that owns cursor and toolbar state
+// for ALL modes. Eraser and sticky manage their own overlays but delegate cursor here.
+window.VellumState.subscribe(state => {
+  // Toolbar is only visible in highlight/pen modes — not eraser or sticky.
+  const showToolbar = state.mode === 'highlight' || state.mode === 'pen';
+  highlightToolbar.style.display = showToolbar ? 'flex' : 'none';
+
+  // Central cursor management for every mode.
+  switch (state.mode) {
+    case 'highlight': document.body.style.cursor = 'text';      break;
+    case 'pen':       document.body.style.cursor = 'crosshair'; break;
+    case 'eraser':    document.body.style.cursor = 'crosshair'; break;
+    case 'sticky':    document.body.style.cursor = 'crosshair'; break;
+    default:          document.body.style.cursor = '';          break; // null — no tool
+  }
+
+  // Update mode button active states
+  modePen.classList.toggle('active', state.mode === 'pen');
+  modeHighlighter.classList.toggle('active', state.mode === 'highlight');
+
+  Object.values(swatches).forEach(s => s.classList.remove('active'));
+  if (swatches[state.color]) swatches[state.color].classList.add('active');
+});
+
+// Keyboard shortcut / popup toggle — switches to highlight mode, or off if already active.
 chrome.runtime.onMessage.addListener((request) => {
   if (request.action === 'toggle-highlighter') {
-    isHighlightMode = !isHighlightMode;
-    if (isHighlightMode) {
-      document.body.style.cursor = 'text';
-      highlightToolbar.style.display = 'flex';
-    } else {
-      document.body.style.cursor = '';
-      highlightToolbar.style.display = 'none';
-    }
+    window.VellumState.set({ mode: window.VellumState.mode === 'highlight' ? null : 'highlight' });
+  }
+});
+
+// Escape always fully deactivates whichever tool is running.
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && window.VellumState.isVisible) {
+    window.VellumState.set({ mode: null });
   }
 });
 
 function getOccurrenceIndex(range, anchorElement) {
   const preSelectionRange = range.cloneRange();
-  // Safe bounded select
   try {
     preSelectionRange.selectNodeContents(anchorElement);
     preSelectionRange.setEnd(range.startContainer, range.startOffset);
   } catch (e) {
-    return 0; // Fallback if boundaries are messed up
+    return 0; 
   }
   
   const textBefore = preSelectionRange.toString();
@@ -98,25 +124,24 @@ function getOccurrenceIndex(range, anchorElement) {
 }
 
 document.addEventListener('mouseup', async (e) => {
-  if (!isHighlightMode) return;
+  if (window.VellumState.mode !== 'highlight') return;
   
-  // Prevent toolbar clicks from triggering highlight logic
   if (e.target.closest('#vellum-highlighter-widget')) return;
 
   const selection = window.getSelection();
-  if (!selection || selection.isCollapsed) return;
+  if (!selection || selection.isCollapsed) {
+    return; // Do nothing on standard clicks, allow double-clicks to form selections safely.
+  }
 
   const range = selection.getRangeAt(0);
   const text = range.toString().trim();
   if (!text) return;
 
-  // We need a stable parent to anchor to
   let anchorElement = range.commonAncestorContainer;
   if (anchorElement.nodeType !== Node.ELEMENT_NODE) {
     anchorElement = anchorElement.parentNode;
   }
   
-  // Jump to nearest block-level container for stability
   const blockElement = anchorElement.closest('p, div, section, article, main, li, h1, h2, h3, h4, td') || document.body;
 
   const anchor = window.FuzzyAnchor.generate(blockElement);
@@ -125,34 +150,97 @@ document.addEventListener('mouseup', async (e) => {
   const payload = {
     ...anchor,
     action: 'HIGHLIGHT',
-    text: range.toString(), // Exact raw string, spaces intact
+    text: range.toString(),
     occurrenceIndex: getOccurrenceIndex(range, blockElement),
-    color: activeHighlightColor,
+    color: window.VellumState.color,
     attachedNoteId: null 
   };
 
-  // Natively render it right now 
   if (typeof CSS !== 'undefined' && 'highlights' in CSS) {
-    const registry = highlightRegistries[activeHighlightColor];
+    const registry = highlightRegistries[window.VellumState.color];
     if (registry) {
-       registry.add(range.cloneRange()); // Add a detached clone
+       try {
+           registry.add(range.cloneRange()); 
+       } catch (e) {
+           console.warn("Vellum: CSS Highlight API rejected range, likely crossing a Shadow DOM boundary. Range:", range);
+           payload.isFallback = true;
+           const box = blockElement.getBoundingClientRect();
+           payload.fallbackRects = Array.from(range.getClientRects()).map(r => ({
+               left: ((r.left - box.left) / box.width) * 100,
+               top: ((r.top - box.top) / box.height) * 100,
+               width:  (r.width / box.width) * 100,
+               height: (r.height / box.height) * 100
+           }));
+           if (window.VellumHighlighter && window.VellumHighlighter.renderFallback) {
+               window.VellumHighlighter.renderFallback(blockElement, payload);
+           }
+       }
     }
   }
   
-  // Clear native browser highlight so our CSS Highlight takes over
-  selection.removeAllRanges();
+  try {
+      selection.removeAllRanges();
+  } catch (e) {}
 
   if (window.VellumStorage) {
     await window.VellumStorage.saveAnchor(location.hostname, location.pathname, payload);
   }
 });
 
-// We need an exposed API for restorer.js to call during page load to inject retrieved highlights
 window.VellumHighlighter = {
+  renderFallback: function(anchorElement, payload) {
+      if (!payload.fallbackRects) return;
+      const themeColors = {
+        'vellum-theme-yellow': 'rgba(255, 235, 59, 0.4)',
+        'vellum-theme-green': 'rgba(76, 175, 80, 0.4)',
+        'vellum-theme-blue': 'rgba(33, 150, 243, 0.4)',
+        'vellum-theme-pink': 'rgba(233, 30, 99, 0.4)'
+      };
+      
+      const wrapper = document.createElement('div');
+      wrapper.className = 'vellum-highlight-fallback';
+      wrapper.style.position = 'absolute';
+      wrapper.style.pointerEvents = 'none';
+      wrapper.style.zIndex = '2147483640'; 
+      document.documentElement.appendChild(wrapper);
+      
+      payload.fallbackRects.forEach(rect => {
+          const div = document.createElement('div');
+          div.style.position = 'absolute';
+          div.style.backgroundColor = themeColors[payload.color] || themeColors['vellum-theme-yellow'];
+          div.style.mixBlendMode = 'multiply'; 
+          wrapper.appendChild(div);
+      });
+      
+      function syncBounds() {
+          if (!wrapper.parentNode) return;
+          const box = anchorElement.getBoundingClientRect();
+          const children = wrapper.children;
+          for (let i = 0; i < children.length; i++) {
+              const r = payload.fallbackRects[i];
+              children[i].style.left = `${box.left + window.pageXOffset + (r.left / 100) * box.width}px`;
+              children[i].style.top = `${box.top + window.pageYOffset + (r.top / 100) * box.height}px`;
+              children[i].style.width = `${(r.width / 100) * box.width}px`;
+              children[i].style.height = `${(r.height / 100) * box.height}px`;
+          }
+      }
+      
+      syncBounds();
+      window.addEventListener('resize', syncBounds);
+      // Bug 4 fix: Re-sync on scroll so fallback highlight rects don't drift on long pages.
+      window.addEventListener('scroll', syncBounds, { passive: true });
+      const observer = new ResizeObserver(() => syncBounds());
+      observer.observe(anchorElement);
+  },
+
   applyStoredHighlight: function(anchorElement, payload) {
+    if (payload.isFallback && payload.fallbackRects) {
+       this.renderFallback(anchorElement, payload);
+       return true;
+    }
+
     if (typeof CSS === 'undefined' || !('highlights' in CSS)) return false;
     
-    // Build tree walker to hunt the exact occurrence down organically
     const treeWalker = document.createTreeWalker(anchorElement, NodeFilter.SHOW_TEXT, null, false);
     let node;
     let currentText = '';
@@ -167,7 +255,6 @@ window.VellumHighlighter = {
       currentText += node.nodeValue;
     }
     
-    // Find the requested occurrence
     const textToFind = payload.text;
     let pos = -1;
     for (let i = 0; i <= payload.occurrenceIndex; i++) {
@@ -188,7 +275,6 @@ window.VellumHighlighter = {
           range.setStart(info.node, startOffsetGlobals - info.start);
           startSet = true;
         }
-        // Use <= instead of < for end constraints to allow exactly matching node edges
         if (!endSet && endOffsetGlobals > info.start && endOffsetGlobals <= info.end) {
           range.setEnd(info.node, endOffsetGlobals - info.start);
           endSet = true;

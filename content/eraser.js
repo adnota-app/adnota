@@ -1,9 +1,8 @@
 // content/eraser.js
 
-let isEraserMode = false;
 let sessionUndoStack = [];
 
-// Overlay to indicate target
+// Overlay to indicate the current erase target
 const highlightOverlay = document.createElement('div');
 highlightOverlay.id = 'vellum-highlight-overlay';
 Object.assign(highlightOverlay.style, {
@@ -19,39 +18,51 @@ document.documentElement.appendChild(highlightOverlay);
 
 let hoveredElement = null;
 
+// Central guard: returns true for any element that is part of Vellum's own UI.
+// Applied to both mousemove (hover targeting) and click (erase action) so our
+// own chrome is completely invisible to the eraser tool.
+function isVellumElement(el) {
+  if (!el) return false;
+  return !!(
+    el.closest('#vellum-highlighter-widget') ||
+    el.closest('#vellum-eraser-toast')       ||
+    el.closest('.vellum-toast')              ||
+    el.closest('.vellum-sticky-container')   ||
+    el.closest('.vellum-marker-wrapper')     ||
+    el.closest('#vellum-capture-canvas')     ||
+    el.closest('#vellum-highlight-overlay')
+  );
+}
+
+// Route the keyboard shortcut through VellumState — toggles eraser off if already active,
+// which also automatically deactivates any other tool that was running.
 chrome.runtime.onMessage.addListener((request) => {
   if (request.action === 'toggle-eraser') {
-    isEraserMode = !isEraserMode;
-    toggleEraserState(isEraserMode);
+    window.VellumState.set({ mode: window.VellumState.mode === 'eraser' ? null : 'eraser' });
   }
 });
 
-function toggleEraserState(active) {
-  if (active) {
-    document.body.style.cursor = 'crosshair';
-  } else {
-    document.body.style.cursor = '';
+// React to VellumState changes — clean up highlight overlay whenever eraser is not the active mode.
+window.VellumState.subscribe(state => {
+  if (state.mode !== 'eraser') {
     highlightOverlay.style.display = 'none';
     hoveredElement = null;
   }
-}
+});
 
-// Keyboard shortcut (Alt+E as backup or main if background doesn't catch)
+// Ctrl/Cmd+Z undo (session-only, eraser mode only)
 document.addEventListener('keydown', (e) => {
-  if (e.altKey && e.key.toLowerCase() === 'e') {
-    // Rely mostly on the background script intercept, but we can do a localized toggle if needed
-  }
-  if (isEraserMode && (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
+  if (window.VellumState.mode === 'eraser' && (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
     e.preventDefault();
     undoLastRemoval();
   }
 });
 
 document.addEventListener('mousemove', (e) => {
-  if (!isEraserMode) return;
+  if (window.VellumState.mode !== 'eraser') return;
   const target = document.elementFromPoint(e.clientX, e.clientY);
-  
-  if (target && target !== highlightOverlay && !target.closest('.vellum-toast') && !target.closest('.vellum-sticky-container')) {
+
+  if (target && !isVellumElement(target)) {
     hoveredElement = target;
     const rect = target.getBoundingClientRect();
     const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
@@ -71,25 +82,27 @@ document.addEventListener('mousemove', (e) => {
 }, { passive: true });
 
 document.addEventListener('click', async (e) => {
-  if (!isEraserMode) return;
-  
+  if (window.VellumState.mode !== 'eraser') return;
+
+  // Pass through clicks on any Vellum-owned UI — the eraser must never
+  // consume events meant for our own toolbar, toast, or sticky notes.
+  if (isVellumElement(e.target)) return;
+
   if (hoveredElement) {
     e.preventDefault();
     e.stopPropagation();
 
     const target = hoveredElement;
-    
-    // Generate anchor before mutating styles
+
+    // Generate anchor before mutating the DOM
     const anchor = window.FuzzyAnchor.generate(target);
-    
-    // Calculate scope
+
+    // Scope: exact path or domain-wide on Shift+Click
     const pathScope = e.shiftKey ? '*' : location.pathname;
     const domain = location.hostname;
-    
-    // Add internal unique ID to anchor to allow undo removing it from storage
+
     anchor._id = Date.now() + Math.random().toString();
-    
-    // Undo stack push
+
     sessionUndoStack.push({
       element: target,
       cssText: target.style.cssText,
@@ -97,7 +110,6 @@ document.addEventListener('click', async (e) => {
       storageId: anchor._id
     });
 
-    // Remove
     target.style.setProperty('display', 'none', 'important');
     highlightOverlay.style.display = 'none';
 
@@ -113,7 +125,7 @@ document.addEventListener('click', async (e) => {
     toast.className = 'vellum-toast';
     toast.innerHTML = `<span>Element erased</span> <span class="vellum-toast-undo">Undo</span>`;
     document.body.appendChild(toast);
-    
+
     let undoClicked = false;
     toast.querySelector('.vellum-toast-undo').addEventListener('click', () => {
       undoClicked = true;
@@ -121,7 +133,7 @@ document.addEventListener('click', async (e) => {
       toast.style.opacity = '0';
       setTimeout(() => toast.remove(), 300);
     });
-    
+
     setTimeout(() => {
       if (toast.parentNode && !undoClicked) {
         toast.style.opacity = '0';
@@ -129,19 +141,16 @@ document.addEventListener('click', async (e) => {
       }
     }, 5000);
   }
-}, true); // Use capture phase
+}, true); // Capture phase so we intercept before page handlers
 
 async function undoLastRemoval() {
   const entry = sessionUndoStack.pop();
   if (entry && entry.element) {
-    // Restore element
     entry.element.style.cssText = entry.cssText;
-    
-    // Clean up any orphaned amber UI alerts
+
     const orphanedAlert = document.getElementById(`vellum-alert-${entry.storageId}`);
     if (orphanedAlert) orphanedAlert.remove();
 
-    // Attempt to remove from DB for MVP so it's a true undo
     if (window.VellumStorage) {
       const data = await chrome.storage.local.get(entry.storageDomain);
       if (data[entry.storageDomain]) {
