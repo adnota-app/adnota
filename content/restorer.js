@@ -92,6 +92,36 @@ async function performRestoration() {
       continue;
     }
 
+    // ── ERASE with CSS selector: inject rule + best-effort FuzzyAnchor ──────
+    if (item.action === 'ERASE' && item.selector) {
+      // CSS rule hides the element (and any future re-creations like ad rotations)
+      let eraseTag = document.getElementById('vellum-erase-overrides');
+      if (!eraseTag) {
+        eraseTag = document.createElement('style');
+        eraseTag.id = 'vellum-erase-overrides';
+        eraseTag.setAttribute('data-vellum-ui', '1');
+        if (isHidden) eraseTag.disabled = true;
+        document.head.appendChild(eraseTag);
+      }
+      if (window.VellumEraseRules) {
+        window.VellumEraseRules.set(id, item.selector);
+        if (window.rebuildEraseStyleTag) window.rebuildEraseStyleTag();
+      } else {
+        eraseTag.textContent += `${item.selector} { display: none !important; }\n`;
+      }
+
+      // Best-effort: also add to VellumErasedElements for inline show/hide toggle
+      const match = window.FuzzyAnchor.findMatch(item.anchor);
+      if (match.confidence >= 40 && match.element) {
+        match.element.style.setProperty('display', 'none', 'important');
+        if (window.VellumErasedElements) window.VellumErasedElements.add(match.element);
+      }
+      // CSS rule has us covered — mark processed regardless of FuzzyAnchor result
+      processedItems.add(id);
+      erasuresCount++;
+      continue;
+    }
+
     // ── All other items need a DOM match via FuzzyAnchor. ───────────────────
     const match = window.FuzzyAnchor.findMatch(item.anchor);
 
@@ -105,7 +135,7 @@ async function performRestoration() {
           window.VellumMarker.renderMarker(match.element, item);
         }
       } else {
-        // ERASE
+        // ERASE (legacy items without selector) — inline style only
         match.element.style.setProperty('display', 'none', 'important');
         if (window.VellumErasedElements) window.VellumErasedElements.add(match.element);
         erasuresCount++;
