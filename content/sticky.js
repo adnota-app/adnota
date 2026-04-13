@@ -5,6 +5,11 @@ let highestZIndex = 2147483640;
 const DEBOUNCE_MS = 1500;
 const activeNotes = new Map(); // uuid -> note data
 
+// Round a float to `d` decimal places and strip trailing zeros.
+// Keeps stored JSON compact without losing meaningful precision.
+// 4 d.p. on a 0–1 fraction = 0.01% of page = ~0.2px on a 2000px page.
+const r4 = n => parseFloat(n.toFixed(4));
+
 // ---------------------------------------------------------------------------
 // Keyboard / message routing
 // ---------------------------------------------------------------------------
@@ -92,8 +97,8 @@ function clientToPlacement(clientX, clientY) {
 
   return {
     position:   'percent',
-    xPct:       clampedX / totalWidth,
-    yScrollPct: clampedY / totalHeight,
+    xPct:       r4(clampedX / totalWidth),
+    yScrollPct: r4(clampedY / totalHeight),
   };
 }
 
@@ -124,7 +129,7 @@ window.StickyEngine = {
    * @param {string}  uuid
    * @param {boolean} isNew      Focus textarea when true.
    */
-  renderNote(placement, comments, uuid, isNew = false) {
+  renderNote(placement, comments, uuid, isNew = false, dimensions = null) {
     // Guard duplicate renders.
     if (document.querySelector(`.vellum-sticky-container[data-uuid="${uuid}"]`)) return;
 
@@ -154,12 +159,49 @@ window.StickyEngine = {
 
     document.body.appendChild(container);
 
+    // Apply stored dimensions before first paint so the restored size matches
+    // exactly what the user left the note at.
+    const card = container.querySelector('.vellum-sticky-card');
+    if (dimensions && dimensions.width && dimensions.height) {
+      card.style.width  = `${dimensions.width}px`;
+      card.style.height = `${dimensions.height}px`;
+    }
+
     // In-memory record holds a *mutable* copy of placement so drag updates
     // propagate to updatePosition without re-rendering.
     const noteState = { container, placement: { ...placement } };
     activeNotes.set(uuid, noteState);
 
     this.updatePosition(uuid);
+
+    // ── Persist resize dimensions ────────────────────────────────────────────
+    // ResizeObserver fires whenever the user drags the card's resize handle.
+    // We debounce at the same interval as the textarea autosave to avoid
+    // hammering storage mid-drag.
+    let resizeTimeout;
+    const resizeObserver = new ResizeObserver(entries => {
+      for (const entry of entries) {
+        const { inlineSize: width, blockSize: height } = entry.borderBoxSize[0];
+        clearTimeout(resizeTimeout);
+        resizeTimeout = setTimeout(async () => {
+          if (!window.VellumStorage) return;
+          const savedDimensions = { width: Math.round(width), height: Math.round(height) };
+          await window.VellumStorage.saveNote(
+            location.hostname, location.pathname,
+            null, noteState.placement, comments, uuid, savedDimensions
+          );
+        }, DEBOUNCE_MS);
+      }
+    });
+    resizeObserver.observe(card);
+
+    // Clean up observer when the note is removed from the DOM.
+    new MutationObserver((_, obs) => {
+      if (!document.body.contains(container)) {
+        resizeObserver.disconnect();
+        obs.disconnect();
+      }
+    }).observe(document.body, { childList: true, subtree: true });
 
     // ── Bring to front on focus ──────────────────────────────────────────────
     container.addEventListener('mousedown', () => {
@@ -210,8 +252,8 @@ window.StickyEngine = {
 
       const updatedPlacement = {
         position:   'percent',
-        xPct:       newLeft / totalWidth,
-        yScrollPct: newTop  / totalHeight,
+        xPct:       r4(newLeft / totalWidth),
+        yScrollPct: r4(newTop  / totalHeight),
       };
 
       noteState.placement = updatedPlacement;

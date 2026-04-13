@@ -64,7 +64,7 @@ async function performRestoration() {
     // No DOM anchoring needed — notes always restore regardless of page changes.
     if (item.action === 'NOTE') {
       if (window.StickyEngine) {
-        window.StickyEngine.renderNote(item.placement, item.comments, item.uuid);
+        window.StickyEngine.renderNote(item.placement, item.comments, item.uuid, false, item.dimensions || null);
       }
       processedItems.add(id);
       notesCount++;
