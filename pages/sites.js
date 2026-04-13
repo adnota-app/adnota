@@ -80,12 +80,13 @@
       }
 
       // Count action types per domain
-      const counts = { ERASE: 0, NOTE: 0, HIGHLIGHT: 0, MARKER: 0 };
+      const counts = { ERASE: 0, NOTE: 0, HIGHLIGHT: 0, MARKER: 0, RESIZE: 0 };
       for (const item of items) {
         const a = item.action;
-        if (a === 'NOTE')      counts.NOTE++;
+        if (a === 'NOTE')           counts.NOTE++;
         else if (a === 'HIGHLIGHT') counts.HIGHLIGHT++;
         else if (a === 'MARKER')    counts.MARKER++;
+        else if (a === 'RESIZE')     counts.RESIZE++;
         else                        counts.ERASE++;
       }
 
@@ -104,8 +105,8 @@
   // ─── Build a pill element ─────────────────────────────────────────────────
   function makePill(type, count) {
     if (!count) return null;
-    const labels = { ERASE: 'Erased', NOTE: 'Notes', HIGHLIGHT: 'Highlights', MARKER: 'Strokes' };
-    const classes = { ERASE: 'pill-erase', NOTE: 'pill-note', HIGHLIGHT: 'pill-highlight', MARKER: 'pill-stroke' };
+    const labels = { ERASE: 'Erased', NOTE: 'Notes', HIGHLIGHT: 'Highlights', MARKER: 'Strokes', RESIZE: 'Resized' };
+    const classes = { ERASE: 'pill-erase', NOTE: 'pill-note', HIGHLIGHT: 'pill-highlight', MARKER: 'pill-stroke', RESIZE: 'pill-resize' };
 
     const pill = document.createElement('span');
     pill.className = `pill ${classes[type]}`;
@@ -115,12 +116,13 @@
 
   // ─── Build page-level pills ───────────────────────────────────────────────
   function pageCountsFromItems(items) {
-    const counts = { ERASE: 0, NOTE: 0, HIGHLIGHT: 0, MARKER: 0 };
+    const counts = { ERASE: 0, NOTE: 0, HIGHLIGHT: 0, MARKER: 0, RESIZE: 0 };
     for (const item of items) {
       const a = item.action;
       if (a === 'NOTE')           counts.NOTE++;
       else if (a === 'HIGHLIGHT') counts.HIGHLIGHT++;
       else if (a === 'MARKER')    counts.MARKER++;
+      else if (a === 'RESIZE')     counts.RESIZE++;
       else                        counts.ERASE++;
     }
     return counts;
@@ -195,7 +197,7 @@
     // Pills
     const pills = document.createElement('div');
     pills.className = 'site-pills';
-    for (const type of ['ERASE', 'NOTE', 'HIGHLIGHT', 'MARKER']) {
+    for (const type of ['ERASE', 'NOTE', 'HIGHLIGHT', 'MARKER', 'RESIZE']) {
       const p = makePill(type, counts[type]);
       if (p) pills.appendChild(p);
     }
@@ -284,7 +286,7 @@
 
       const pagePillsEl = document.createElement('div');
       pagePillsEl.className = 'page-pills';
-      for (const type of ['ERASE', 'NOTE', 'HIGHLIGHT', 'MARKER']) {
+      for (const type of ['ERASE', 'NOTE', 'HIGHLIGHT', 'MARKER', 'RESIZE']) {
         const p = makePill(type, pageCounts[type]);
         if (p) pagePillsEl.appendChild(p);
       }
