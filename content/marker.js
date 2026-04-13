@@ -128,7 +128,7 @@ async function handlePointerUp(e) {
   const blockElement = targetNode.closest('p, div, section, article, main, li, h1, h2, h3, h4, td') || document.body;
 
   const anchor = window.FuzzyAnchor.generate(blockElement);
-  anchor._id = Date.now() + Math.random().toString();
+  const _id = Date.now() + Math.random().toString();
 
   let simplifiedPoints = simplifyPathRDP(currentPathNodes, 2.0);
   const isArrow = detectArrow(simplifiedPoints);
@@ -140,9 +140,10 @@ async function handlePointerUp(e) {
   }));
 
   const payload = {
-    ...anchor,
+    anchor,
+    _id,
     action: 'MARKER',
-    uuid: anchor._id,
+    uuid: _id,
     drawing: normalizedPath,
     isArrow: isArrow,
     color: getStrokeColor()
@@ -159,7 +160,7 @@ async function handlePointerUp(e) {
   captureSvg.style.pointerEvents = stillActive ? 'auto' : 'none';
 
   if (window.VellumStorage) {
-    await window.VellumStorage.saveAnchor(location.hostname, location.pathname, payload);
+    await window.VellumStorage.saveItem(location.hostname, location.pathname, payload);
   }
 
   // Push to the central undo stack — removes the wrapper div and deletes from storage.

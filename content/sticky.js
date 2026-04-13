@@ -64,6 +64,21 @@ document.addEventListener('click', async (e) => {
       placement, comments, uuid
     );
   }
+
+  // Undo: remove the note from DOM and storage
+  const domain = location.hostname;
+  const undoEntry = {
+    undo: async () => {
+      const container = document.querySelector(`.vellum-sticky-container[data-uuid="${uuid}"]`);
+      if (container) container.remove();
+      activeNotes.delete(uuid);
+      if (window.VellumStorage) {
+        await window.VellumStorage.deleteItem(domain, 'uuid', uuid);
+      }
+      window.VellumUndo.remove(undoEntry);
+    }
+  };
+  window.VellumUndo.push(undoEntry);
 }, true);
 
 // ---------------------------------------------------------------------------
