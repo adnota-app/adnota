@@ -14,8 +14,12 @@
   ],
   "web_accessible_resources": [
     {
-      "resources": ["pages/*"],
-      "matches": ["<all_urls>"]
+      "resources": [
+        "pages/*"
+      ],
+      "matches": [
+        "<all_urls>"
+      ]
     }
   ],
   "background": {
@@ -68,12 +72,14 @@
         "content/sticky.js",
         "content/highlighter.js",
         "content/marker.js",
+        "content/resizer.js",
         "content/restorer.js"
       ],
       "css": [
         "content/sticky.css",
         "content/marker.css",
-        "content/highlighter.css"
+        "content/highlighter.css",
+        "content/resizer.css"
       ],
       "run_at": "document_idle"
     }

@@ -63,7 +63,7 @@ chrome.storage.onChanged.addListener(async (changes, area) => {
 // ─── Keyboard command relay ───────────────────────────────────────────────────
 
 chrome.commands.onCommand.addListener((command, tab) => {
-  if (tab.id && (command === 'toggle-eraser' || command === 'toggle-sticky' || command === 'toggle-highlighter' || command === 'toggle-view')) {
+  if (tab.id && (command === 'toggle-eraser' || command === 'toggle-sticky' || command === 'toggle-highlighter' || command === 'toggle-view' || command === 'toggle-resizer')) {
     chrome.tabs.sendMessage(tab.id, { action: command }).catch(() => {
       // Ignore errors if content script unavailable on this page.
     });

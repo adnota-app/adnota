@@ -106,12 +106,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     const allItems   = stored[domain]?.items ?? [];
     const pageItems  = allItems.filter(i => i.path === '*' || i.path === path);
 
-    let erasures = 0, notes = 0, highlights = 0, strokes = 0;
+    let erasures = 0, notes = 0, highlights = 0, strokes = 0, resizes = 0;
     for (const item of pageItems) {
       switch (item.action) {
         case 'NOTE':      notes++;      break;
         case 'HIGHLIGHT': highlights++; break;
         case 'MARKER':    strokes++;    break;
+        case 'RESIZE':    resizes++;    break;
         default:          erasures++;   break; // 'ERASE' or legacy entries
       }
     }
@@ -120,6 +121,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.getElementById('count-notes').textContent      = notes;
     document.getElementById('count-highlights').textContent = highlights;
     document.getElementById('count-strokes').textContent    = strokes;
+    document.getElementById('count-resizes').textContent    = resizes;
 
     // ── Per-class clear: clicking a stat card deletes that action type ──────
     const labelMap = {
@@ -127,6 +129,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       NOTE:      'all sticky notes',
       HIGHLIGHT: 'all highlights',
       MARKER:    'all pen strokes',
+      RESIZE:    'all resizes',
     };
 
     document.querySelectorAll('.stat-card[data-clear-action]').forEach(card => {

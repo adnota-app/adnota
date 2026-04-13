@@ -17,6 +17,7 @@ To install the Vellum MVP on your local machine for testing, follow these steps:
 - **Toggle Eraser:** Click the Vellum extension icon and click "Toggle Eraser Mode", or simply press `Alt+E` anywhere on a webpage.
 - **Erase an Element:** When Eraser Mode is active (the cursor turns into a crosshair and hovered elements get a solid red outline), click on any element to permanently remove it.
 - **Domain-wide Erase:** Hold `Shift` while clicking to hide that element across the entire website domain rather than just the exact URL.
+- **Resize an Element:** Click the Vellum extension icon and click "Resizer" to enter resize mode. Hover over elements to highlight them (scroll wheel walks up/down the DOM tree to target parents or children). Click to select — drag the blue handles to resize. Click the red ✕ to reset all resizes on that element.
 - **Session Undo:** Press `Ctrl+Z` while in Eraser Mode to retrieve your last deletion (must be on the same page load context).
 - **Clear Page Edits:** Click the Vellum extension icon and click the "Clear Edits for this Page" button to reset the current URL entirely.
 
@@ -124,6 +125,23 @@ Confidence threshold: **≥ 70%** to auto-apply a restoration. Below that, the i
 - Schema stores: `text`, `occurrenceIndex`, `color`, `isFallback`, `fallbackRects`, `attachedNoteId` (reserved for future note cross-linking)
 - Swatch selection state: white inner ring + dark outer ring for all five swatches; black swatch has a hover tooltip describing its redaction purpose
 
+#### `content/resizer.js` — Element Resizer
+- Activated via popup tool card (no keyboard shortcut — Chrome limits extensions to 4)
+- **Smart element targeting**: hover highlights large layout-significant elements only (≥120×60px), automatically bubbling up past inline tags (`<span>`, `<a>`, etc.) to the nearest block-level container
+- **Scroll-wheel DOM traversal**: while hovering, scroll up to walk to the parent element, scroll down to walk back toward children — solves the problem of targeting a specific nesting level on complex pages
+- Click to select: dashed blue outline with **5 interactive controls** appears:
+  - **Left handle** — drag to resize width from the left edge (right edge stays pinned via margin compensation)
+  - **Right handle** — drag to resize width from the right edge
+  - **Bottom handle** — drag to resize height
+  - **Corner handle** — drag to resize both width and height simultaneously
+  - **Red ✕ button** (top-right) — resets ALL resize overrides for this element, removing injected CSS from both the `<style>` tag and storage
+- All resizes persist as CSS rules injected into a `<style id="vellum-style-overrides">` tag — survives React/Vue re-renders
+- CSS rule format: `width: Xpx !important; max-width: none !important` (and `margin-left` for left-handle resizes)
+- Handles are viewport-clamped so they remain visible even on elements taller/wider than the screen
+- Handles reposition on scroll
+- Undo via shared `VellumUndo` stack + 5s toast button
+- Storage action type: `RESIZE`
+
 #### `content/marker.js` — `window.VellumMarker`
 - Pen mode within the same toolbar as the highlighter
 - Transparent SVG canvas overlay captures pointer events across the full page while active
@@ -138,6 +156,7 @@ Confidence threshold: **≥ 70%** to auto-apply a restoration. Below that, the i
 - Runs at `document_idle` and on `DOMContentLoaded`
 - **MutationObserver** with 1s debounce watches for SPA/lazy-loaded content and re-runs restoration — handles React, Vue, and infinite-scroll sites
 - Dispatches to the correct engine by `action` type:
+  - `RESIZE` → injects stored CSS rule into `<style id="vellum-style-overrides">` — **bypasses FuzzyAnchor entirely** since the CSS selector is self-contained
   - `ERASE` → `element.style.setProperty('display', 'none', 'important')`
   - `NOTE` → `StickyEngine.renderNote()` directly from stored `placement` — **bypasses FuzzyAnchor entirely** since position is self-contained percentage coordinates
   - `HIGHLIGHT` → `VellumHighlighter.applyStoredHighlight()`
@@ -150,8 +169,8 @@ Confidence threshold: **≥ 70%** to auto-apply a restoration. Below that, the i
 
 #### `popup/index.html` + `popup/popup.js` + `popup/style.css`
 Premium dark-header popup (360px wide). Features:
-- **Tool cards** for Eraser, Sticky Note, and Highlight & Pen — each with icon chip, shortcut badge, and active-state indicator (colored border + pulsing dot) that syncs in real time via `storage.onChanged` (catches keyboard shortcuts fired while popup is open)
-- **Per-page stats** (Erased / Notes / Highlights / Strokes) — each stat card cross-fades to a trash icon on hover; clicking clears that category from the current page
+- **Tool cards** for Eraser, Sticky Note, Highlight & Pen, and Resizer — each with icon chip, shortcut badge (where available), and active-state indicator (colored border + pulsing dot) that syncs in real time via `storage.onChanged` (catches keyboard shortcuts fired while popup is open)
+- **Per-page stats** (Erased / Notes / Highlights / Resized / Strokes) — each stat card cross-fades to a trash icon on hover; clicking clears that category from the current page
 - **Show/Hide Changes button** (`Alt+V`) in the header — eye icon with a diagonal slash overlay when annotations are hidden. Reads live state via `get-view` message to the content script on open; optimistically toggles on click for instant UI response
 - **My Edited Sites** button in footer (purple outline) — opens the Sites history page
 - **Clear All Page Edits** button in footer (red outline)
@@ -159,7 +178,7 @@ Premium dark-header popup (360px wide). Features:
 #### `pages/sites.html` + `pages/sites.js` + `pages/sites.css`
 Dedicated extension page (opened as a new tab via `chrome.runtime.getURL`). Aggregates all `chrome.storage.local` data and renders a browseable history of every site Vellum has touched:
 - **Per-domain cards**: favicon, hostname, page count, last-edited timestamp
-- **Annotation type pills**: Erased / Notes / Highlights / Strokes with color-coded badges
+- **Annotation type pills**: Erased / Notes / Highlights / Resized / Strokes with color-coded badges
 - **Expandable page drawer**: chevron reveals every individual path within a domain, each with its own pills and an "Open" button
 - **Visit button**: opens the most recently edited page for that domain
 - **Search + Sort**: real-time filter by hostname; sort by Most Recent / A→Z / Most Edits
@@ -190,8 +209,9 @@ Dedicated extension page (opened as a new tab via `chrome.runtime.getURL`). Aggr
 | `Alt+H` | Toggle Highlight & Pen toolbar |
 | `Alt+V` | Show / Hide all annotations |
 | `Ctrl+Z` / `Cmd+Z` | Undo last action (any tool) |
-| `Escape` | Deactivate active tool |
+| `Escape` | Deactivate active tool / deselect resizer element |
 | `Shift+Click` | (Eraser only) Domain-wide deletion |
+| `Scroll Wheel` | (Resizer only) Walk up/down DOM tree to target parent or child elements |
 
 ---
 

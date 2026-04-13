@@ -454,6 +454,7 @@ body {
 .pill-note      { background: rgba(245,158,11,0.12); color: #d97706; }
 .pill-highlight { background: rgba(124,58,237,0.10); color: #7c3aed; }
 .pill-stroke    { background: rgba(16,185,129,0.10); color: #059669; }
+.pill-resize     { background: rgba(59,130,246,0.10); color: #2563eb; }
 
 .pill-dot {
   width: 5px; height: 5px;
@@ -464,6 +465,7 @@ body {
 .pill-note .pill-dot      { background: #f59e0b; }
 .pill-highlight .pill-dot { background: #7c3aed; }
 .pill-stroke .pill-dot    { background: #10b981; }
+.pill-resize .pill-dot     { background: #3b82f6; }
 
 /* Actions */
 .site-actions {

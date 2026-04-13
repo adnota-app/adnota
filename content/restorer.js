@@ -54,11 +54,27 @@ async function performRestoration() {
 
   let erasuresCount = 0;
   let notesCount = 0;
+  let resizeCount = 0;
   let brokenThisPass = 0;
 
   for (const item of anchors) {
-    const id = item.uuid || item.storageId || JSON.stringify(item);
+    const id = item.uuid || item._id || item.storageId || JSON.stringify(item);
     if (processedItems.has(id)) continue;
+
+    // ── Resize overrides: inject via <style> tag — no DOM anchoring needed. ────
+    if (item.action === 'RESIZE') {
+      let styleTag = document.getElementById('vellum-style-overrides');
+      if (!styleTag) {
+        styleTag = document.createElement('style');
+        styleTag.id = 'vellum-style-overrides';
+        styleTag.setAttribute('data-vellum-ui', '1');
+        document.head.appendChild(styleTag);
+      }
+      styleTag.textContent += `${item.selector} { ${item.cssText} }\n`;
+      processedItems.add(id);
+      resizeCount++;
+      continue;
+    }
 
     // ── Sticky notes: placement is self-contained (percent-based coords). ────
     // No DOM anchoring needed — notes always restore regardless of page changes.
@@ -97,7 +113,7 @@ async function performRestoration() {
 
   chrome.storage.local.set({
     vellum_stats: {
-      [location.href]: { success: erasuresCount, notes: notesCount, broken: brokenThisPass }
+      [location.href]: { success: erasuresCount, notes: notesCount, resizes: resizeCount, broken: brokenThisPass }
     }
   });
 
