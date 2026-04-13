@@ -112,3 +112,16 @@ Don't build DOM drag-and-drop as a general tool. It will be brittle on the sites
 Do consider a "CSS Nudge" tool — a more constrained, more reliable version of the same idea. Let users select an element, see a set of preset layout transforms (Swap sides, Float left, Float right, Flatten to full-width, Pin to top), and apply them as persisted CSS injections. That's a genuinely novel and useful feature that no other extension does well.
 
 The sidebar-swapping use case you described ("I want my news feed on the left") is almost always a one-line CSS change. Build a tool that finds and applies that one line reliably.
+
+
+
+
+
+
+
+
+
+
+
+this site has bugs with sticky note styles:
+https://superuser.com/questions/608296/how-to-disable-iframes-in-browsers

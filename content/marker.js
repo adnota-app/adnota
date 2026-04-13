@@ -134,12 +134,10 @@ async function handlePointerUp(e) {
   const isArrow = detectArrow(simplifiedPoints);
 
   const box = blockElement.getBoundingClientRect();
-  const normalizedPath = simplifiedPoints.map(p => {
-    return {
-      px: ((p.x - box.left) / box.width) * 100,
-      py: ((p.y - box.top) / box.height) * 100
-    };
-  });
+  const normalizedPath = simplifiedPoints.map(p => ({
+    px: parseFloat(((p.x - box.left) / box.width  * 100).toFixed(2)),
+    py: parseFloat(((p.y - box.top)  / box.height * 100).toFixed(2))
+  }));
 
   const payload = {
     ...anchor,
