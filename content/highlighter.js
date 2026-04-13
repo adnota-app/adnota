@@ -181,10 +181,11 @@ document.addEventListener('mouseup', async (e) => {
   const blockElement = anchorElement.closest('p, div, section, article, main, li, h1, h2, h3, h4, td') || document.body;
 
   const anchor = window.FuzzyAnchor.generate(blockElement);
-  anchor._id = Date.now() + Math.random().toString();
+  const _id = Date.now() + Math.random().toString();
 
   const payload = {
-    ...anchor,
+    anchor,
+    _id,
     action: 'HIGHLIGHT',
     text: range.toString(),
     occurrenceIndex: getOccurrenceIndex(range, blockElement),
@@ -222,11 +223,11 @@ document.addEventListener('mouseup', async (e) => {
   } catch (e) { }
 
   if (window.VellumStorage) {
-    await window.VellumStorage.saveAnchor(location.hostname, location.pathname, payload);
+    await window.VellumStorage.saveItem(location.hostname, location.pathname, payload);
   }
 
   // Push to the central undo stack so Ctrl+Z can remove this highlight.
-  const capturedId = anchor._id;
+  const capturedId = _id;
   const capturedColor = window.VellumState.color;
   const capturedRange = payload._clonedRange || null;
   const capturedFallback = payload.isFallback || false;

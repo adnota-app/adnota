@@ -82,42 +82,9 @@ function findLayoutTarget(el, extraLevels = 0) {
   return null;
 }
 
-// ─── CSS selector generation ─────────────────────────────────────────────────
+// ─── CSS selector generation (shared from FuzzyAnchor) ──────────────────────
 function generateCSSSelector(el) {
-  // 1. Stable ID
-  if (el.id && /^[a-zA-Z][\w-]*$/.test(el.id)) {
-    if (document.querySelectorAll('#' + CSS.escape(el.id)).length === 1) {
-      return '#' + CSS.escape(el.id);
-    }
-  }
-  // 2. Unique class combination
-  if (el.classList.length > 0) {
-    const classes = Array.from(el.classList)
-      .filter(c => !c.startsWith('vellum-') && /^[a-zA-Z][\w-]*$/.test(c));
-    if (classes.length > 0) {
-      const selector = el.tagName.toLowerCase() + '.' + classes.map(c => CSS.escape(c)).join('.');
-      try {
-        if (document.querySelectorAll(selector).length === 1) return selector;
-      } catch { }
-    }
-  }
-  // 3. Structural nth-child path
-  const parts = [];
-  let current = el;
-  while (current && current !== document.body && current !== document.documentElement) {
-    const parent = current.parentElement;
-    if (!parent) break;
-    const siblings = Array.from(parent.children);
-    const index = siblings.indexOf(current) + 1;
-    const tag = current.tagName.toLowerCase();
-    parts.unshift(`${tag}:nth-child(${index})`);
-    if (current.id && /^[a-zA-Z][\w-]*$/.test(current.id)) {
-      parts[0] = '#' + CSS.escape(current.id);
-      break;
-    }
-    current = parent;
-  }
-  return parts.join(' > ');
+  return window.FuzzyAnchor.generateCSSSelector(el);
 }
 
 // ─── Style injection engine ──────────────────────────────────────────────────

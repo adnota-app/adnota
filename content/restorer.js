@@ -93,9 +93,9 @@ async function performRestoration() {
     }
 
     // ── All other items need a DOM match via FuzzyAnchor. ───────────────────
-    const match = window.FuzzyAnchor.findMatch(item);
+    const match = window.FuzzyAnchor.findMatch(item.anchor);
 
-    if (match.confidence >= 70 && match.element) {
+    if (match.confidence >= 40 && match.element) {
       if (item.action === 'HIGHLIGHT') {
         if (window.VellumHighlighter) {
           window.VellumHighlighter.applyStoredHighlight(match.element, item);
@@ -107,6 +107,7 @@ async function performRestoration() {
       } else {
         // ERASE
         match.element.style.setProperty('display', 'none', 'important');
+        if (window.VellumErasedElements) window.VellumErasedElements.add(match.element);
         erasuresCount++;
       }
       processedItems.add(id);

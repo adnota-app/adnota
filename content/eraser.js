@@ -16,6 +16,12 @@ Object.assign(highlightOverlay.style, {
 document.documentElement.appendChild(highlightOverlay);
 
 let hoveredElement = null;
+let rawHoveredEl = null;     // actual element under cursor (before traversal)
+let traverseDepth = 0;       // 0 = raw element, >0 = walked up N parents
+let areErasuresVisible = true;
+
+// Shared set of erased elements — restorer.js also adds to this.
+window.VellumErasedElements = new Set();
 
 // ─── Guard: Vellum-owned elements are invisible to the eraser ─────────────────
 function isVellumElement(el) {
@@ -32,46 +38,49 @@ function isVellumElement(el) {
   );
 }
 
+// ─── DOM traversal: walk up N parents, skip Vellum elements ─────────────────
+function getEraserTarget(raw, depth) {
+  if (!raw || isVellumElement(raw)) return null;
+  let current = raw;
+  let walked = 0;
+  while (walked < depth && current.parentElement &&
+         current.parentElement !== document.body &&
+         current.parentElement !== document.documentElement) {
+    current = current.parentElement;
+    if (isVellumElement(current)) return null;
+    walked++;
+  }
+  return current;
+}
+
+function updateEraserOverlay() {
+  const target = getEraserTarget(rawHoveredEl, traverseDepth);
+  if (target) {
+    hoveredElement = target;
+    const rect = target.getBoundingClientRect();
+    const scrollY = window.pageYOffset || document.documentElement.scrollTop;
+    const scrollX = window.pageXOffset || document.documentElement.scrollLeft;
+    Object.assign(highlightOverlay.style, {
+      display: 'block',
+      top: `${rect.top + scrollY}px`,
+      left: `${rect.left + scrollX}px`,
+      width: `${rect.width}px`,
+      height: `${rect.height}px`,
+    });
+  } else {
+    hoveredElement = null;
+    highlightOverlay.style.display = 'none';
+  }
+}
+
 // ─── Animation helpers ────────────────────────────────────────────────────────
 
-/**
- * Two expanding ring ripples at the cursor's click position, staggered 90ms apart.
- * Feels like pressing a physical button — satisfying and tactile.
- */
 function spawnRipples(x, y) {
-  // [0, 90].forEach(delay => {
-  //   setTimeout(() => {
-  //     const ring = document.createElement('div');
-  //     ring.setAttribute('data-vellum-ui', '1');
-  //     Object.assign(ring.style, {
-  //       position: 'fixed',
-  //       left: x + 'px',
-  //       top: y + 'px',
-  //       width: '5px',
-  //       height: '5px',
-  //       borderRadius: '50%',
-  //       border: '1px solid rgba(239,68,68,0.75)',
-  //       background: 'transparent',
-  //       transform: 'translate(-50%,-50%)',
-  //       pointerEvents: 'none',
-  //       zIndex: '2147483647',
-  //     });
-  //     document.documentElement.appendChild(ring);
-
-  //     ring.animate([
-  //       { transform: 'translate(-50%,-50%) scale(1)', opacity: 1 },
-  //       { transform: 'translate(-50%,-50%) scale(9)', opacity: 0 }
-  //     ], {
-  //       duration: 520,
-  //       easing: 'cubic-bezier(0.15, 0, 0.75, 1)',
-  //     }).finished.then(() => ring.remove()).catch(() => { });
-  //   }, delay);
-  // });
+  // Reserved for future re-enablement.
 }
 
 /**
  * Momentary red-tinted border flash that traces the element's bounding box.
- * Confirms to the eye exactly what's being erased before it dissolves.
  */
 function spawnFlash(rect) {
   const flash = document.createElement('div');
@@ -100,12 +109,6 @@ function spawnFlash(rect) {
 
 /**
  * Dissolve animation on the target element itself.
- * Returns the Animation object so the undo handler can cancel it.
- *
- * Sequence:
- *   0%→12%  slight scale-up (resistance/awareness)
- *   12%→50% blur begins, opacity drops
- *   50%→100% full blur + fade + downward drift (vaporises)
  */
 function dissolveTarget(target) {
   return target.animate([
@@ -125,6 +128,17 @@ chrome.runtime.onMessage.addListener((request) => {
   if (request.action === 'toggle-eraser') {
     window.VellumState.set({ mode: window.VellumState.mode === 'eraser' ? null : 'eraser' });
   }
+
+  if (request.action === 'toggle-view') {
+    areErasuresVisible = !areErasuresVisible;
+    for (const el of window.VellumErasedElements) {
+      if (areErasuresVisible) {
+        el.style.setProperty('display', 'none', 'important');
+      } else {
+        el.style.removeProperty('display');
+      }
+    }
+  }
 });
 
 // ─── React to mode changes ────────────────────────────────────────────────────
@@ -132,32 +146,49 @@ window.VellumState.subscribe(state => {
   if (state.mode !== 'eraser') {
     highlightOverlay.style.display = 'none';
     hoveredElement = null;
+    rawHoveredEl = null;
+    traverseDepth = 0;
   }
 });
 
-// ─── Hover: keep overlay pinned to the target ─────────────────────────────────
+// ─── Hover: track raw element and update overlay ─────────────────────────────
 document.addEventListener('mousemove', (e) => {
   if (window.VellumState.mode !== 'eraser') return;
-  const target = document.elementFromPoint(e.clientX, e.clientY);
+  const raw = document.elementFromPoint(e.clientX, e.clientY);
 
-  if (target && !isVellumElement(target)) {
-    hoveredElement = target;
-    const rect = target.getBoundingClientRect();
-    const scrollY = window.pageYOffset || document.documentElement.scrollTop;
-    const scrollX = window.pageXOffset || document.documentElement.scrollLeft;
-
-    Object.assign(highlightOverlay.style, {
-      display: 'block',
-      top: `${rect.top + scrollY}px`,
-      left: `${rect.left + scrollX}px`,
-      width: `${rect.width}px`,
-      height: `${rect.height}px`,
-    });
-  } else {
+  if (!raw || isVellumElement(raw)) {
     hoveredElement = null;
+    rawHoveredEl = null;
     highlightOverlay.style.display = 'none';
+    return;
   }
+
+  // Reset traverse depth when cursor moves to a different element
+  if (raw !== rawHoveredEl) {
+    rawHoveredEl = raw;
+    traverseDepth = 0;
+  }
+
+  updateEraserOverlay();
 }, { passive: true });
+
+// ─── Scroll wheel: walk up/down the DOM tree while hovering ─────────────────
+document.addEventListener('wheel', (e) => {
+  if (window.VellumState.mode !== 'eraser') return;
+  if (!rawHoveredEl) return;
+
+  e.preventDefault();
+
+  if (e.deltaY < 0) {
+    // Scroll up → walk to parent
+    traverseDepth++;
+  } else {
+    // Scroll down → walk back toward child
+    traverseDepth = Math.max(0, traverseDepth - 1);
+  }
+
+  updateEraserOverlay();
+}, { passive: false });
 
 // ─── Click: erase with animation ─────────────────────────────────────────────
 document.addEventListener('click', async (e) => {
@@ -176,7 +207,7 @@ document.addEventListener('click', async (e) => {
   const anchor = window.FuzzyAnchor.generate(target);
   const pathScope = e.shiftKey ? '*' : location.pathname;
   const domain = location.hostname;
-  anchor._id = Date.now() + Math.random().toString();
+  const id = Date.now() + Math.random().toString();
 
   highlightOverlay.style.display = 'none';
   hoveredElement = null;
@@ -187,11 +218,11 @@ document.addEventListener('click', async (e) => {
   let activeAnimation = dissolveTarget(target);
 
   // After dissolve completes → apply permanent display:none.
-  // Wrapped in a `consumed` check so undo can safely cancel mid-flight.
   let consumed = false;
   activeAnimation.finished.then(() => {
     if (!consumed) {
       target.style.setProperty('display', 'none', 'important');
+      window.VellumErasedElements.add(target);
       try { activeAnimation.cancel(); } catch { }
       activeAnimation = null;
     }
@@ -201,7 +232,7 @@ document.addEventListener('click', async (e) => {
 
   // Save to storage immediately (don't block the animation on I/O).
   if (window.VellumStorage) {
-    window.VellumStorage.saveAnchor(domain, pathScope, anchor).catch(() => { });
+    window.VellumStorage.saveItem(domain, pathScope, { action: 'ERASE', anchor, _id: id }).catch(() => { });
   }
 
   // ── Shared undo closure — used by both toast button and Ctrl+Z ──
@@ -218,13 +249,13 @@ document.addEventListener('click', async (e) => {
 
       // Restore element to exactly where it was.
       target.style.cssText = savedCssText;
+      window.VellumErasedElements.delete(target);
 
       // Delete the erasure record from storage.
       if (window.VellumStorage) {
         const data = await chrome.storage.local.get(domain);
-        console.log(data);
         if (data[domain]) {
-          data[domain].items = data[domain].items.filter(i => i._id !== anchor._id);
+          data[domain].items = data[domain].items.filter(i => i._id !== id);
           await chrome.storage.local.set({ [domain]: data[domain] });
         }
       }
