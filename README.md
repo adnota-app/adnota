@@ -68,11 +68,12 @@ Minimal service worker. Routes keyboard command events from the browser to the a
 #### `lib/storage.js` — `window.VellumStorage`
 Wrapper around `chrome.storage.local`. All data is keyed by `hostname`, and each entry lives in a `items[]` array. Every item carries:
 - `action`: `'ERASE'` | `'NOTE'` | `'HIGHLIGHT'` | `'MARKER'`
-- `version`: schema version field (currently `1`) — future-proofs migrations
+- `version`: schema version field (currently `2`) — future-proofs migrations
+- `anchor`: nested object containing all FuzzyAnchor signals (cssSelector, tagName, textFingerprint, attributes, structure, geometry) — only present on items that need DOM resolution (ERASE, HIGHLIGHT, MARKER)
 - `timestamp` / `createdAt` / `updatedAt` as appropriate per action type
 - FuzzyAnchor fields for restoration
 
-Methods: `saveAnchor`, `saveNote`, `deleteItem`, `getAnchorsForUrl`, `clearPage`.
+Methods: `saveItem`, `saveNote`, `deleteItem`, `getAnchorsForUrl`, `clearPage`.
 
 #### `lib/annotationState.js` — `window.VellumState`, `window.VellumUndo`
 **`VellumState`**: Single source of truth for active tool mode (`null` | `'eraser'` | `'sticky'` | `'highlight'` | `'pen'`) and active highlight color. Persists `vellumActiveMode` and `vellumHighlightColor` to storage for cross-component sync (popup reads these live). Subscriber pattern — all tools react to state changes without polling.
@@ -84,21 +85,27 @@ Methods: `saveAnchor`, `saveNote`, `deleteItem`, `getAnchorsForUrl`, `clearPage`
 ### Content Scripts
 
 #### `content/fuzzyAnchor.js` — `window.FuzzyAnchor`
-Layered element-identification system that generates and resolves anchors across page reloads:
+Candidate-tournament element-identification system that generates rich anchors and resolves them across page reloads via multi-signal scoring:
 
-1. **Direct Selector** (95% confidence) — stable `#id` when available
-2. **Structural XPath** (+40%) — DOM path from root
-3. **Semantic Anchor** (+50%) — first/last 20 chars of element text content
-4. **Visual Geometry fallback** (65%) — bounding box relative to nearest landmark (`<header>`, `<main>`, `<article>`, etc.)
+1. **CSS Selector** (max 30 pts) — stable `#id`, unique class combination (auto-generated CSS-in-JS classes filtered out), stable attribute selector (`[data-testid]`, `[role]`, etc.), or structural `nth-child` path as fallback
+2. **Tag Name** (max 5 pts) — basic filter; wrong tag = early exit
+3. **Text Fingerprint** (max 30 pts) — fuzzy Jaccard word-overlap on sampled distinctive words (stopwords filtered), with prefix/suffix and word-count bonuses. Survives minor text edits
+4. **Attributes** (max 15 pts) — matches stable HTML attributes (`data-testid`, `role`, `aria-label`, `name`, `src`, `alt`, etc.)
+5. **Structural Context** (max 10 pts) — parent tag/classes, child count, child tag sequence, DOM depth
+6. **Visual Geometry** (max 10 pts) — viewport-relative position and size ratios with distance-scaled scoring
 
-Confidence threshold: **≥ 70%** to auto-apply a restoration. Below that, the item is silently skipped (we chose not to draw amber highlights on eroded anchors to preserve page aesthetics).
+**Resolution**: `findMatch` collects candidates from CSS selector queries, attribute queries, and tag-name scans, then scores every candidate against all six signals additively (max 100). Returns the highest-scoring candidate above a **≥ 40 point** threshold. Scores above 85 short-circuit immediately.
+
+Also exposes `generateCSSSelector(el)` as a shared utility (used by the resizer).
 
 #### `content/eraser.js`
 - Activated via popup or `Alt+E` keyboard shortcut
 - Red outline hover preview tracks the cursor; Vellum's own UI elements are guarded and invisible to the eraser
+- **Scroll-wheel DOM traversal**: while hovering, scroll up to walk to the parent element, scroll down to walk back toward children — no minimum size filter (unlike resizer), so small elements like links and icons can be erased too
 - Click to erase: fires a 3-stage animation sequence (ripples → bounding-box flash → dissolve) then hard-hides the element with `display: none !important`
 - `Shift+Click` for domain-wide erasure (stored with `path: '*'`)
 - Undo: shared `VellumUndo` stack + 5s toast button, both cancel mid-flight animations
+- Show/Hide (`Alt+V`): tracks erased elements in a shared `VellumErasedElements` Set (populated by both eraser clicks and restorer) to toggle visibility
 - Storage write is non-blocking (does not delay animation)
 
 #### `content/sticky.js` — `window.StickyEngine`
@@ -107,6 +114,7 @@ Confidence threshold: **≥ 70%** to auto-apply a restoration. Below that, the i
 - **Coordinate model**: position is stored as `{ xPct, yScrollPct }` — percentages of total page scroll width/height — not a DOM anchor. This means notes survive any page restructure; the worst case is a note floats ~100px from its original spot if content above it shifts significantly.
 - **Drag and Drop**: pointer-event drag on the header repositions notes freely. On drop, new coordinates are converted back to percentages and persisted.
 - Autosaves content on a 1.5s debounce
+- Create undo: `Ctrl+Z` / `Cmd+Z` immediately after placing a note removes it from DOM and storage
 - Delete: instant visual hide + 5s undo window before storage commit
 - `Alt+V` toggles all note visibility. Visibility state (`vellumHidden`) is persisted to storage and queried live by the popup via `get-view` message
 - Smart Z-index elevation on focus
@@ -136,6 +144,7 @@ Confidence threshold: **≥ 70%** to auto-apply a restoration. Below that, the i
   - **Corner handle** — drag to resize both width and height simultaneously
   - **Red ✕ button** (top-right) — resets ALL resize overrides for this element, removing injected CSS from both the `<style>` tag and storage
 - All resizes persist as CSS rules injected into a `<style id="vellum-style-overrides">` tag — survives React/Vue re-renders
+- CSS selector generation uses the shared `FuzzyAnchor.generateCSSSelector()` utility
 - CSS rule format: `width: Xpx !important; max-width: none !important` (and `margin-left` for left-handle resizes)
 - Handles are viewport-clamped so they remain visible even on elements taller/wider than the screen
 - Handles reposition on scroll
@@ -157,7 +166,7 @@ Confidence threshold: **≥ 70%** to auto-apply a restoration. Below that, the i
 - **MutationObserver** with 1s debounce watches for SPA/lazy-loaded content and re-runs restoration — handles React, Vue, and infinite-scroll sites
 - Dispatches to the correct engine by `action` type:
   - `RESIZE` → injects stored CSS rule into `<style id="vellum-style-overrides">` — **bypasses FuzzyAnchor entirely** since the CSS selector is self-contained
-  - `ERASE` → `element.style.setProperty('display', 'none', 'important')`
+  - `ERASE` → `element.style.setProperty('display', 'none', 'important')` + adds element to `VellumErasedElements` for show/hide toggling
   - `NOTE` → `StickyEngine.renderNote()` directly from stored `placement` — **bypasses FuzzyAnchor entirely** since position is self-contained percentage coordinates
   - `HIGHLIGHT` → `VellumHighlighter.applyStoredHighlight()`
   - `MARKER` → `VellumMarker.renderMarker()`
@@ -192,11 +201,11 @@ Dedicated extension page (opened as a new tab via `chrome.runtime.getURL`). Aggr
 | Item | Decision |
 |---|---|
 | Cloud sync | Deferred — all data is `chrome.storage.local` only (5 MB cap) |
-| Amber "broken anchor" UI | Cut — silently skip eroded anchors to preserve page aesthetics |
+| Amber "broken anchor" UI | Toast notification shown on initial page load when anchors can't be resolved |
 | Cross-origin iframe contents | Out of scope — users can erase the top-level `<iframe>` element |
 | Ripple animation on erase | Commented out in code — kept for future re-enablement |
 | Multi-color sticky notes | Yellow-only for MVP; schema is theme-ready |
-| `<70%` confidence restoration | Silent skip, no user-facing warning in current build |
+| `<40 point` confidence restoration | Silent skip on MutationObserver retries; toast notification on initial page load |
 
 ---
 
@@ -211,7 +220,7 @@ Dedicated extension page (opened as a new tab via `chrome.runtime.getURL`). Aggr
 | `Ctrl+Z` / `Cmd+Z` | Undo last action (any tool) |
 | `Escape` | Deactivate active tool / deselect resizer element |
 | `Shift+Click` | (Eraser only) Domain-wide deletion |
-| `Scroll Wheel` | (Resizer only) Walk up/down DOM tree to target parent or child elements |
+| `Scroll Wheel` | (Eraser & Resizer) Walk up/down DOM tree to target parent or child elements |
 
 ---
 
@@ -225,7 +234,7 @@ The core engine is solid. Here are the most natural next directions, ranked by a
 The schema was designed for this from day one. Every item has a `version` field and structured timestamps. The migration path from local-only to synced is: add a user identity layer (OAuth), swap the storage adapter, and merge on conflict by `updatedAt`. This is the biggest unlock for cross-device use and is the clearest monetization path.
 
 **2. Broken Anchor Recovery UI**
-Currently, anchors with confidence < 70% fail silently. Surfacing these in the popup ("1 edit couldn't be applied — review") and giving users a way to manually re-pin or dismiss them would significantly improve reliability perception on sites that update frequently.
+Anchors with confidence < 40 points now show a dismissible toast on page load ("N saved edits couldn't be reapplied"). The next step is surfacing these in the popup with a way to manually re-pin or dismiss individual broken anchors.
 
 **3. Export / Share**
 Users annotate pages for a reason — research, review, redaction for screenshots. A one-click "Export annotations as JSON" or "Copy redacted screenshot" feature directly serves this. The redaction/black highlight makes this especially compelling.
