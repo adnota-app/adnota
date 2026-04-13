@@ -23,6 +23,32 @@ let areErasuresVisible = true;
 // Shared set of erased elements — restorer.js also adds to this.
 window.VellumErasedElements = new Set();
 
+// ─── CSS rule injection for persistent erasure ──────────────────────────────
+// Erased elements get a CSS rule so that if the element is destroyed and re-created
+// (e.g. ad rotation timers), the browser automatically hides the new instance.
+window.VellumEraseRules = new Map(); // id → cssSelector
+
+function getOrCreateEraseStyleTag() {
+  let tag = document.getElementById('vellum-erase-overrides');
+  if (!tag) {
+    tag = document.createElement('style');
+    tag.id = 'vellum-erase-overrides';
+    tag.setAttribute('data-vellum-ui', '1');
+    document.head.appendChild(tag);
+  }
+  return tag;
+}
+
+function rebuildEraseStyleTag() {
+  const tag = getOrCreateEraseStyleTag();
+  const rules = [];
+  for (const [, selector] of window.VellumEraseRules) {
+    rules.push(`${selector} { display: none !important; }`);
+  }
+  tag.textContent = rules.join('\n');
+}
+window.rebuildEraseStyleTag = rebuildEraseStyleTag;
+
 // ─── Guard: Vellum-owned elements are invisible to the eraser ─────────────────
 function isVellumElement(el) {
   if (!el) return false;
@@ -138,6 +164,18 @@ chrome.runtime.onMessage.addListener((request) => {
         el.style.removeProperty('display');
       }
     }
+    // Also toggle the CSS rule style tag (covers re-created elements like ads)
+    const eraseTag = document.getElementById('vellum-erase-overrides');
+    if (eraseTag) eraseTag.disabled = !areErasuresVisible;
+  }
+});
+
+// ─── Seed erase visibility from storage on load ─────────────────────────────
+chrome.storage.local.get(['vellumHidden'], (result) => {
+  if (result.vellumHidden) {
+    areErasuresVisible = false;
+    const eraseTag = document.getElementById('vellum-erase-overrides');
+    if (eraseTag) eraseTag.disabled = true;
   }
 });
 
@@ -205,9 +243,14 @@ document.addEventListener('click', async (e) => {
 
   // Capture anchor before any DOM mutation.
   const anchor = window.FuzzyAnchor.generate(target);
+  const cssSelector = window.FuzzyAnchor.generateCSSSelector(target);
   const pathScope = e.shiftKey ? '*' : location.pathname;
   const domain = location.hostname;
   const id = Date.now() + Math.random().toString();
+
+  // Inject CSS rule so the element stays hidden even if re-created (ad rotation, etc.)
+  window.VellumEraseRules.set(id, cssSelector);
+  rebuildEraseStyleTag();
 
   highlightOverlay.style.display = 'none';
   hoveredElement = null;
@@ -232,7 +275,7 @@ document.addEventListener('click', async (e) => {
 
   // Save to storage immediately (don't block the animation on I/O).
   if (window.VellumStorage) {
-    window.VellumStorage.saveItem(domain, pathScope, { action: 'ERASE', anchor, _id: id }).catch(() => { });
+    window.VellumStorage.saveItem(domain, pathScope, { action: 'ERASE', anchor, selector: cssSelector, _id: id }).catch(() => { });
   }
 
   // ── Shared undo closure — used by both toast button and Ctrl+Z ──
@@ -250,6 +293,10 @@ document.addEventListener('click', async (e) => {
       // Restore element to exactly where it was.
       target.style.cssText = savedCssText;
       window.VellumErasedElements.delete(target);
+
+      // Remove the CSS rule that prevents re-creation.
+      window.VellumEraseRules.delete(id);
+      rebuildEraseStyleTag();
 
       // Delete the erasure record from storage.
       if (window.VellumStorage) {
