@@ -52,3 +52,14 @@ Vellum's bet is that enough users care about their own experience enough to push
 The web as a fluid, personal medium rather than a broadcast medium is a genuinely good idea. The tension is that most people don't know they want that until they experience it. The first erase — the first time a user kills a nav bar they've been unconsciously tolerating for months — is a "holy shit" moment. The entire product's job is to engineer more of those moments and help users remember them.
 
 The verdict: Vellum is technically excellent, philosophically interesting, and in search of a sharper story and a retention mechanism. The bones are strong. The product needs a canonical user, a trust-repair plan for broken anchors, and one killer workflow (probably redaction → screenshot) that makes someone say "I need this."
+
+
+
+
+    "toggle-styler": {
+      "suggested_key": {
+        "default": "Alt+L",
+        "mac": "Alt+L"
+      },
+      "description": "Toggle CSS Nudge (Layout) Mode"
+    }
