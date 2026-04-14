@@ -15,6 +15,129 @@ Object.assign(highlightOverlay.style, {
 });
 document.documentElement.appendChild(highlightOverlay);
 
+// ─── DOM Inspector panel ─────────────────────────────────────────────────────
+const inspectorPanel = document.createElement('div');
+inspectorPanel.id = 'vellum-eraser-inspector';
+inspectorPanel.setAttribute('data-vellum-ui', '1');
+Object.assign(inspectorPanel.style, {
+  position: 'fixed',
+  // bottom: '12px',
+  top: '150px',
+  left: '12px',
+  maxWidth: '460px',
+  maxHeight: '45vh',
+  overflowY: 'auto',
+  background: 'rgba(15, 15, 15, 0.92)',
+  backdropFilter: 'blur(8px)',
+  color: '#e4e4e7',
+  fontFamily: 'ui-monospace, "SF Mono", Menlo, Consolas, monospace',
+  fontSize: '11.5px',
+  lineHeight: '1.45',
+  padding: '10px 12px',
+  borderRadius: '8px',
+  border: '1px solid rgba(124, 58, 237, 0.45)',
+  boxShadow: '0 4px 24px rgba(0,0,0,0.5)',
+  zIndex: '2147483646',
+  pointerEvents: 'none',
+  display: 'none',
+  whiteSpace: 'pre-wrap',
+  wordBreak: 'break-all',
+});
+document.documentElement.appendChild(inspectorPanel);
+
+function buildAncestorChain(el, maxDepth) {
+  const chain = [];
+  let cur = el;
+  for (let i = 0; i < maxDepth && cur && cur !== document.documentElement; i++) {
+    let label = cur.tagName.toLowerCase();
+    if (cur.id) label += '#' + cur.id;
+    else if (cur.classList.length) label += '.' + Array.from(cur.classList).slice(0, 2).join('.');
+    chain.push(label);
+    cur = cur.parentElement;
+  }
+  return chain;
+}
+
+function escapeHtml(str) {
+  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function updateInspector(target) {
+  if (!target) {
+    inspectorPanel.style.display = 'none';
+    return;
+  }
+  inspectorPanel.style.display = 'block';
+
+  const tag = target.tagName.toLowerCase();
+  const id = target.id ? `#${target.id}` : '';
+  const classes = Array.from(target.classList);
+  const rect = target.getBoundingClientRect();
+  const childCount = target.children.length;
+
+  // DOM depth
+  let depth = 0;
+  let cur = target;
+  while (cur && cur !== document.body) { depth++; cur = cur.parentElement; }
+
+  // Ancestor chain (target → ... → body)
+  const chain = buildAncestorChain(target, 6);
+
+  // CSS selector that FuzzyAnchor would generate
+  const selector = window.FuzzyAnchor
+    ? window.FuzzyAnchor.generateCSSSelector(target)
+    : '(fuzzyAnchor not loaded)';
+
+  // Stable attributes present on this element
+  const stableAttrs = ['data-testid', 'data-id', 'data-name', 'data-type',
+    'data-slot', 'data-section', 'role', 'aria-label', 'name', 'alt', 'title'];
+  const attrs = [];
+  for (const a of stableAttrs) {
+    const v = target.getAttribute(a);
+    if (v) attrs.push(`${a}="${v}"`);
+  }
+
+  // Build display
+  const sColor = 'color:#c084fc';    // purple
+  const dColor = 'color:#60a5fa';    // blue
+  const gColor = 'color:#6ee7b7';    // green
+  const mColor = 'color:#94a3b8';    // muted
+  const wColor = 'color:#fbbf24';    // amber
+
+  let html = '';
+
+  // Line 1: element signature
+  html += `<span style="${sColor};font-weight:600">&lt;${tag}${escapeHtml(id)}&gt;</span>`;
+  html += `  <span style="${mColor}">${Math.round(rect.width)}×${Math.round(rect.height)}px</span>`;
+  html += `  <span style="${mColor}">depth ${depth}</span>`;
+  html += `  <span style="${mColor}">${childCount} child${childCount !== 1 ? 'ren' : ''}</span>\n`;
+
+  // Line 2: classes
+  if (classes.length > 0) {
+    html += `<span style="${dColor}">cls</span>  `;
+    html += `<span style="${mColor}">${escapeHtml(classes.join('  '))}</span>\n`;
+  }
+
+  // Line 3: stable attributes
+  if (attrs.length > 0) {
+    html += `<span style="${gColor}">attr</span> `;
+    html += `<span style="${mColor}">${escapeHtml(attrs.join('  '))}</span>\n`;
+  }
+
+  // Line 4: ancestor chain
+  html += `<span style="${wColor}">dom</span>  `;
+  html += `<span style="${mColor}">${escapeHtml(chain.join('  ›  '))}</span>\n`;
+
+  // Line 5: CSS selector
+  html += `<span style="${sColor}">sel</span>  `;
+  html += `<span style="color:#f0abfc">${escapeHtml(selector)}</span>\n`;
+
+  // Line 6: traverse depth indicator
+  html += `<span style="${mColor}">scroll ↑↓ to traverse  ·  depth offset: ${traverseDepth}</span>`;
+
+  inspectorPanel.innerHTML = html;
+}
+
 let hoveredElement = null;
 let rawHoveredEl = null;     // actual element under cursor (before traversal)
 let traverseDepth = 0;       // 0 = raw element, >0 = walked up N parents
@@ -70,8 +193,8 @@ function getEraserTarget(raw, depth) {
   let current = raw;
   let walked = 0;
   while (walked < depth && current.parentElement &&
-         current.parentElement !== document.body &&
-         current.parentElement !== document.documentElement) {
+    current.parentElement !== document.body &&
+    current.parentElement !== document.documentElement) {
     current = current.parentElement;
     if (isVellumElement(current)) return null;
     walked++;
@@ -93,9 +216,11 @@ function updateEraserOverlay() {
       width: `${rect.width}px`,
       height: `${rect.height}px`,
     });
+    updateInspector(target);
   } else {
     hoveredElement = null;
     highlightOverlay.style.display = 'none';
+    updateInspector(null);
   }
 }
 
@@ -183,6 +308,7 @@ chrome.storage.local.get(['vellumHidden'], (result) => {
 window.VellumState.subscribe(state => {
   if (state.mode !== 'eraser') {
     highlightOverlay.style.display = 'none';
+    inspectorPanel.style.display = 'none';
     hoveredElement = null;
     rawHoveredEl = null;
     traverseDepth = 0;
@@ -198,6 +324,7 @@ document.addEventListener('mousemove', (e) => {
     hoveredElement = null;
     rawHoveredEl = null;
     highlightOverlay.style.display = 'none';
+    updateInspector(null);
     return;
   }
 
@@ -253,6 +380,7 @@ document.addEventListener('click', async (e) => {
   rebuildEraseStyleTag();
 
   highlightOverlay.style.display = 'none';
+  updateInspector(null);
   hoveredElement = null;
 
   // ── Fire all three animation effects in parallel ──
