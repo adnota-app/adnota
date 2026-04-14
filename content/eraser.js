@@ -15,48 +15,98 @@ Object.assign(highlightOverlay.style, {
 });
 document.documentElement.appendChild(highlightOverlay);
 
-// ─── DOM Inspector panel ─────────────────────────────────────────────────────
-const inspectorPanel = document.createElement('div');
-inspectorPanel.id = 'vellum-eraser-inspector';
-inspectorPanel.setAttribute('data-vellum-ui', '1');
-Object.assign(inspectorPanel.style, {
+// ─── Dimension badge (top-right corner of hover outline) ─────────────────────
+const dimensionBadge = document.createElement('div');
+dimensionBadge.id = 'vellum-dimension-badge';
+dimensionBadge.setAttribute('data-vellum-ui', '1');
+Object.assign(dimensionBadge.style, {
+  position: 'absolute',
+  top: '-1px',
+  right: '-1px',
+  transform: 'translateY(-100%)',
+  background: 'rgba(15, 15, 15, 0.85)',
+  color: '#e4e4e7',
+  fontSize: '10px',
+  fontFamily: 'ui-monospace, "SF Mono", Menlo, Consolas, monospace',
+  lineHeight: '1',
+  padding: '2px 6px',
+  borderRadius: '3px 3px 0 3px',
+  whiteSpace: 'nowrap',
+});
+highlightOverlay.appendChild(dimensionBadge);
+
+// ─── HUD strip (fixed bottom bar, draggable) ────────────────────────────────
+const eraserHud = document.createElement('div');
+eraserHud.id = 'vellum-eraser-hud';
+eraserHud.setAttribute('data-vellum-ui', '1');
+Object.assign(eraserHud.style, {
   position: 'fixed',
-  // bottom: '12px',
-  top: '150px',
-  left: '12px',
-  maxWidth: '460px',
-  maxHeight: '45vh',
-  overflowY: 'auto',
+  bottom: '20px',
+  left: '50%',
+  transform: 'translateX(-50%)',
   background: 'rgba(15, 15, 15, 0.92)',
   backdropFilter: 'blur(8px)',
   color: '#e4e4e7',
-  fontFamily: 'ui-monospace, "SF Mono", Menlo, Consolas, monospace',
-  fontSize: '11.5px',
-  lineHeight: '1.45',
-  padding: '10px 12px',
-  borderRadius: '8px',
+  fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+  fontSize: '12.5px',
+  lineHeight: '1',
+  padding: '8px 14px',
+  borderRadius: '10px',
   border: '1px solid rgba(124, 58, 237, 0.45)',
   boxShadow: '0 4px 24px rgba(0,0,0,0.5)',
   zIndex: '2147483646',
-  pointerEvents: 'none',
+  pointerEvents: 'auto',
+  cursor: 'grab',
   display: 'none',
-  whiteSpace: 'pre-wrap',
-  wordBreak: 'break-all',
+  whiteSpace: 'nowrap',
+  opacity: '0',
+  transition: 'opacity 0.15s ease',
 });
-document.documentElement.appendChild(inspectorPanel);
+document.documentElement.appendChild(eraserHud);
 
-function buildAncestorChain(el, maxDepth) {
-  const chain = [];
-  let cur = el;
-  for (let i = 0; i < maxDepth && cur && cur !== document.documentElement; i++) {
-    let label = cur.tagName.toLowerCase();
-    if (cur.id) label += '#' + cur.id;
-    else if (cur.classList.length) label += '.' + Array.from(cur.classList).slice(0, 2).join('.');
-    chain.push(label);
-    cur = cur.parentElement;
-  }
-  return chain;
-}
+// ─── HUD drag logic ─────────────────────────────────────────────────────────
+let hudDragState = null;
+
+eraserHud.addEventListener('pointerdown', (e) => {
+  e.preventDefault();
+  e.stopPropagation();
+  hudDragState = {
+    startX: e.clientX,
+    startY: e.clientY,
+    startLeft: eraserHud.getBoundingClientRect().left,
+    startTop: eraserHud.getBoundingClientRect().top,
+  };
+  eraserHud.style.cursor = 'grabbing';
+  eraserHud.setPointerCapture(e.pointerId);
+});
+
+eraserHud.addEventListener('pointermove', (e) => {
+  if (!hudDragState) return;
+  const dx = e.clientX - hudDragState.startX;
+  const dy = e.clientY - hudDragState.startY;
+  // Switch from centered positioning to absolute left/top
+  eraserHud.style.left = (hudDragState.startLeft + dx) + 'px';
+  eraserHud.style.top = (hudDragState.startTop + dy) + 'px';
+  eraserHud.style.bottom = 'auto';
+  eraserHud.style.transform = 'none';
+});
+
+eraserHud.addEventListener('pointerup', (e) => {
+  if (!hudDragState) return;
+  hudDragState = null;
+  eraserHud.style.cursor = 'grab';
+  eraserHud.releasePointerCapture(e.pointerId);
+});
+
+// ─── Rotating help tips ─────────────────────────────────────────────────────
+const hudTips = [
+  '<span style="color:#94a3b8">Click to erase on <span style="color:#e4e4e7;font-weight:600">this page</span></span>',
+  '<span style="color:#94a3b8"><span style="background:rgba(124,58,237,0.25);color:#c084fc;padding:1px 4px;border-radius:3px;font-size:11px;font-weight:600;margin-right:4px">\u21e7+Click</span>erase across <span style="color:#e4e4e7;font-weight:600">entire domain</span></span>',
+  '<span style="color:#94a3b8">Scroll \u2191\u2193 to <span style="color:#e4e4e7;font-weight:600">traverse DOM</span> (select parents/children)</span>',
+  '<span style="color:#94a3b8">Press <span style="background:rgba(124,58,237,0.25);color:#c084fc;padding:1px 4px;border-radius:3px;font-size:11px;font-weight:600;margin-right:2px">Esc</span> to exit eraser</span>',
+];
+let hudTipIndex = 0;
+let hudTipInterval = null;
 
 function escapeHtml(str) {
   return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -272,114 +322,101 @@ function findBetterTarget(el) {
   return bestCandidate;
 }
 
-function updateInspector(target) {
+function stopHudTips() {
+  if (hudTipInterval) { clearInterval(hudTipInterval); hudTipInterval = null; }
+}
+
+function resetHudPosition() {
+  eraserHud.style.left = '50%';
+  eraserHud.style.top = '';
+  eraserHud.style.bottom = '20px';
+  eraserHud.style.transform = 'translateX(-50%)';
+}
+
+function updateHUD(target) {
   if (!target) {
-    inspectorPanel.style.display = 'none';
+    eraserHud.style.display = 'none';
+    eraserHud.style.opacity = '0';
+    dimensionBadge.textContent = '';
+    stopHudTips();
     return;
   }
-  inspectorPanel.style.display = 'block';
 
-  const tag = target.tagName.toLowerCase();
-  const id = target.id ? `#${target.id}` : '';
-  const classes = Array.from(target.classList);
+  // ── Dimension badge ──
   const rect = target.getBoundingClientRect();
-  const childCount = target.children.length;
+  dimensionBadge.textContent = `${Math.round(rect.width)}\u00d7${Math.round(rect.height)}`;
 
-  // DOM depth
-  let depth = 0;
-  let cur = target;
-  while (cur && cur !== document.body) { depth++; cur = cur.parentElement; }
-
-  // Ancestor chain (target → ... → body)
-  const chain = buildAncestorChain(target, 6);
-
-  // CSS selector that FuzzyAnchor would generate
-  const selector = window.FuzzyAnchor
-    ? window.FuzzyAnchor.generateCSSSelector(target)
-    : '(fuzzyAnchor not loaded)';
-
-  // Stable attributes present on this element
-  const stableAttrs = ['data-testid', 'data-id', 'data-name', 'data-type',
-    'data-slot', 'data-section', 'role', 'aria-label', 'name', 'alt', 'title'];
-  const attrs = [];
-  for (const a of stableAttrs) {
-    const v = target.getAttribute(a);
-    if (v) attrs.push(`${a}="${v}"`);
-  }
-
-  // Anchor strength & ad signals
+  // ── HUD strip ──
   const anchor = getAnchorStrength(target);
   const adSignals = detectAdSignals(target);
   const betterTarget = findBetterTarget(target);
 
-  // Build display
-  const sColor = 'color:#c084fc';    // purple
-  const dColor = 'color:#60a5fa';    // blue
-  const gColor = 'color:#6ee7b7';    // green
-  const mColor = 'color:#94a3b8';    // muted
-  const wColor = 'color:#fbbf24';    // amber
-  const rColor = 'color:#f87171';    // red
+  // Confidence label + color
+  let confLabel, confColor;
+  if (adSignals.length > 0) {
+    confLabel = 'likely ad';
+    confColor = '#fca5a5'; // soft red
+  } else if (anchor.score >= 70) {
+    confLabel = 'strong anchor';
+    confColor = '#6ee7b7'; // green
+  } else if (anchor.score >= 40) {
+    confLabel = 'moderate';
+    confColor = '#fbbf24'; // amber
+  } else {
+    confLabel = 'weak anchor';
+    confColor = '#f87171'; // red
+  }
+
+  const dot = '<span style="color:#525264;margin:0 8px">\u00b7</span>';
 
   let html = '';
 
-  // Line 1: element signature + anchor strength bar
-  html += `<span style="${sColor};font-weight:600">&lt;${tag}${escapeHtml(id)}&gt;</span>`;
-  html += `  <span style="${mColor}">${Math.round(rect.width)}×${Math.round(rect.height)}px</span>`;
-  html += `  <span style="${mColor}">depth ${depth}</span>`;
-  html += `  <span style="${mColor}">${childCount} child${childCount !== 1 ? 'ren' : ''}</span>\n`;
+  // Drag handle + logo chip
+  html += '<span style="color:#525264;margin-right:6px;font-size:10px;letter-spacing:1px;vertical-align:middle;cursor:grab" title="Drag to reposition">\u2847</span>';
+  html += '<span style="display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;background:rgba(124,58,237,0.35);color:#c084fc;font-weight:700;font-size:10px;margin-right:8px;vertical-align:middle;flex-shrink:0">V</span>';
 
-  // Line 2: anchor strength
-  const barFull = 10;
-  const barFilled = Math.round((anchor.score / 100) * barFull);
-  const barColor = anchor.score >= 60 ? gColor : anchor.score >= 30 ? wColor : rColor;
-  const bar = '\u2588'.repeat(barFilled) + '\u2591'.repeat(barFull - barFilled);
-  html += `<span style="${barColor}">anc</span>  `;
-  html += `<span style="${barColor}">${bar} ${anchor.score}/100</span>`;
-  if (anchor.reasons.length > 0) {
-    html += `  <span style="${mColor}">${escapeHtml(anchor.reasons.join(', '))}</span>`;
-  }
-  html += '\n';
+  // Confidence score
+  html += `<span style="color:${confColor};font-weight:600">${anchor.score}/100</span>`;
+  html += `<span style="color:${confColor};margin-left:4px">${confLabel}</span>`;
 
-  // Line 3: ad signal badges (only if any detected)
+  // Ad signal badges (only when present)
   if (adSignals.length > 0) {
-    html += `<span style="${rColor}">sig</span>  `;
     for (const s of adSignals) {
-      html += `<span style="background:rgba(239,68,68,0.18);color:#fca5a5;padding:0 4px;border-radius:3px;margin-right:4px">${escapeHtml(s)}</span>`;
+      html += `<span style="background:rgba(239,68,68,0.18);color:#fca5a5;padding:1px 6px;border-radius:4px;margin-left:6px;font-size:11px">${escapeHtml(s)}</span>`;
     }
-    html += '\n';
   }
 
-  // Line 4: classes
-  if (classes.length > 0) {
-    html += `<span style="${dColor}">cls</span>  `;
-    html += `<span style="${mColor}">${escapeHtml(classes.join('  '))}</span>\n`;
-  }
-
-  // Line 5: stable attributes
-  if (attrs.length > 0) {
-    html += `<span style="${gColor}">attr</span> `;
-    html += `<span style="${mColor}">${escapeHtml(attrs.join('  '))}</span>\n`;
-  }
-
-  // Line 6: ancestor chain
-  html += `<span style="${wColor}">dom</span>  `;
-  html += `<span style="${mColor}">${escapeHtml(chain.join('  ›  '))}</span>\n`;
-
-  // Line 7: CSS selector
-  html += `<span style="${sColor}">sel</span>  `;
-  html += `<span style="color:#f0abfc">${escapeHtml(selector)}</span>\n`;
-
-  // Line 8: better target nudge (if available)
+  // Scroll nudge (only when a better target exists) — takes priority over rotating tip
   if (betterTarget) {
-    html += `<span style="${gColor}">  ▲  scroll up ${betterTarget.stepsUp}×  →  </span>`;
-    html += `<span style="${gColor};font-weight:600">&lt;${escapeHtml(betterTarget.label)}&gt;</span>`;
-    html += `  <span style="${gColor}">anchor ${betterTarget.score}/100</span>\n`;
+    html += dot;
+    html += `<span style="color:#6ee7b7">\u25b2 Scroll up ${betterTarget.stepsUp}\u00d7 for better target</span>`;
+  } else {
+    // Rotating help tip
+    html += dot;
+    html += `<span id="vellum-hud-tip" style="display:inline-block;min-width:180px">${hudTips[hudTipIndex]}</span>`;
   }
 
-  // Line 9: traverse depth indicator
-  html += `<span style="${mColor}">scroll ↑↓ to traverse  ·  depth offset: ${traverseDepth}</span>`;
+  eraserHud.innerHTML = html;
+  eraserHud.style.display = 'block';
+  // Force reflow then fade in
+  eraserHud.offsetHeight;
+  eraserHud.style.opacity = '1';
 
-  inspectorPanel.innerHTML = html;
+  // Start tip rotation if not already running
+  if (!hudTipInterval) {
+    hudTipInterval = setInterval(() => {
+      hudTipIndex = (hudTipIndex + 1) % hudTips.length;
+      const tipEl = document.getElementById('vellum-hud-tip');
+      if (tipEl) {
+        tipEl.style.opacity = '0';
+        tipEl.style.transition = 'opacity 0.2s ease';
+        setTimeout(() => {
+          tipEl.innerHTML = hudTips[hudTipIndex];
+          tipEl.style.opacity = '1';
+        }, 200);
+      }
+    }, 4000);
+  }
 }
 
 let hoveredElement = null;
@@ -460,11 +497,11 @@ function updateEraserOverlay() {
       width: `${rect.width}px`,
       height: `${rect.height}px`,
     });
-    updateInspector(target);
+    updateHUD(target);
   } else {
     hoveredElement = null;
     highlightOverlay.style.display = 'none';
-    updateInspector(null);
+    updateHUD(null);
   }
 }
 
@@ -552,10 +589,21 @@ chrome.storage.local.get(['vellumHidden'], (result) => {
 window.VellumState.subscribe(state => {
   if (state.mode !== 'eraser') {
     highlightOverlay.style.display = 'none';
-    inspectorPanel.style.display = 'none';
+    eraserHud.style.display = 'none';
+    eraserHud.style.opacity = '0';
+    stopHudTips();
+    resetHudPosition();
+    hudTipIndex = 0;
     hoveredElement = null;
     rawHoveredEl = null;
     traverseDepth = 0;
+  }
+});
+
+// ─── Escape to exit eraser ───────────────────────────────────────────────────
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && window.VellumState.mode === 'eraser') {
+    window.VellumState.set({ mode: null });
   }
 });
 
@@ -564,13 +612,17 @@ document.addEventListener('mousemove', (e) => {
   if (window.VellumState.mode !== 'eraser') return;
   const raw = document.elementFromPoint(e.clientX, e.clientY);
 
-  if (!raw || isVellumElement(raw)) {
+  if (!raw) {
     hoveredElement = null;
     rawHoveredEl = null;
     highlightOverlay.style.display = 'none';
-    updateInspector(null);
+    updateHUD(null);
     return;
   }
+
+  // When cursor is over the HUD (or any Vellum UI), freeze the current
+  // hover state so the HUD stays visible and can be dragged.
+  if (isVellumElement(raw)) return;
 
   // Reset traverse depth when cursor moves to a different element
   if (raw !== rawHoveredEl) {
@@ -624,7 +676,7 @@ document.addEventListener('click', async (e) => {
   rebuildEraseStyleTag();
 
   highlightOverlay.style.display = 'none';
-  updateInspector(null);
+  updateHUD(null);
   hoveredElement = null;
 
   // ── Fire all three animation effects in parallel ──
