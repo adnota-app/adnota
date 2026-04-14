@@ -129,3 +129,7 @@ https://superuser.com/questions/608296/how-to-disable-iframes-in-browsers
 Add mouse scroll to ERASE elements!
 
 Apply add deletes to exact page OR domain OR just path etc.
+
+"Remove things like this" (#11, the "killer feature") — This is the most interesting idea in the whole list. After erasing one element, find        
+structurally similar siblings and offer bulk removal. This plays to FuzzyAnchor's strengths — you could score all siblings of the erased element's
+parent against the erased element's anchor and surface high-confidence matches. Worth prototyping.
