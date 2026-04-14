@@ -62,6 +62,216 @@ function escapeHtml(str) {
   return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
+// ─── Ad signal detection ─────────────────────────────────────────────────────
+// Lightweight heuristics to flag elements that look like ad infrastructure.
+// Not blocking anything — just informing the user's scroll-wheel decision.
+const _adKeywordPattern = /\bad[s]?\b|ad[-_]|[-_]ad\b|advert|banner|sponsor|promo|dfp|prebid|adsense|doubleclick|freestar|taboola|outbrain|criteo|pubmatic/i;
+const _adNetworkAttrs = ['data-freestar-ad', 'data-google-query-id', 'data-ad-slot',
+  'data-ad-client', 'data-adunit', 'data-ad', 'data-dfp', 'data-zone'];
+
+/** Quick check: does a single element (not its subtree) have ad fingerprints? */
+function hasAdFingerprint(el) {
+  const idAndClass = (el.id || '') + ' ' + (el.className || '');
+  if (_adKeywordPattern.test(idAndClass)) return true;
+  for (const a of _adNetworkAttrs) {
+    if (el.hasAttribute(a)) return true;
+  }
+  if (el.tagName === 'IFRAME') return true;
+  return false;
+}
+
+function detectAdSignals(el) {
+  const signals = [];
+  const outerHTML = el.outerHTML.slice(0, 2000); // cap scan length
+
+  // Check the element itself
+  const idAndClass = (el.id || '') + ' ' + (el.className || '');
+  if (_adKeywordPattern.test(idAndClass)) signals.push('ad-keyword');
+
+  // Check attributes for ad network fingerprints
+  for (const a of _adNetworkAttrs) {
+    if (el.hasAttribute(a)) { signals.push('ad-network'); break; }
+  }
+
+  // Contains iframe (common ad delivery mechanism)
+  if (el.querySelector('iframe')) signals.push('iframe');
+
+  // Contains iframe pointing to ad domain or about:blank
+  const iframes = el.querySelectorAll('iframe');
+  for (const iframe of iframes) {
+    const src = iframe.getAttribute('src') || '';
+    if (!src || src === 'about:blank' || _adKeywordPattern.test(src)) {
+      signals.push('ad-iframe');
+      break;
+    }
+  }
+
+  // Fixed/sticky positioning + high z-index (popup/overlay pattern)
+  const style = getComputedStyle(el);
+  if ((style.position === 'fixed' || style.position === 'sticky') &&
+      parseInt(style.zIndex, 10) > 999) {
+    signals.push('popup');
+  }
+
+  // Inline ad script markers in subtree HTML
+  if (/prebid|header.?bidding|googletag|adsbygoogle|__ads/i.test(outerHTML)) {
+    signals.push('ad-script');
+  }
+
+  return [...new Set(signals)]; // dedupe
+}
+
+// ─── Erase target quality scoring ───────────────────────────────────────────
+// Combines anchorability (how reliably FuzzyAnchor re-finds it) with erase
+// safety (is this scoped to unwanted content, or will it nuke real stuff?).
+// The highest ad-scoped container with a stable anchor wins.
+
+/**
+ * Check what fraction of an element's direct children look like ad infrastructure.
+ * Returns { adChildren, totalChildren, ratio }.
+ */
+function getSubtreeAdDensity(el) {
+  const children = Array.from(el.children);
+  // Skip trivial wrappers (0-1 children aren't meaningful for density)
+  if (children.length <= 1) {
+    // For single-child wrappers, check if the subtree as a whole smells like an ad
+    const hasAd = hasAdFingerprint(el) || el.querySelector('iframe') !== null ||
+                  _adKeywordPattern.test((el.innerHTML || '').slice(0, 1000));
+    return { adChildren: hasAd ? 1 : 0, totalChildren: 1, ratio: hasAd ? 1 : 0 };
+  }
+
+  let adCount = 0;
+  for (const child of children) {
+    // A child counts as "ad-related" if it or any of its subtree has ad fingerprints
+    if (hasAdFingerprint(child)) { adCount++; continue; }
+    // Check one level deeper for nested ad wrappers
+    if (child.querySelector('iframe, [data-freestar-ad], [data-ad-slot], [data-google-query-id]')) {
+      adCount++;
+      continue;
+    }
+    // Also check if child's id/class subtree matches ad patterns
+    const childHtml = (child.id || '') + ' ' + (child.className || '');
+    if (_adKeywordPattern.test(childHtml)) { adCount++; continue; }
+    // script and style tags inside ad containers are infrastructure, not content
+    if (child.tagName === 'SCRIPT' || child.tagName === 'STYLE' || child.tagName === 'LINK') {
+      adCount++;
+    }
+  }
+
+  return {
+    adChildren: adCount,
+    totalChildren: children.length,
+    ratio: children.length > 0 ? adCount / children.length : 0,
+  };
+}
+
+function getAnchorStrength(el) {
+  if (!window.FuzzyAnchor) return { score: 0, reasons: [] };
+
+  let score = 0;
+  const reasons = [];
+
+  // ── Anchorability signals (how findable is this element?) ──
+
+  // Stable unique ID (strongest signal)
+  if (el.id && /^[a-zA-Z][\w-]*$/.test(el.id)) {
+    try {
+      if (document.querySelectorAll('#' + CSS.escape(el.id)).length === 1) {
+        score += 35;
+        reasons.push('unique #id');
+      }
+    } catch { }
+  }
+
+  // Stable class combination
+  const stableClasses = Array.from(el.classList)
+    .filter(c => !c.startsWith('vellum-') && /^[a-zA-Z][\w-]*$/.test(c) && !window.FuzzyAnchor._autoClassPattern.test(c));
+  if (stableClasses.length > 0) {
+    const sel = el.tagName.toLowerCase() + '.' + stableClasses.map(c => CSS.escape(c)).join('.');
+    try {
+      const count = document.querySelectorAll(sel).length;
+      if (count === 1) { score += 25; reasons.push('unique class combo'); }
+      else if (count <= 3) { score += 12; reasons.push(`class combo (${count} matches)`); }
+    } catch { }
+  }
+
+  // Stable attributes
+  for (const attr of ['data-testid', 'data-id', 'role', 'name']) {
+    if (el.getAttribute(attr)) { score += 8; reasons.push(attr); break; }
+  }
+
+  // Parent has stable ID (structural anchor)
+  const parent = el.parentElement;
+  if (parent && parent.id && /^[a-zA-Z][\w-]*$/.test(parent.id)) {
+    score += 7;
+    reasons.push('parent has #id');
+  }
+
+  // ── Erase quality signals (is this the right thing to erase?) ──
+
+  const adSignals = detectAdSignals(el);
+
+  if (adSignals.length > 0) {
+    // Element itself has ad signals — good erase candidate
+    score += 10;
+    reasons.push('has ad signals');
+
+    // Check subtree: is this element scoped to ad content?
+    const density = getSubtreeAdDensity(el);
+    if (density.ratio >= 0.8) {
+      // Nearly all children are ad infrastructure — this IS the ad container
+      score += 15;
+      reasons.push(`ad-scoped (${density.adChildren}/${density.totalChildren})`);
+    } else if (density.ratio >= 0.5) {
+      // Mixed content — partial bonus, warn user
+      score += 5;
+      reasons.push(`mixed (${density.adChildren}/${density.totalChildren} ad)`);
+    }
+    // ratio < 0.5 → mostly real content with some ad children → no bonus
+  }
+
+  return { score: Math.min(100, score), reasons };
+}
+
+// ─── Better-target nudge ─────────────────────────────────────────────────────
+// Walk up the DOM looking for the highest parent that's still ad-scoped and
+// has a stronger anchor. Stops when a parent has too much non-ad content
+// (erasing it would be collateral damage).
+function findBetterTarget(el) {
+  let cur = el.parentElement;
+  const self = getAnchorStrength(el);
+  let stepsUp = 0;
+  let bestCandidate = null;
+
+  while (cur && cur !== document.body && cur !== document.documentElement && stepsUp < 6) {
+    stepsUp++;
+    if (isVellumElement(cur)) { cur = cur.parentElement; continue; }
+
+    const parentStrength = getAnchorStrength(cur);
+
+    // If parent has ad signals and is still ad-scoped, it could be a better target
+    const parentAdSignals = detectAdSignals(cur);
+    const parentDensity = getSubtreeAdDensity(cur);
+
+    if (parentStrength.score > self.score) {
+      // Parent is stronger — check if it's safe to erase
+      if (parentAdSignals.length > 0 && parentDensity.ratio >= 0.5) {
+        // Parent is ad-related and mostly ad content — good candidate
+        let label = cur.tagName.toLowerCase();
+        if (cur.id) label += '#' + cur.id;
+        else if (cur.classList.length) label += '.' + Array.from(cur.classList).slice(0, 2).join('.');
+        bestCandidate = { label, stepsUp, score: parentStrength.score };
+        // Keep walking — there might be an even better (higher) container
+      } else if (parentDensity.ratio < 0.5 && parentAdSignals.length === 0) {
+        // Parent is mostly real content — stop here, going higher is dangerous
+        break;
+      }
+    }
+    cur = cur.parentElement;
+  }
+  return bestCandidate;
+}
+
 function updateInspector(target) {
   if (!target) {
     inspectorPanel.style.display = 'none';
@@ -97,42 +307,76 @@ function updateInspector(target) {
     if (v) attrs.push(`${a}="${v}"`);
   }
 
+  // Anchor strength & ad signals
+  const anchor = getAnchorStrength(target);
+  const adSignals = detectAdSignals(target);
+  const betterTarget = findBetterTarget(target);
+
   // Build display
   const sColor = 'color:#c084fc';    // purple
   const dColor = 'color:#60a5fa';    // blue
   const gColor = 'color:#6ee7b7';    // green
   const mColor = 'color:#94a3b8';    // muted
   const wColor = 'color:#fbbf24';    // amber
+  const rColor = 'color:#f87171';    // red
 
   let html = '';
 
-  // Line 1: element signature
+  // Line 1: element signature + anchor strength bar
   html += `<span style="${sColor};font-weight:600">&lt;${tag}${escapeHtml(id)}&gt;</span>`;
   html += `  <span style="${mColor}">${Math.round(rect.width)}×${Math.round(rect.height)}px</span>`;
   html += `  <span style="${mColor}">depth ${depth}</span>`;
   html += `  <span style="${mColor}">${childCount} child${childCount !== 1 ? 'ren' : ''}</span>\n`;
 
-  // Line 2: classes
+  // Line 2: anchor strength
+  const barFull = 10;
+  const barFilled = Math.round((anchor.score / 100) * barFull);
+  const barColor = anchor.score >= 60 ? gColor : anchor.score >= 30 ? wColor : rColor;
+  const bar = '\u2588'.repeat(barFilled) + '\u2591'.repeat(barFull - barFilled);
+  html += `<span style="${barColor}">anc</span>  `;
+  html += `<span style="${barColor}">${bar} ${anchor.score}/100</span>`;
+  if (anchor.reasons.length > 0) {
+    html += `  <span style="${mColor}">${escapeHtml(anchor.reasons.join(', '))}</span>`;
+  }
+  html += '\n';
+
+  // Line 3: ad signal badges (only if any detected)
+  if (adSignals.length > 0) {
+    html += `<span style="${rColor}">sig</span>  `;
+    for (const s of adSignals) {
+      html += `<span style="background:rgba(239,68,68,0.18);color:#fca5a5;padding:0 4px;border-radius:3px;margin-right:4px">${escapeHtml(s)}</span>`;
+    }
+    html += '\n';
+  }
+
+  // Line 4: classes
   if (classes.length > 0) {
     html += `<span style="${dColor}">cls</span>  `;
     html += `<span style="${mColor}">${escapeHtml(classes.join('  '))}</span>\n`;
   }
 
-  // Line 3: stable attributes
+  // Line 5: stable attributes
   if (attrs.length > 0) {
     html += `<span style="${gColor}">attr</span> `;
     html += `<span style="${mColor}">${escapeHtml(attrs.join('  '))}</span>\n`;
   }
 
-  // Line 4: ancestor chain
+  // Line 6: ancestor chain
   html += `<span style="${wColor}">dom</span>  `;
   html += `<span style="${mColor}">${escapeHtml(chain.join('  ›  '))}</span>\n`;
 
-  // Line 5: CSS selector
+  // Line 7: CSS selector
   html += `<span style="${sColor}">sel</span>  `;
   html += `<span style="color:#f0abfc">${escapeHtml(selector)}</span>\n`;
 
-  // Line 6: traverse depth indicator
+  // Line 8: better target nudge (if available)
+  if (betterTarget) {
+    html += `<span style="${gColor}">  ▲  scroll up ${betterTarget.stepsUp}×  →  </span>`;
+    html += `<span style="${gColor};font-weight:600">&lt;${escapeHtml(betterTarget.label)}&gt;</span>`;
+    html += `  <span style="${gColor}">anchor ${betterTarget.score}/100</span>\n`;
+  }
+
+  // Line 9: traverse depth indicator
   html += `<span style="${mColor}">scroll ↑↓ to traverse  ·  depth offset: ${traverseDepth}</span>`;
 
   inspectorPanel.innerHTML = html;
