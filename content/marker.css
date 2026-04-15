@@ -61,3 +61,15 @@
   background: rgba(220, 38, 38, 1);
   transform: scale(1.15);
 }
+
+/* ── Text tool ───────────────────────────────────────────────────────────── */
+.vellum-text-content {
+  z-index: 2147483640;
+}
+
+.vellum-text-content[contenteditable="true"] {
+  outline: 1px dashed rgba(124, 58, 237, 0.5);
+  background: rgba(15, 15, 15, 0.05);
+  border-radius: 2px;
+  cursor: text;
+}

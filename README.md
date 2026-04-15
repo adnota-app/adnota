@@ -76,7 +76,7 @@ Wrapper around `chrome.storage.local`. All data is keyed by `hostname`, and each
 Methods: `saveItem`, `saveNote`, `deleteItem`, `getAnchorsForUrl`, `clearPage`.
 
 #### `lib/annotationState.js` — `window.VellumState`, `window.VellumUndo`
-**`VellumState`**: Single source of truth for active tool mode (`null` | `'eraser'` | `'sticky'` | `'highlight'` | `'pen'`) and active highlight color. Persists `vellumActiveMode` and `vellumHighlightColor` to storage for cross-component sync (popup reads these live). Subscriber pattern — all tools react to state changes without polling.
+**`VellumState`**: Single source of truth for active tool mode (`null` | `'eraser'` | `'sticky'` | `'highlight'` | `'pen'` | `'arrow'` | `'rect'` | `'ellipse'` | `'text'` | `'select'`), active highlight color, and stroke width. Persists `vellumActiveMode`, `vellumHighlightColor`, and `vellumStrokeWidth` to storage for cross-component sync (popup reads these live). Subscriber pattern — all tools react to state changes without polling.
 
 **`VellumUndo`**: Central undo stack shared by all tools. Pressing `Ctrl+Z` / `Cmd+Z` anywhere on the page pops and executes the most recent `{ undo: async fn }` entry, regardless of which tool created it.
 
@@ -129,16 +129,28 @@ Also exposes `generateCSSSelector(el)` as a shared utility (used by the resizer)
 
 #### `content/highlighter.js` — `window.VellumHighlighter`
 - Activated via popup or `Alt+H`
-- Inline toolbar (fixed, bottom-center) exposes two sub-modes and five colors
+- **Dark frosted-glass toolbar** (fixed, bottom-center, draggable) — matches eraser HUD aesthetic with `rgba(15,15,15,0.92)` background, `backdrop-filter: blur(8px)`, and purple accent border
+- **Toolbar layout**: drag handle → V logo chip → tool icons → color swatches → stroke width presets → undo button
+- **Seven tool buttons** (SVG icons with purple hover/active states):
+  - **Select** — click to select existing annotations; delete via red ✕ or Delete/Backspace key; double-click text to re-edit
+  - **Pencil** — freehand drawing (original pen mode)
+  - **Highlight** — text selection highlight via CSS Custom Highlights API
+  - **Arrow** — click-drag to draw straight arrows with SVG `<marker>` arrowheads
+  - **Rectangle** — click-drag to draw outlined rectangles
+  - **Circle** — click-drag to draw outlined ellipses
+  - **Text** — click to place editable text; Enter to commit, Shift+Enter for newline, Escape to cancel
+- **Five color swatches**: yellow, green, blue, pink, and **black (redaction)** — active swatch shows white border + purple ring
+- **Three stroke width presets**: thin (2px), medium (4px), thick (8px) — shown as graduated dots; also controls text font size (16px, 24px, 36px)
+- **Undo button**: triggers `VellumUndo.undo()` directly from the toolbar
+- **Draggable**: pointer-capture drag via handle (same pattern as eraser HUD); position resets when toolbar hides
 - **Highlight mode**: text selection applies color via the **CSS Custom Highlights API** (`CSS.highlights`, Chrome 105+) — zero DOM mutation, React/Vue safe
 - **Fallback**: for Shadow DOM / cross-boundary ranges, falls back to absolutely-positioned overlay divs with `mix-blend-mode: multiply`
 - **Five colors**: yellow, green, blue, pink, and **black (redaction)**
   - Pastel colors are semi-transparent (`rgba(..., 0.4)`) via `::highlight` CSS rules
   - **Black uses `color: #000; background-color: #000`** — fully opaque, text invisible underneath. Fallback path uses normal blend mode (not multiply) so the cover is solid
-- Persists last-chosen color to storage across sessions
+- Persists last-chosen color and stroke width to storage across sessions
 - Undo: removes range from CSS Highlights registry and deletes from storage
 - Schema stores: `text`, `occurrenceIndex`, `color`, `isFallback`, `fallbackRects`, `attachedNoteId` (reserved for future note cross-linking)
-- Swatch selection state: white inner ring + dark outer ring for all five swatches; black swatch has a hover tooltip describing its redaction purpose
 
 #### `content/resizer.js` — Element Resizer
 - Activated via popup tool card (no keyboard shortcut — Chrome limits extensions to 4)
@@ -159,14 +171,20 @@ Also exposes `generateCSSSelector(el)` as a shared utility (used by the resizer)
 - Storage action type: `RESIZE`
 
 #### `content/marker.js` — `window.VellumMarker`
-- Pen mode within the same toolbar as the highlighter
+- Full drawing engine powering pencil, arrow, rectangle, ellipse, text, and select tools
 - Transparent SVG canvas overlay captures pointer events across the full page while active
 - Toolbar-area clicks are explicitly guarded (both by DOM check and bounding box) to prevent strokes firing through the toolbar
-- **Ramer-Douglas-Peucker** path simplification (ε = 2.0) reduces point density before storage
-- **Arrow detection**: if stroke straightness ratio is 0.65–0.98, snaps to a clean bezier arrow with an SVG `<marker>` arrowhead
+- **Pencil tool**: freehand drawing with **Ramer-Douglas-Peucker** path simplification (ε = 2.0) to reduce point density before storage
+- **Arrow tool**: click-drag creates a straight line with SVG `<marker>` arrowhead; minimum distance threshold prevents accidental tiny arrows
+- **Rectangle tool**: click-drag creates an outlined `<rect>` with rounded corners; handles any drag direction (origin can be any corner)
+- **Ellipse tool**: click-drag creates an outlined `<ellipse>`; center is midpoint of drag, radii from extent
+- **Text tool**: click to place a `contentEditable` text box; Enter commits, Shift+Enter for newline, Escape cancels; font size derived from stroke width preset (thin=16px, medium=24px, thick=8=36px); rendered as HTML (not SVG `<text>`) for natural multi-line editing; double-click to re-edit existing text
+- **Select tool**: click near any marker/shape/text to select it (proper SVG `getBBox()` hit testing picks the smallest overlapping shape); dashed purple selection box with red ✕ delete button; Delete/Backspace key support; all deletes are undoable via `VellumUndo`
+- **Stroke width**: all tools read `VellumState.strokeWidth` (2, 4, or 8) for line thickness; persisted per stroke in storage
+- **Unified persistence**: all shapes stored as `MARKER` action with a `shapeType` field (`freehand`, `arrow`, `rect`, `ellipse`, `text`) — same anchor/restore pipeline via `renderMarker()`
 - Rendered markers re-anchor to their block element via `ResizeObserver` + scroll listener — no drift on long pages
 - **Five colors**: same palette as highlighter (yellow, green, blue, pink, black)
-- A tap with fewer than 3 points cancels the stroke and deactivates the tool
+- A tap with fewer than 3 points (pencil) or too-small drag (shapes) cancels the action
 
 #### `content/restorer.js`
 - Runs at `document_idle` and on `DOMContentLoaded`
@@ -185,7 +203,7 @@ Also exposes `generateCSSSelector(el)` as a shared utility (used by the resizer)
 
 #### `popup/index.html` + `popup/popup.js` + `popup/style.css`
 Premium dark-header popup (360px wide). Features:
-- **Tool cards** for Eraser, Sticky Note, Highlight & Pen, and Resizer — each with icon chip, shortcut badge (where available), and active-state indicator (colored border + pulsing dot) that syncs in real time via `storage.onChanged` (catches keyboard shortcuts fired while popup is open)
+- **Tool cards** for Eraser, Sticky Note, Drawing Palette (Highlight, Pen, Arrow, Rectangle, Circle, Text, Select), and Resizer — each with icon chip, shortcut badge (where available), and active-state indicator (colored border + pulsing dot) that syncs in real time via `storage.onChanged` (catches keyboard shortcuts fired while popup is open)
 - **Per-page stats** (Erased / Notes / Highlights / Resized / Strokes) — each stat card cross-fades to a trash icon on hover; clicking clears that category from the current page
 - **Show/Hide Changes button** (`Alt+V`) in the header — eye icon with a diagonal slash overlay when annotations are hidden. Reads live state via `get-view` message to the content script on open; optimistically toggles on click for instant UI response
 - **My Edited Sites** button in footer (purple outline) — opens the Sites history page
@@ -222,11 +240,15 @@ Dedicated extension page (opened as a new tab via `chrome.runtime.getURL`). Aggr
 |---|---|
 | `Alt+E` | Toggle Eraser |
 | `Alt+S` | Toggle Sticky Notes |
-| `Alt+H` | Toggle Highlight & Pen toolbar |
+| `Alt+H` | Toggle Drawing Palette toolbar |
 | `Alt+V` | Show / Hide all annotations |
 | `Ctrl+Z` / `Cmd+Z` | Undo last action (any tool) |
-| `Escape` | Deactivate active tool / deselect resizer element |
+| `Escape` | Deactivate active tool / deselect resizer element / cancel text input |
 | `Shift+Click` | (Eraser only) Domain-wide deletion |
+| `Enter` | (Text tool) Commit text |
+| `Shift+Enter` | (Text tool) Insert newline |
+| `Delete` / `Backspace` | (Select tool) Delete selected annotation |
+| `Double-click` | (Select/Text tool) Re-edit existing text annotation |
 | `Scroll Wheel` | (Eraser & Resizer) Walk up/down DOM tree to target parent or child elements |
 
 ---
