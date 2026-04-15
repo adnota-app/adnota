@@ -133,3 +133,6 @@ Apply add deletes to exact page OR domain OR just path etc.
 "Remove things like this" (#11, the "killer feature") — This is the most interesting idea in the whole list. After erasing one element, find        
 structurally similar siblings and offer bulk removal. This plays to FuzzyAnchor's strengths — you could score all siblings of the erased element's
 parent against the erased element's anchor and surface high-confidence matches. Worth prototyping.
+
+
+thin=16px, medium=24px, thick=36px - this works well for lines, but is too big for text.
