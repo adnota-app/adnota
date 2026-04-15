@@ -412,6 +412,250 @@ async function handleEllipseUp(e) {
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
+// TEXT TOOL
+// ═════════════════════════════════════════════════════════════════════════════
+
+const _textFontSizes = { 2: 16, 4: 24, 8: 36 };
+let activeTextEditor = null; // the currently open editable text element
+
+function getTextFontSize() {
+  return _textFontSizes[window.VellumState.strokeWidth] || 24;
+}
+
+function commitActiveText() {
+  if (!activeTextEditor) return;
+  const editor = activeTextEditor;
+  activeTextEditor = null;
+
+  const text = editor.el.textContent.trim();
+  if (!text) {
+    // Empty — discard
+    if (editor.wrapper) editor.wrapper.remove();
+    return;
+  }
+
+  // Finalize: make non-editable, save to storage
+  editor.el.contentEditable = 'false';
+  editor.el.style.cursor = 'default';
+  editor.el.style.outline = 'none';
+  editor.el.style.minWidth = '';
+  editor.el.blur();
+
+  const blockElement = editor.blockElement;
+  const box = blockElement.getBoundingClientRect();
+  const elRect = editor.el.getBoundingClientRect();
+
+  // If this is an edit of an existing text, update payload in place
+  if (editor.isEdit && editor.wrapper._vellumPayload) {
+    const payload = editor.wrapper._vellumPayload;
+    payload.text = text;
+    // Re-save
+    if (window.VellumStorage) {
+      window.VellumStorage.deleteItem(location.hostname, 'uuid', payload.uuid).then(() => {
+        window.VellumStorage.saveItem(location.hostname, location.pathname, payload);
+      });
+    }
+    return;
+  }
+
+  const anchor = window.FuzzyAnchor.generate(blockElement);
+  const _id = Date.now() + Math.random().toString();
+
+  const payload = {
+    anchor, _id,
+    action: 'MARKER',
+    uuid: _id,
+    shapeType: 'text',
+    text: text,
+    textPos: {
+      x: parseFloat(((editor.screenX - box.left) / box.width * 100).toFixed(2)),
+      y: parseFloat(((editor.screenY - box.top) / box.height * 100).toFixed(2)),
+    },
+    color: editor.color,
+    fontSize: editor.fontSize,
+    strokeWidth: window.VellumState.strokeWidth
+  };
+
+  // Remove the live-editing wrapper and re-render via renderMarker for proper sync
+  editor.wrapper.remove();
+  saveMarkerPayload(blockElement, payload);
+}
+
+function handleTextClick(e) {
+  if (window.VellumState.mode !== 'text') return;
+  if (isToolbarHit(e)) return;
+  if (e.target.closest('.vellum-select-box')) return;
+  if (e.target.closest('[data-vellum-ui]')) return;
+
+  // If clicking on an existing text marker, start editing it instead
+  const existingText = e.target.closest('.vellum-text-content');
+  if (existingText) return; // let dblclick handle editing
+
+  // Commit any active editor first
+  commitActiveText();
+
+  e.preventDefault();
+  e.stopPropagation();
+
+  const screenX = e.clientX;
+  const screenY = e.clientY;
+
+  // Find anchor block
+  let targetNode = document.elementFromPoint(screenX, screenY);
+  if (!targetNode || targetNode.nodeType !== Node.ELEMENT_NODE) targetNode = document.body;
+  // Skip Vellum UI elements
+  if (targetNode.closest('[data-vellum-ui]') || targetNode.closest('#vellum-highlighter-widget')) {
+    targetNode = document.body;
+  }
+  const blockElement = targetNode.closest('p, div, section, article, main, li, h1, h2, h3, h4, td') || document.body;
+
+  const color = getStrokeColor();
+  const fontSize = getTextFontSize();
+
+  // Create a temporary wrapper for live editing — pin to document origin
+  // so the textEl's absolute coordinates work correctly.
+  const wrapper = document.createElement('div');
+  wrapper.className = 'vellum-marker-wrapper vellum-text-wrapper';
+  wrapper.setAttribute('data-vellum-ui', '1');
+  wrapper.style.pointerEvents = 'auto';
+  wrapper.style.top = '0';
+  wrapper.style.left = '0';
+  wrapper.style.width = '100%';
+  wrapper.style.height = '0';
+
+  const textEl = document.createElement('div');
+  textEl.className = 'vellum-text-content';
+  textEl.contentEditable = 'true';
+  textEl.spellcheck = false;
+  Object.assign(textEl.style, {
+    position: 'absolute',
+    left: screenX + 'px',
+    top: (screenY + window.pageYOffset) + 'px',
+    color: color,
+    fontSize: fontSize + 'px',
+    fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+    fontWeight: '500',
+    lineHeight: '1.3',
+    minWidth: '20px',
+    padding: '2px 4px',
+    outline: '1px dashed rgba(124, 58, 237, 0.5)',
+    background: 'rgba(15, 15, 15, 0.05)',
+    borderRadius: '2px',
+    cursor: 'text',
+    whiteSpace: 'pre-wrap',
+    wordBreak: 'break-word',
+    maxWidth: '400px',
+    zIndex: '2147483644',
+  });
+  wrapper.appendChild(textEl);
+  document.documentElement.appendChild(wrapper);
+
+  // Focus the editor
+  textEl.focus();
+
+  activeTextEditor = {
+    el: textEl,
+    wrapper: wrapper,
+    blockElement: blockElement,
+    screenX: screenX,
+    screenY: screenY,
+    color: color,
+    fontSize: fontSize,
+    isEdit: false,
+  };
+
+  // Commit on blur (clicking away)
+  textEl.addEventListener('blur', () => {
+    // Small delay to avoid race with other click handlers
+    setTimeout(() => {
+      if (activeTextEditor && activeTextEditor.el === textEl) {
+        commitActiveText();
+      }
+    }, 100);
+  });
+
+  // Commit on Enter (Shift+Enter for newline), Escape to cancel
+  textEl.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      textEl.textContent = '';
+      commitActiveText(); // will discard empty
+    } else if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      commitActiveText();
+    }
+    // Stop propagation so Ctrl+Z doesn't trigger VellumUndo while typing
+    e.stopPropagation();
+  });
+}
+
+// Double-click to edit existing text (works in both text and select modes)
+function handleTextDblClick(e) {
+  if (window.VellumState.mode !== 'select' && window.VellumState.mode !== 'text') return;
+
+  const textContent = e.target.closest('.vellum-text-content');
+  if (!textContent) return;
+
+  const wrapper = textContent.closest('.vellum-marker-wrapper');
+  if (!wrapper || !wrapper._vellumPayload) return;
+
+  e.preventDefault();
+  e.stopPropagation();
+
+  // Clear select UI if active
+  clearSelection();
+
+  // Commit any active editor first
+  commitActiveText();
+
+  // Make editable
+  textContent.contentEditable = 'true';
+  textContent.style.cursor = 'text';
+  textContent.style.outline = '1px dashed rgba(124, 58, 237, 0.5)';
+  textContent.style.minWidth = '20px';
+  wrapper.style.pointerEvents = 'auto';
+  textContent.focus();
+
+  // Select all text for easy replacement
+  const range = document.createRange();
+  range.selectNodeContents(textContent);
+  const sel = window.getSelection();
+  sel.removeAllRanges();
+  sel.addRange(range);
+
+  activeTextEditor = {
+    el: textContent,
+    wrapper: wrapper,
+    blockElement: wrapper._vellumAnchorElement || document.body,
+    screenX: 0, screenY: 0, // not needed for edits
+    color: wrapper._vellumPayload.color,
+    fontSize: wrapper._vellumPayload.fontSize,
+    isEdit: true,
+  };
+
+  textContent.addEventListener('blur', () => {
+    setTimeout(() => {
+      if (activeTextEditor && activeTextEditor.el === textContent) {
+        commitActiveText();
+      }
+    }, 100);
+  }, { once: true });
+
+  textContent.addEventListener('keydown', (ev) => {
+    if (ev.key === 'Escape') {
+      ev.preventDefault();
+      // Restore original text on cancel
+      textContent.textContent = wrapper._vellumPayload.text;
+      commitActiveText();
+    } else if (ev.key === 'Enter' && !ev.shiftKey) {
+      ev.preventDefault();
+      commitActiveText();
+    }
+    ev.stopPropagation();
+  });
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
 // UNIFIED POINTER HANDLERS — dispatch to the active tool
 // ═════════════════════════════════════════════════════════════════════════════
 
@@ -464,13 +708,69 @@ window.VellumMarker = {
   renderMarker: function (anchorElement, payload) {
     const shapeType = payload.shapeType || (payload.isArrow ? 'arrow' : 'freehand');
 
-    // Freehand and arrow use drawing array; rect and ellipse use shape object
+    // Validate payload per shape type
     if ((shapeType === 'freehand' || shapeType === 'arrow') && (!payload.drawing || !Array.isArray(payload.drawing))) return;
     if ((shapeType === 'rect' || shapeType === 'ellipse') && !payload.shape) return;
+    if (shapeType === 'text' && !payload.text) return;
 
     const existing = document.querySelector(`.vellum-marker-wrapper[data-uuid="${payload.uuid}"]`);
     if (existing) return;
 
+    // ── TEXT SHAPE — uses HTML, not SVG ──────────────────────────────────
+    if (shapeType === 'text') {
+      const wrapper = document.createElement('div');
+      wrapper.className = 'vellum-marker-wrapper';
+      wrapper.dataset.uuid = payload.uuid;
+      wrapper.dataset.shapeType = 'text';
+      wrapper.style.display = areMarkersVisible ? 'block' : 'none';
+      // Pin to document origin so textEl absolute coords work correctly
+      wrapper.style.top = '0';
+      wrapper.style.left = '0';
+      wrapper.style.width = '0';
+      wrapper.style.height = '0';
+      wrapper.style.overflow = 'visible';
+
+      const textEl = document.createElement('div');
+      textEl.className = 'vellum-text-content';
+      textEl.textContent = payload.text;
+      Object.assign(textEl.style, {
+        position: 'absolute',
+        color: payload.color || '#fbc02d',
+        fontSize: (payload.fontSize || 24) + 'px',
+        fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+        fontWeight: '500',
+        lineHeight: '1.3',
+        padding: '2px 4px',
+        whiteSpace: 'pre-wrap',
+        wordBreak: 'break-word',
+        maxWidth: '400px',
+        width: 'max-content',
+        cursor: 'default',
+        userSelect: 'none',
+      });
+      wrapper.appendChild(textEl);
+      wrapper._vellumPayload = payload;
+      wrapper._vellumAnchorElement = anchorElement;
+      document.documentElement.appendChild(wrapper);
+
+      function syncTextPos() {
+        if (!wrapper.parentNode) return;
+        const rect = anchorElement.getBoundingClientRect();
+        const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+        const scrollLeft = window.pageXOffset || document.documentElement.scrollLeft;
+        textEl.style.left = (rect.left + scrollLeft + (payload.textPos.x / 100) * rect.width) + 'px';
+        textEl.style.top = (rect.top + scrollTop + (payload.textPos.y / 100) * rect.height) + 'px';
+      }
+
+      syncTextPos();
+      window.addEventListener('resize', syncTextPos);
+      window.addEventListener('scroll', syncTextPos, { passive: true });
+      const observer = new ResizeObserver(() => syncTextPos());
+      observer.observe(anchorElement);
+      return;
+    }
+
+    // ── SVG SHAPES (freehand, arrow, rect, ellipse) ─────────────────────
     const wrapper = document.createElement('div');
     wrapper.className = 'vellum-marker-wrapper';
     wrapper.dataset.uuid = payload.uuid;
@@ -526,6 +826,8 @@ window.VellumMarker = {
 
     svg.appendChild(shapeEl);
     wrapper.appendChild(svg);
+    // Stash payload for select-tool undo (re-save after delete)
+    wrapper._vellumPayload = payload;
     document.documentElement.appendChild(wrapper);
 
     function syncBounds() {
@@ -583,14 +885,96 @@ window.VellumMarker = {
 
 let selectedWrapper = null;
 let selectBox = null;
-let selectDragState = null;
 
 function clearSelection() {
   if (selectBox) {
+    if (selectBox._cleanup) selectBox._cleanup();
     selectBox.remove();
     selectBox = null;
   }
   selectedWrapper = null;
+}
+
+// Get the tight bounding box of the actual SVG shape content within a wrapper,
+// returned in screen (viewport) coordinates.
+function getShapeBBox(wrapper) {
+  // Text wrappers have no SVG — use the text content element directly
+  const textContent = wrapper.querySelector('.vellum-text-content');
+  if (textContent) {
+    const r = textContent.getBoundingClientRect();
+    const pad = 4;
+    return { top: r.top - pad, left: r.left - pad, width: r.width + pad * 2, height: r.height + pad * 2 };
+  }
+
+  const svg = wrapper.querySelector('svg');
+  if (!svg) return wrapper.getBoundingClientRect();
+
+  // Find the actual shape element (path, rect, ellipse, line) — skip <defs>
+  const shapeEl = svg.querySelector('path, rect, ellipse, line, circle');
+  if (!shapeEl) return wrapper.getBoundingClientRect();
+
+  try {
+    const bbox = shapeEl.getBBox();
+    // getBBox returns coordinates in SVG-local space. The SVG fills the wrapper
+    // 1:1 (no viewBox transform), and the wrapper is absolutely positioned on the
+    // page. Convert bbox to screen coords via the wrapper's position.
+    const wrapperRect = wrapper.getBoundingClientRect();
+    const svgRect = svg.getBoundingClientRect();
+    // SVG local coords map directly to the SVG element's client rect since there's
+    // no viewBox (SVG uses default viewport = element size).
+    const scaleX = svgRect.width / (svg.clientWidth || svgRect.width || 1);
+    const scaleY = svgRect.height / (svg.clientHeight || svgRect.height || 1);
+
+    const sw = parseFloat(shapeEl.getAttribute('stroke-width') || '4');
+    const pad = sw / 2 + 4; // padding for stroke + comfort margin
+
+    return {
+      top:    svgRect.top + bbox.y * scaleY - pad,
+      left:   svgRect.left + bbox.x * scaleX - pad,
+      width:  bbox.width * scaleX + pad * 2,
+      height: bbox.height * scaleY + pad * 2,
+    };
+  } catch {
+    return wrapper.getBoundingClientRect();
+  }
+}
+
+// Hit-test: is a screen point close to the actual shape content?
+function isPointNearShape(wrapper, screenX, screenY) {
+  const bbox = getShapeBBox(wrapper);
+  // Generous hit area — 12px tolerance around the tight bounding box
+  const tolerance = 12;
+  return (
+    screenX >= bbox.left - tolerance &&
+    screenX <= bbox.left + bbox.width + tolerance &&
+    screenY >= bbox.top - tolerance &&
+    screenY <= bbox.top + bbox.height + tolerance
+  );
+}
+
+// Undoable delete: hides the element, removes from storage, pushes undo to restore both.
+async function deleteSelectedMarker(wrapper) {
+  const uuid = wrapper.dataset.uuid;
+  const payload = wrapper._vellumPayload;
+
+  // Hide immediately
+  wrapper.style.display = 'none';
+  clearSelection();
+
+  // Delete from storage
+  if (window.VellumStorage) {
+    await window.VellumStorage.deleteItem(location.hostname, 'uuid', uuid);
+  }
+
+  // Push undo: re-show the wrapper and re-save to storage
+  window.VellumUndo.push({
+    undo: async () => {
+      wrapper.style.display = '';
+      if (window.VellumStorage && payload) {
+        await window.VellumStorage.saveItem(location.hostname, location.pathname, payload);
+      }
+    }
+  });
 }
 
 function showSelectionUI(wrapper) {
@@ -608,12 +992,7 @@ function showSelectionUI(wrapper) {
   delBtn.title = 'Delete';
   delBtn.onclick = async (e) => {
     e.stopPropagation();
-    const uuid = wrapper.dataset.uuid;
-    wrapper.remove();
-    clearSelection();
-    if (window.VellumStorage) {
-      await window.VellumStorage.deleteItem(location.hostname, 'uuid', uuid);
-    }
+    await deleteSelectedMarker(wrapper);
   };
   selectBox.appendChild(delBtn);
 
@@ -624,13 +1003,13 @@ function showSelectionUI(wrapper) {
       clearSelection();
       return;
     }
-    const r = selectedWrapper.getBoundingClientRect();
+    const bbox = getShapeBBox(selectedWrapper);
     Object.assign(selectBox.style, {
       position: 'fixed',
-      top: (r.top - 2) + 'px',
-      left: (r.left - 2) + 'px',
-      width: (r.width + 4) + 'px',
-      height: (r.height + 4) + 'px',
+      top: bbox.top + 'px',
+      left: bbox.left + 'px',
+      width: bbox.width + 'px',
+      height: bbox.height + 'px',
     });
   }
 
@@ -638,7 +1017,6 @@ function showSelectionUI(wrapper) {
   window.addEventListener('scroll', syncSelectBox, { passive: true });
   window.addEventListener('resize', syncSelectBox);
 
-  // Store cleanup refs on the selectBox for later removal
   selectBox._cleanup = () => {
     window.removeEventListener('scroll', syncSelectBox);
     window.removeEventListener('resize', syncSelectBox);
@@ -649,15 +1027,30 @@ function handleSelectClick(e) {
   if (window.VellumState.mode !== 'select') return;
   if (isToolbarHit(e)) return;
 
-  // Find a marker wrapper at click point
-  const els = document.elementsFromPoint(e.clientX, e.clientY);
-  const wrapper = els.find(el => el.classList.contains('vellum-marker-wrapper'));
+  // Don't deselect when clicking the select box itself
+  if (e.target.closest('.vellum-select-box')) return;
 
-  if (wrapper) {
+  // Hit-test all marker wrappers against click point, pick the closest (smallest bbox)
+  const wrappers = document.querySelectorAll('.vellum-marker-wrapper');
+  let bestWrapper = null;
+  let bestArea = Infinity;
+
+  for (const wrapper of wrappers) {
+    if (wrapper.style.display === 'none') continue;
+    if (!isPointNearShape(wrapper, e.clientX, e.clientY)) continue;
+    const bbox = getShapeBBox(wrapper);
+    const area = bbox.width * bbox.height;
+    if (area < bestArea) {
+      bestArea = area;
+      bestWrapper = wrapper;
+    }
+  }
+
+  if (bestWrapper) {
     e.preventDefault();
     e.stopPropagation();
-    showSelectionUI(wrapper);
-  } else if (!e.target.closest('.vellum-select-box')) {
+    showSelectionUI(bestWrapper);
+  } else {
     clearSelection();
   }
 }
@@ -667,12 +1060,7 @@ document.addEventListener('keydown', (e) => {
   if (!selectedWrapper || window.VellumState.mode !== 'select') return;
   if (e.key === 'Delete' || e.key === 'Backspace') {
     e.preventDefault();
-    const uuid = selectedWrapper.dataset.uuid;
-    selectedWrapper.remove();
-    clearSelection();
-    if (window.VellumStorage) {
-      window.VellumStorage.deleteItem(location.hostname, 'uuid', uuid);
-    }
+    deleteSelectedMarker(selectedWrapper);
   }
 });
 
@@ -696,9 +1084,16 @@ initCaptureOverlay();
 
 // Select tool click handler (on document, not on overlay — select doesn't use the overlay)
 document.addEventListener('click', handleSelectClick, true);
+// Text tool click handler
+document.addEventListener('click', handleTextClick, true);
+// Double-click to edit text (works in select and text modes)
+document.addEventListener('dblclick', handleTextDblClick, true);
 
 // VellumState Subscription
 window.VellumState.subscribe(state => {
+  // Commit any in-progress text when switching modes
+  if (activeTextEditor) commitActiveText();
+
   const isOverlayActive = state.isVisible && _overlayModes.has(state.mode);
 
   if (isOverlayActive) {
@@ -713,9 +1108,10 @@ window.VellumState.subscribe(state => {
     shapeOrigin = null;
   }
 
-  // Select mode: make marker wrappers clickable; otherwise keep them non-interactive
+  // Select and text modes: make marker wrappers clickable for hit testing
+  const interactive = state.mode === 'select' || state.mode === 'text';
   document.querySelectorAll('.vellum-marker-wrapper').forEach(el => {
-    el.style.pointerEvents = state.mode === 'select' ? 'auto' : 'none';
+    el.style.pointerEvents = interactive ? 'auto' : 'none';
   });
 
   // Clear selection when leaving select mode

@@ -23,6 +23,7 @@ const toolIcons = {
   arrow:     '<path d="M5 15L15 5"/><path d="M15 5H9M15 5v6"/>',
   rect:      '<rect x="4" y="5" width="12" height="10" rx="1"/>',
   ellipse:   '<ellipse cx="10" cy="10" rx="7" ry="5"/>',
+  text:      '<text x="4" y="15" font-size="14" font-weight="700" font-family="serif" fill="currentColor" stroke="none">T</text>',
   undo:      '<path d="M4 8h10a3 3 0 010 6H10"/><path d="M7 5L4 8l3 3"/>',
 };
 
@@ -74,13 +75,13 @@ highlightToolbar.appendChild(logoChip);
 highlightToolbar.appendChild(Object.assign(document.createElement('div'), { className: 'vellum-toolbar-divider' }));
 
 // Tool buttons — drawing sub-tools are all "pen-family" modes that share the SVG overlay
-const drawingModes = ['pen', 'highlight', 'arrow', 'rect', 'ellipse', 'select'];
-const toolLabels = { pen: 'Pencil', highlight: 'Highlight', arrow: 'Arrow', rect: 'Rectangle', ellipse: 'Circle', select: 'Select' };
-const toolIconMap = { pen: 'pencil', highlight: 'highlight', arrow: 'arrow', rect: 'rect', ellipse: 'ellipse', select: 'select' };
+const drawingModes = ['pen', 'highlight', 'arrow', 'rect', 'ellipse', 'text', 'select'];
+const toolLabels = { pen: 'Pencil', highlight: 'Highlight', arrow: 'Arrow', rect: 'Rectangle', ellipse: 'Circle', text: 'Text', select: 'Select' };
+const toolIconMap = { pen: 'pencil', highlight: 'highlight', arrow: 'arrow', rect: 'rect', ellipse: 'ellipse', text: 'text', select: 'select' };
 const toolBtns = {};
 
 // select goes first
-for (const mode of ['select', 'pen', 'highlight', 'arrow', 'rect', 'ellipse']) {
+for (const mode of ['select', 'pen', 'highlight', 'arrow', 'rect', 'ellipse', 'text']) {
   const btn = makeToolBtn(toolIconMap[mode], toolLabels[mode], mode);
   toolBtns[mode] = btn;
   highlightToolbar.appendChild(btn);
@@ -191,7 +192,7 @@ highlightToolbar.addEventListener('pointerup', (e) => {
 });
 
 // All drawing-family modes that show this toolbar
-const _drawingModes = new Set(['pen', 'highlight', 'arrow', 'rect', 'ellipse', 'select']);
+const _drawingModes = new Set(['pen', 'highlight', 'arrow', 'rect', 'ellipse', 'text', 'select']);
 
 // Global VellumState Subscription — single place that owns cursor and toolbar state
 // for ALL modes. Eraser and sticky manage their own overlays but delegate cursor here.
@@ -212,6 +213,7 @@ window.VellumState.subscribe(state => {
   switch (state.mode) {
     case 'highlight': document.body.style.cursor = 'text'; break;
     case 'select': document.body.style.cursor = 'default'; break;
+    case 'text': document.body.style.cursor = 'text'; break;
     case 'pen':
     case 'arrow':
     case 'rect':
