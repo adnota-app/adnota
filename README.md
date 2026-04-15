@@ -101,6 +101,13 @@ Also exposes `generateCSSSelector(el)` as a shared utility (used by the resizer)
 #### `content/eraser.js`
 - Activated via popup or `Alt+E` keyboard shortcut
 - Red outline hover preview tracks the cursor; Vellum's own UI elements are guarded and invisible to the eraser
+- **Dimension badge**: small `W×H` pixel label in the top-right corner of the red hover outline — useful for gauging element size, especially when parts extend off-screen
+- **HUD strip**: fixed bottom-center bar (draggable) that provides live contextual guidance while hovering:
+  - **Confidence score** with contextual label — "likely ad" (red, when ad signals detected), "strong anchor" (green, ≥70), "moderate" (amber, ≥40), "weak anchor" (red, <40)
+  - **Ad signal badges** — colored pills (e.g., `ad-keyword`, `iframe`, `ad-network`) shown when detected
+  - **Scroll nudge** — "▲ Scroll up N× for better target" shown when `findBetterTarget()` identifies a higher parent with a stronger anchor score
+  - **Rotating help tips** — cycles every 4s with crossfade: click scope (page vs domain), scroll traversal, Escape to exit
+  - **Draggable** — grab handle + pointer capture drag; position resets on mode exit
 - **Scroll-wheel DOM traversal**: while hovering, scroll up to walk to the parent element, scroll down to walk back toward children — no minimum size filter (unlike resizer), so small elements like links and icons can be erased too
 - Click to erase: fires a 3-stage animation sequence (ripples → bounding-box flash → dissolve) then hard-hides the element with `display: none !important`
 - `Shift+Click` for domain-wide erasure (stored with `path: '*'`)
