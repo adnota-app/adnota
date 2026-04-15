@@ -73,13 +73,15 @@
         "content/highlighter.js",
         "content/marker.js",
         "content/resizer.js",
-        "content/restorer.js"
+        "content/restorer.js",
+        "content/radialMenu.js"
       ],
       "css": [
         "content/sticky.css",
         "content/marker.css",
         "content/highlighter.css",
-        "content/resizer.css"
+        "content/resizer.css",
+        "content/radialMenu.css"
       ],
       "run_at": "document_idle"
     }

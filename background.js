@@ -69,3 +69,24 @@ chrome.commands.onCommand.addListener((command, tab) => {
     });
   }
 });
+
+// ─── Radial menu message relay ───────────────────────────────────────────────
+// Content scripts can't send messages to themselves via chrome.tabs.sendMessage,
+// so the radial menu sends to the background which relays back to the same tab.
+
+chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+  if (msg.action === 'open-sites') {
+    chrome.tabs.create({ url: chrome.runtime.getURL('pages/sites.html') });
+    return;
+  }
+
+  if (msg.action === 'relay-toggle-view' && sender.tab?.id) {
+    chrome.tabs.sendMessage(sender.tab.id, { action: 'toggle-view' }).catch(() => {});
+    return;
+  }
+
+  if (msg.action === 'relay-to-tab' && sender.tab?.id && msg.payload?.action) {
+    chrome.tabs.sendMessage(sender.tab.id, { action: msg.payload.action }).catch(() => {});
+    return;
+  }
+});
