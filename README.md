@@ -59,7 +59,7 @@ Vellum is a Manifest V3 Chrome Extension built around a single core idea: **your
 MV3 manifest. Permissions: `storage`, `activeTab`, `scripting`, `tabs`. Host permissions: `*://*/*`. Declares keyboard commands for all four tools (Alt+E, Alt+S, Alt+H, Alt+V). Declares `web_accessible_resources` for the `pages/` directory (Sites history page).
 
 #### `background.js`
-Minimal service worker. Routes keyboard command events from the browser to the active tab's content scripts via `chrome.tabs.sendMessage`.
+Minimal service worker. Routes keyboard command events from the browser to the active tab's content scripts via `chrome.tabs.sendMessage`. Also relays messages from the radial quick-access menu (content scripts can't `sendMessage` to their own tab): `open-sites`, `relay-toggle-view`, and `relay-to-tab`.
 
 ---
 
@@ -208,6 +208,22 @@ Premium dark-header popup (360px wide). Features:
 - **Show/Hide Changes button** (`Alt+V`) in the header — eye icon with a diagonal slash overlay when annotations are hidden. Reads live state via `get-view` message to the content script on open; optimistically toggles on click for instant UI response
 - **My Edited Sites** button in footer (purple outline) — opens the Sites history page
 - **Clear All Page Edits** button in footer (red outline)
+
+#### `content/radialMenu.js` + `content/radialMenu.css` — Radial Quick-Access Menu
+Animated floating widget (fixed bottom-left) that provides one-click access to all tools without opening the popup:
+- **Center button**: branded "V" monogram circle (34px, frosted dark glass matching HUD aesthetic) — hover or click to expand
+- **Six satellite buttons** fan out in a radial arc (−40° to 120°, 58px radius) with staggered spring animation:
+  - **Show / Hide All** (purple) — toggles annotation visibility, icon swaps between eye/eye-off
+  - **Eraser** (red) — toggles eraser mode
+  - **Sticky Note** (amber) — toggles sticky note mode
+  - **Drawing Palette** (purple) — toggles highlighter/marker toolbar
+  - **Resizer** (blue) — toggles resizer mode
+  - **My Edited Sites** (green) — opens the Sites history page in a new tab
+- **Active tool sync**: satellite borders glow with their accent color when the corresponding tool is active, synced via `VellumState.subscribe()` and `storage.onChanged`
+- **Collapse behavior**: clicking any satellite collapses immediately; mousing away auto-collapses after 1.5s with reverse-staggered animation
+- **Tooltips**: appear to the right on satellite hover
+- Invisible circular hit-zone prevents accidental collapse when moving between buttons
+- All elements marked `data-vellum-ui` so eraser/resizer ignore them
 
 #### `pages/sites.html` + `pages/sites.js` + `pages/sites.css`
 Dedicated extension page (opened as a new tab via `chrome.runtime.getURL`). Aggregates all `chrome.storage.local` data and renders a browseable history of every site Vellum has touched:
