@@ -20,61 +20,211 @@
   color: #000 !important;
 }
 
-/* Fallback/UI elements if we add a color picker widget later */
+/* ── Dark toolbar (matches eraser HUD aesthetic) ─────────────────────────── */
 #vellum-highlighter-widget {
-  position: absolute;
-  z-index: 2147483646; /* One below max — toast always renders on top */
-  background: white;
-  border-radius: 8px;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+  position: fixed;
+  z-index: 2147483646;
+  background: rgba(15, 15, 15, 0.92);
+  backdrop-filter: blur(8px);
+  border-radius: 10px;
+  border: 1px solid rgba(124, 58, 237, 0.45);
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.5);
   display: flex;
-  gap: 8px;
-  padding: 8px;
+  align-items: center;
+  gap: 0;
+  padding: 6px 10px;
   pointer-events: auto;
+  cursor: default;
+  white-space: nowrap;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-size: 12.5px;
+  line-height: 1;
+  color: #e4e4e7;
 }
 
-.vellum-color-swatch {
-  width: 24px;
-  height: 24px;
-  border-radius: 50%;
-  cursor: pointer;
-  border: 2px solid transparent;
-  transition: transform 0.2s;
-}
-
-.vellum-color-swatch:hover {
-  transform: scale(1.1);
-}
-
-.vellum-color-swatch.active {
-  border-color: #fff;
-  box-shadow: 0 0 0 2px #333;
-}
-
-
-.vellum-mode-btn {
-  padding: 4px 8px;
-  font-family: system-ui, -apple-system, sans-serif;
-  font-size: 13px;
-  font-weight: 500;
-  color: #666;
-  cursor: pointer;
-  border-bottom: 2px solid transparent;
-  transition: all 0.2s;
+/* ── Drag handle ─────────────────────────────────────────────────────────── */
+.vellum-toolbar-drag {
+  color: #525264;
+  font-size: 10px;
+  letter-spacing: 1px;
+  cursor: grab;
+  margin-right: 6px;
   user-select: none;
 }
 
-.vellum-mode-btn:hover {
-  color: #333;
+.vellum-toolbar-drag:active {
+  cursor: grabbing;
 }
 
-.vellum-mode-btn.active {
-  color: #000;
-  border-bottom-color: #000;
+/* ── Logo chip ───────────────────────────────────────────────────────────── */
+.vellum-toolbar-logo {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: rgba(124, 58, 237, 0.35);
+  color: #c084fc;
+  font-weight: 700;
+  font-size: 10px;
+  margin-right: 8px;
+  flex-shrink: 0;
 }
 
+/* ── Divider ─────────────────────────────────────────────────────────────── */
 .vellum-toolbar-divider {
   width: 1px;
-  background: #eee;
-  margin: 0 4px;
+  height: 18px;
+  background: rgba(124, 58, 237, 0.25);
+  margin: 0 8px;
+  flex-shrink: 0;
+}
+
+/* ── Tool buttons (icon-based) ───────────────────────────────────────────── */
+.vellum-tool-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.15s, box-shadow 0.15s;
+  user-select: none;
+  flex-shrink: 0;
+  position: relative;
+}
+
+.vellum-tool-btn svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: #94a3b8;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  transition: stroke 0.15s;
+}
+
+.vellum-tool-btn:hover {
+  background: rgba(124, 58, 237, 0.15);
+}
+
+.vellum-tool-btn:hover svg {
+  stroke: #c084fc;
+}
+
+.vellum-tool-btn.active {
+  background: rgba(124, 58, 237, 0.25);
+  box-shadow: 0 0 0 1px rgba(124, 58, 237, 0.5);
+}
+
+.vellum-tool-btn.active svg {
+  stroke: #c084fc;
+}
+
+.vellum-tool-btn[title]:hover::after {
+  content: attr(title);
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(15, 15, 15, 0.95);
+  color: #e4e4e7;
+  font-size: 11px;
+  font-weight: 500;
+  padding: 3px 8px;
+  border-radius: 4px;
+  white-space: nowrap;
+  pointer-events: none;
+  border: 1px solid rgba(124, 58, 237, 0.3);
+}
+
+/* ── Color swatches ──────────────────────────────────────────────────────── */
+.vellum-color-swatch {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  cursor: pointer;
+  border: 2px solid transparent;
+  transition: transform 0.15s, box-shadow 0.15s;
+  margin: 0 2px;
+  flex-shrink: 0;
+}
+
+.vellum-color-swatch:hover {
+  transform: scale(1.15);
+}
+
+.vellum-color-swatch.active {
+  border-color: rgba(255, 255, 255, 0.7);
+  box-shadow: 0 0 0 2px rgba(124, 58, 237, 0.6);
+}
+
+/* ── Stroke width buttons ────────────────────────────────────────────────── */
+.vellum-stroke-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 5px;
+  cursor: pointer;
+  transition: background 0.15s;
+  flex-shrink: 0;
+}
+
+.vellum-stroke-btn:hover {
+  background: rgba(124, 58, 237, 0.15);
+}
+
+.vellum-stroke-btn.active {
+  background: rgba(124, 58, 237, 0.25);
+}
+
+.vellum-stroke-dot {
+  border-radius: 50%;
+  background: #94a3b8;
+  transition: background 0.15s;
+}
+
+.vellum-stroke-btn.active .vellum-stroke-dot {
+  background: #c084fc;
+}
+
+.vellum-stroke-btn:hover .vellum-stroke-dot {
+  background: #c084fc;
+}
+
+/* ── Undo button ─────────────────────────────────────────────────────────── */
+.vellum-undo-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.15s;
+  flex-shrink: 0;
+}
+
+.vellum-undo-btn svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: #94a3b8;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  transition: stroke 0.15s;
+}
+
+.vellum-undo-btn:hover {
+  background: rgba(124, 58, 237, 0.15);
+}
+
+.vellum-undo-btn:hover svg {
+  stroke: #c084fc;
 }

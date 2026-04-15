@@ -15,37 +15,81 @@ if (typeof CSS !== 'undefined' && 'highlights' in CSS) {
   }
 }
 
-// Create Toolbar UI
+// ── SVG icon paths ──────────────────────────────────────────────────────────
+const toolIcons = {
+  select:    '<path d="M6 2l0 13 3.5-3.5 3 5 2-1-3-5 4.5-.5z" fill="currentColor" stroke="none"/>',
+  pencil:    '<path d="M3 15l0 2 2 0L14 8l-2-2L3 15z"/><path d="M12 6l2-2 2 2-2 2z"/>',
+  highlight: '<path d="M4 16h10"/><path d="M6 3l-3 9h3l1 4h4l1-4h3L12 3z" fill="currentColor" opacity="0.25" stroke="none"/><path d="M6 3l-3 9h3l1 4h4l1-4h3L12 3H6z"/>',
+  arrow:     '<path d="M5 15L15 5"/><path d="M15 5H9M15 5v6"/>',
+  rect:      '<rect x="4" y="5" width="12" height="10" rx="1"/>',
+  ellipse:   '<ellipse cx="10" cy="10" rx="7" ry="5"/>',
+  undo:      '<path d="M4 8h10a3 3 0 010 6H10"/><path d="M7 5L4 8l3 3"/>',
+};
+
+// ── Toolbar helpers ─────────────────────────────────────────────────────────
+function svgIcon(name) {
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('viewBox', '0 0 20 20');
+  svg.innerHTML = toolIcons[name];
+  return svg;
+}
+
+function makeToolBtn(name, title, mode) {
+  const btn = document.createElement('div');
+  btn.className = 'vellum-tool-btn';
+  btn.dataset.tool = mode;
+  btn.setAttribute('title', title);
+  btn.appendChild(svgIcon(name));
+  btn.onclick = (e) => {
+    e.stopPropagation();
+    window.VellumState.set({ mode: window.VellumState.mode === mode ? null : mode });
+  };
+  return btn;
+}
+
+// ── Create Toolbar UI ───────────────────────────────────────────────────────
 const highlightToolbar = document.createElement('div');
 highlightToolbar.id = 'vellum-highlighter-widget';
+highlightToolbar.setAttribute('data-vellum-ui', '1');
 highlightToolbar.style.display = 'none';
-highlightToolbar.style.position = 'fixed';
 highlightToolbar.style.bottom = '20px';
 highlightToolbar.style.left = '50%';
 highlightToolbar.style.transform = 'translateX(-50%)';
-highlightToolbar.style.zIndex = '2147483646'; // One below max — toast is always on top.
-highlightToolbar.style.cursor = 'default';
 document.documentElement.appendChild(highlightToolbar);
 
-// Mode UI
-const modePen = document.createElement('div');
-modePen.className = 'vellum-mode-btn';
-modePen.innerText = 'Pen';
-modePen.onclick = () => window.VellumState.set({ mode: 'pen' });
+// Drag handle
+const dragHandle = document.createElement('span');
+dragHandle.className = 'vellum-toolbar-drag';
+dragHandle.textContent = '\u2847';
+dragHandle.title = 'Drag to reposition';
+highlightToolbar.appendChild(dragHandle);
 
-const modeHighlighter = document.createElement('div');
-modeHighlighter.className = 'vellum-mode-btn';
-modeHighlighter.innerText = 'Highlight';
-modeHighlighter.onclick = () => window.VellumState.set({ mode: 'highlight' });
+// Logo chip
+const logoChip = document.createElement('span');
+logoChip.className = 'vellum-toolbar-logo';
+logoChip.textContent = 'V';
+highlightToolbar.appendChild(logoChip);
 
-highlightToolbar.appendChild(modePen);
-highlightToolbar.appendChild(modeHighlighter);
+// Divider
+highlightToolbar.appendChild(Object.assign(document.createElement('div'), { className: 'vellum-toolbar-divider' }));
 
-const divider = document.createElement('div');
-divider.className = 'vellum-toolbar-divider';
-highlightToolbar.appendChild(divider);
+// Tool buttons — drawing sub-tools are all "pen-family" modes that share the SVG overlay
+const drawingModes = ['pen', 'highlight', 'arrow', 'rect', 'ellipse', 'select'];
+const toolLabels = { pen: 'Pencil', highlight: 'Highlight', arrow: 'Arrow', rect: 'Rectangle', ellipse: 'Circle', select: 'Select' };
+const toolIconMap = { pen: 'pencil', highlight: 'highlight', arrow: 'arrow', rect: 'rect', ellipse: 'ellipse', select: 'select' };
+const toolBtns = {};
 
-// Color UI
+// select goes first
+for (const mode of ['select', 'pen', 'highlight', 'arrow', 'rect', 'ellipse']) {
+  const btn = makeToolBtn(toolIconMap[mode], toolLabels[mode], mode);
+  toolBtns[mode] = btn;
+  highlightToolbar.appendChild(btn);
+}
+
+// Divider
+highlightToolbar.appendChild(Object.assign(document.createElement('div'), { className: 'vellum-toolbar-divider' }));
+
+// Color swatches
 const themes = {
   'vellum-theme-yellow': 'rgb(255, 235, 59)',
   'vellum-theme-green': 'rgb(76, 175, 80)',
@@ -59,37 +103,138 @@ for (const [themeClass, colorHex] of Object.entries(themes)) {
   const swatch = document.createElement('div');
   swatch.className = 'vellum-color-swatch';
   swatch.style.backgroundColor = colorHex;
-  // Black swatch: tooltip only — appearance is identical to other swatches.
   if (themeClass === 'vellum-theme-black') {
-    swatch.title = 'Redact (great for sharing screenshots without sensitive info)';
+    swatch.title = 'Redact';
   }
-  swatch.onclick = () => window.VellumState.set({ color: themeClass });
+  swatch.onclick = (e) => {
+    e.stopPropagation();
+    window.VellumState.set({ color: themeClass });
+  };
   swatches[themeClass] = swatch;
   highlightToolbar.appendChild(swatch);
 }
 
+// Divider
+highlightToolbar.appendChild(Object.assign(document.createElement('div'), { className: 'vellum-toolbar-divider' }));
+
+// Stroke width presets
+const strokePresets = [
+  { width: 2, dotSize: 4, label: 'Thin' },
+  { width: 4, dotSize: 6, label: 'Medium' },
+  { width: 8, dotSize: 9, label: 'Thick' },
+];
+const strokeBtns = {};
+for (const preset of strokePresets) {
+  const btn = document.createElement('div');
+  btn.className = 'vellum-stroke-btn';
+  btn.title = preset.label;
+  const dot = document.createElement('div');
+  dot.className = 'vellum-stroke-dot';
+  dot.style.width = preset.dotSize + 'px';
+  dot.style.height = preset.dotSize + 'px';
+  btn.appendChild(dot);
+  btn.onclick = (e) => {
+    e.stopPropagation();
+    window.VellumState.set({ strokeWidth: preset.width });
+  };
+  strokeBtns[preset.width] = btn;
+  highlightToolbar.appendChild(btn);
+}
+
+// Divider
+highlightToolbar.appendChild(Object.assign(document.createElement('div'), { className: 'vellum-toolbar-divider' }));
+
+// Undo button
+const undoBtn = document.createElement('div');
+undoBtn.className = 'vellum-undo-btn';
+undoBtn.title = 'Undo';
+undoBtn.appendChild(svgIcon('undo'));
+undoBtn.onclick = (e) => {
+  e.stopPropagation();
+  window.VellumUndo.undo();
+};
+highlightToolbar.appendChild(undoBtn);
+
+// ── Toolbar drag logic (matches eraser HUD pattern) ─────────────────────────
+let toolbarDragState = null;
+
+highlightToolbar.addEventListener('pointerdown', (e) => {
+  // Only drag from the handle area
+  if (!e.target.closest('.vellum-toolbar-drag')) return;
+  e.preventDefault();
+  e.stopPropagation();
+  toolbarDragState = {
+    startX: e.clientX,
+    startY: e.clientY,
+    startLeft: highlightToolbar.getBoundingClientRect().left,
+    startTop: highlightToolbar.getBoundingClientRect().top,
+  };
+  dragHandle.style.cursor = 'grabbing';
+  highlightToolbar.setPointerCapture(e.pointerId);
+});
+
+highlightToolbar.addEventListener('pointermove', (e) => {
+  if (!toolbarDragState) return;
+  const dx = e.clientX - toolbarDragState.startX;
+  const dy = e.clientY - toolbarDragState.startY;
+  highlightToolbar.style.left = (toolbarDragState.startLeft + dx) + 'px';
+  highlightToolbar.style.top = (toolbarDragState.startTop + dy) + 'px';
+  highlightToolbar.style.bottom = 'auto';
+  highlightToolbar.style.transform = 'none';
+});
+
+highlightToolbar.addEventListener('pointerup', (e) => {
+  if (!toolbarDragState) return;
+  toolbarDragState = null;
+  dragHandle.style.cursor = 'grab';
+  highlightToolbar.releasePointerCapture(e.pointerId);
+});
+
+// All drawing-family modes that show this toolbar
+const _drawingModes = new Set(['pen', 'highlight', 'arrow', 'rect', 'ellipse', 'select']);
+
 // Global VellumState Subscription — single place that owns cursor and toolbar state
 // for ALL modes. Eraser and sticky manage their own overlays but delegate cursor here.
 window.VellumState.subscribe(state => {
-  // Toolbar is only visible in highlight/pen modes — not eraser or sticky.
-  const showToolbar = state.mode === 'highlight' || state.mode === 'pen';
+  // Toolbar is visible for all drawing-family modes — not eraser or sticky.
+  const showToolbar = _drawingModes.has(state.mode);
   highlightToolbar.style.display = showToolbar ? 'flex' : 'none';
+
+  // Reset toolbar position when hidden
+  if (!showToolbar) {
+    highlightToolbar.style.left = '50%';
+    highlightToolbar.style.top = '';
+    highlightToolbar.style.bottom = '20px';
+    highlightToolbar.style.transform = 'translateX(-50%)';
+  }
 
   // Central cursor management for every mode.
   switch (state.mode) {
     case 'highlight': document.body.style.cursor = 'text'; break;
-    case 'pen': document.body.style.cursor = 'crosshair'; break;
-    case 'eraser': document.body.style.cursor = 'crosshair'; break;
-    case 'sticky': document.body.style.cursor = 'crosshair'; break;
-    default: document.body.style.cursor = ''; break; // null — no tool
+    case 'select': document.body.style.cursor = 'default'; break;
+    case 'pen':
+    case 'arrow':
+    case 'rect':
+    case 'ellipse':
+    case 'eraser':
+    case 'sticky':
+      document.body.style.cursor = 'crosshair'; break;
+    default: document.body.style.cursor = ''; break;
   }
 
-  // Update mode button active states
-  modePen.classList.toggle('active', state.mode === 'pen');
-  modeHighlighter.classList.toggle('active', state.mode === 'highlight');
+  // Update tool button active states
+  for (const [mode, btn] of Object.entries(toolBtns)) {
+    btn.classList.toggle('active', state.mode === mode);
+  }
 
+  // Update swatch active states
   Object.values(swatches).forEach(s => s.classList.remove('active'));
   if (swatches[state.color]) swatches[state.color].classList.add('active');
+
+  // Update stroke width active states
+  for (const [w, btn] of Object.entries(strokeBtns)) {
+    btn.classList.toggle('active', state.strokeWidth === Number(w));
+  }
 });
 
 let areHighlightsVisible = true;
@@ -97,7 +242,9 @@ let areHighlightsVisible = true;
 // Keyboard shortcut / popup toggle — switches to highlight mode, or off if already active.
 chrome.runtime.onMessage.addListener((request) => {
   if (request.action === 'toggle-highlighter') {
-    window.VellumState.set({ mode: window.VellumState.mode === 'highlight' ? null : 'highlight' });
+    // If any drawing tool is active, deactivate. Otherwise activate highlight mode.
+    const isDrawing = _drawingModes.has(window.VellumState.mode);
+    window.VellumState.set({ mode: isDrawing ? null : 'highlight' });
   }
 
   if (request.action === 'toggle-view') {
