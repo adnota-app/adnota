@@ -2,10 +2,12 @@
 
 let currentPathNodes = [];
 let captureSvg = null;
-let capturePath = null;
+let capturePath = null;    // freehand live path
+let captureShape = null;   // arrow/rect/ellipse live shape
+let shapeOrigin = null;    // { x, y } screen coords at pointerdown for shape tools
 let areMarkersVisible = true;
 
-// Utility: Ramer-Douglas-Peucker (RDP) Algorithm
+// ── Utility: Ramer-Douglas-Peucker (RDP) Algorithm ─────────────────────────
 function pointLineDistance(p, a, b) {
   const num = Math.abs((b.y - a.y) * p.x - (b.x - a.x) * p.y + b.x * a.y - b.y * a.x);
   const den = Math.sqrt(Math.pow(b.y - a.y, 2) + Math.pow(b.x - a.x, 2));
@@ -35,26 +37,6 @@ function simplifyPathRDP(points, epsilon) {
   }
 }
 
-function detectArrow(points) {
-  // if (points.length < 5) return false;
-  // const start = points[0];
-  // const end = points[points.length - 1]; 
-
-  // let pathDist = 0;
-  // for (let i = 1; i < points.length; i++) {
-  //   pathDist += Math.sqrt(Math.pow(points[i].x - points[i-1].x, 2) + Math.pow(points[i].y - points[i-1].y, 2));
-  // }
-
-  // const vectorDist = Math.sqrt(Math.pow(start.x - end.x, 2) + Math.pow(start.y - end.y, 2));
-  // if (vectorDist < 30) return false; 
-
-  // const ratio = vectorDist / pathDist;
-  // if (ratio > 0.65 && ratio < 0.98) {
-  //   return true; 
-  // }
-  // return false;
-}
-
 // Converts theme class to physical color code for SVG painting
 function getStrokeColor() {
   const themes = {
@@ -67,103 +49,49 @@ function getStrokeColor() {
   return themes[window.VellumState.color] || '#fbc02d';
 }
 
-function handlePointerDown(e) {
-  if (window.VellumState.mode !== 'pen') return;
+// ── Mode sets ───────────────────────────────────────────────────────────────
+// All modes that use the SVG capture overlay
+const _overlayModes = new Set(['pen', 'arrow', 'rect', 'ellipse']);
+// Freehand only
+const _freehandModes = new Set(['pen']);
+// Shape tools (click-drag geometry)
+const _shapeModes = new Set(['arrow', 'rect', 'ellipse']);
 
-  // Explicitly protect the toolbar area from interception if z-index acts up
+function isToolbarHit(e) {
   const toolbar = document.getElementById('vellum-highlighter-widget');
-  if (toolbar && toolbar.contains(e.target)) return;
-  // Also physically check bounds since the SVG might be capturing the event ON TOP of the toolbar
-  if (toolbar) {
-    const rect = toolbar.getBoundingClientRect();
-    if (e.clientX >= rect.left && e.clientX <= rect.right && e.clientY >= rect.top && e.clientY <= rect.bottom) {
-      return; // Treat as a pass-through miss 
-    }
-  }
-
-  e.preventDefault();
-
-  currentPathNodes = [{ x: e.clientX, y: e.clientY }];
-  capturePath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-  capturePath.setAttribute('stroke', getStrokeColor());
-  capturePath.setAttribute('stroke-width', '4');
-  capturePath.setAttribute('fill', 'none');
-  capturePath.setAttribute('stroke-linecap', 'round');
-  capturePath.setAttribute('stroke-linejoin', 'round');
-
-  captureSvg.appendChild(capturePath);
-  updateLivePath();
+  if (!toolbar) return false;
+  if (toolbar.contains(e.target)) return true;
+  const rect = toolbar.getBoundingClientRect();
+  return e.clientX >= rect.left && e.clientX <= rect.right && e.clientY >= rect.top && e.clientY <= rect.bottom;
 }
 
-function handlePointerMove(e) {
-  if (!capturePath || window.VellumState.mode !== 'pen') return;
-  e.preventDefault();
-  currentPathNodes.push({ x: e.clientX, y: e.clientY });
-  updateLivePath();
-}
-
-async function handlePointerUp(e) {
-  if (!capturePath || window.VellumState.mode !== 'pen') return;
-  e.preventDefault();
-
-  // A tap with no real stroke — dismiss the tool entirely.
-  if (currentPathNodes.length < 3) {
-    capturePath.remove();
-    capturePath = null;
-    window.VellumState.set({ mode: null });
-    return;
-  }
-
-  // Turn off overlay to raycast to DOM
+// ── Raycast helper: find anchor block element at a screen point ─────────────
+function findAnchorBlock(screenX, screenY) {
   captureSvg.style.pointerEvents = 'none';
   captureSvg.style.display = 'none';
-
-  const startScreenX = currentPathNodes[0].x;
-  const startScreenY = currentPathNodes[0].y;
-  let targetNode = document.elementFromPoint(startScreenX, startScreenY);
-
+  let targetNode = document.elementFromPoint(screenX, screenY);
   if (!targetNode || targetNode.nodeType !== Node.ELEMENT_NODE) {
     targetNode = document.body;
   }
   const blockElement = targetNode.closest('p, div, section, article, main, li, h1, h2, h3, h4, td') || document.body;
+  return blockElement;
+}
 
-  const anchor = window.FuzzyAnchor.generate(blockElement);
-  const _id = Date.now() + Math.random().toString();
-
-  let simplifiedPoints = simplifyPathRDP(currentPathNodes, 2.0);
-  const isArrow = detectArrow(simplifiedPoints);
-
-  const box = blockElement.getBoundingClientRect();
-  const normalizedPath = simplifiedPoints.map(p => ({
-    px: parseFloat(((p.x - box.left) / box.width  * 100).toFixed(2)),
-    py: parseFloat(((p.y - box.top)  / box.height * 100).toFixed(2))
-  }));
-
-  const payload = {
-    anchor,
-    _id,
-    action: 'MARKER',
-    uuid: _id,
-    drawing: normalizedPath,
-    isArrow: isArrow,
-    color: getStrokeColor()
-  };
-
-  capturePath.remove();
-  capturePath = null;
-
-  window.VellumMarker.renderMarker(blockElement, payload);
-
-  // Re-enable overlay based on current state (Bug 2 fix: respect any mid-stroke mode change).
-  const stillActive = window.VellumState.isVisible && window.VellumState.mode === 'pen';
+function restoreOverlay() {
+  const stillActive = window.VellumState.isVisible && _overlayModes.has(window.VellumState.mode);
   captureSvg.style.display = stillActive ? 'block' : 'none';
   captureSvg.style.pointerEvents = stillActive ? 'auto' : 'none';
+}
+
+// ── Save + undo helper ──────────────────────────────────────────────────────
+async function saveMarkerPayload(blockElement, payload) {
+  window.VellumMarker.renderMarker(blockElement, payload);
+  restoreOverlay();
 
   if (window.VellumStorage) {
     await window.VellumStorage.saveItem(location.hostname, location.pathname, payload);
   }
 
-  // Push to the central undo stack — removes the wrapper div and deletes from storage.
   const capturedUuid = payload.uuid;
   const capturedDomain = location.hostname;
   window.VellumUndo.push({
@@ -177,58 +105,426 @@ async function handlePointerUp(e) {
   });
 }
 
+// ═════════════════════════════════════════════════════════════════════════════
+// FREEHAND PEN
+// ═════════════════════════════════════════════════════════════════════════════
+
+function handlePenDown(e) {
+  currentPathNodes = [{ x: e.clientX, y: e.clientY }];
+  capturePath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+  capturePath.setAttribute('stroke', getStrokeColor());
+  capturePath.setAttribute('stroke-width', String(window.VellumState.strokeWidth));
+  capturePath.setAttribute('fill', 'none');
+  capturePath.setAttribute('stroke-linecap', 'round');
+  capturePath.setAttribute('stroke-linejoin', 'round');
+  captureSvg.appendChild(capturePath);
+  updateLivePath();
+}
+
+function handlePenMove(e) {
+  if (!capturePath) return;
+  currentPathNodes.push({ x: e.clientX, y: e.clientY });
+  updateLivePath();
+}
+
+async function handlePenUp(e) {
+  if (!capturePath) return;
+
+  // A tap with no real stroke — dismiss the tool entirely.
+  if (currentPathNodes.length < 3) {
+    capturePath.remove();
+    capturePath = null;
+    window.VellumState.set({ mode: null });
+    return;
+  }
+
+  const blockElement = findAnchorBlock(currentPathNodes[0].x, currentPathNodes[0].y);
+  const anchor = window.FuzzyAnchor.generate(blockElement);
+  const _id = Date.now() + Math.random().toString();
+
+  const simplifiedPoints = simplifyPathRDP(currentPathNodes, 2.0);
+  const box = blockElement.getBoundingClientRect();
+  const normalizedPath = simplifiedPoints.map(p => ({
+    px: parseFloat(((p.x - box.left) / box.width  * 100).toFixed(2)),
+    py: parseFloat(((p.y - box.top)  / box.height * 100).toFixed(2))
+  }));
+
+  const payload = {
+    anchor, _id,
+    action: 'MARKER',
+    uuid: _id,
+    shapeType: 'freehand',
+    drawing: normalizedPath,
+    color: getStrokeColor(),
+    strokeWidth: window.VellumState.strokeWidth
+  };
+
+  capturePath.remove();
+  capturePath = null;
+
+  await saveMarkerPayload(blockElement, payload);
+}
+
 function updateLivePath() {
   if (currentPathNodes.length < 2) return;
   const d = currentPathNodes.map((p, i) => (i === 0 ? `M ${p.x} ${p.y}` : `L ${p.x} ${p.y}`)).join(' ');
   capturePath.setAttribute('d', d);
 }
 
+// ═════════════════════════════════════════════════════════════════════════════
+// ARROW TOOL
+// ═════════════════════════════════════════════════════════════════════════════
+
+function handleArrowDown(e) {
+  shapeOrigin = { x: e.clientX, y: e.clientY };
+
+  // Create a <line> for live preview
+  captureShape = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+  captureShape.setAttribute('x1', e.clientX);
+  captureShape.setAttribute('y1', e.clientY);
+  captureShape.setAttribute('x2', e.clientX);
+  captureShape.setAttribute('y2', e.clientY);
+  captureShape.setAttribute('stroke', getStrokeColor());
+  captureShape.setAttribute('stroke-width', String(window.VellumState.strokeWidth));
+  captureShape.setAttribute('stroke-linecap', 'round');
+
+  // Live arrowhead marker
+  const defs = captureSvg.querySelector('defs#vellum-live-defs') || (() => {
+    const d = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
+    d.id = 'vellum-live-defs';
+    captureSvg.insertBefore(d, captureSvg.firstChild);
+    return d;
+  })();
+  // Remove old live arrow marker if any
+  const oldMarker = defs.querySelector('#vellum-live-arrowhead');
+  if (oldMarker) oldMarker.remove();
+
+  const marker = document.createElementNS('http://www.w3.org/2000/svg', 'marker');
+  marker.setAttribute('id', 'vellum-live-arrowhead');
+  marker.setAttribute('markerWidth', '6');
+  marker.setAttribute('markerHeight', '6');
+  marker.setAttribute('refX', '5');
+  marker.setAttribute('refY', '3');
+  marker.setAttribute('orient', 'auto');
+  marker.setAttribute('markerUnits', 'strokeWidth');
+  const polygon = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+  polygon.setAttribute('points', '0 0, 6 3, 0 6');
+  polygon.setAttribute('fill', getStrokeColor());
+  marker.appendChild(polygon);
+  defs.appendChild(marker);
+
+  captureShape.setAttribute('marker-end', 'url(#vellum-live-arrowhead)');
+  captureSvg.appendChild(captureShape);
+}
+
+function handleArrowMove(e) {
+  if (!captureShape) return;
+  captureShape.setAttribute('x2', e.clientX);
+  captureShape.setAttribute('y2', e.clientY);
+}
+
+async function handleArrowUp(e) {
+  if (!captureShape || !shapeOrigin) return;
+  const endX = e.clientX, endY = e.clientY;
+
+  // Too small — cancel
+  const dist = Math.sqrt(Math.pow(endX - shapeOrigin.x, 2) + Math.pow(endY - shapeOrigin.y, 2));
+  if (dist < 8) {
+    captureShape.remove();
+    captureShape = null;
+    shapeOrigin = null;
+    return;
+  }
+
+  const blockElement = findAnchorBlock(shapeOrigin.x, shapeOrigin.y);
+  const anchor = window.FuzzyAnchor.generate(blockElement);
+  const _id = Date.now() + Math.random().toString();
+  const box = blockElement.getBoundingClientRect();
+
+  const normalizedPath = [
+    { px: parseFloat(((shapeOrigin.x - box.left) / box.width * 100).toFixed(2)),
+      py: parseFloat(((shapeOrigin.y - box.top) / box.height * 100).toFixed(2)) },
+    { px: parseFloat(((endX - box.left) / box.width * 100).toFixed(2)),
+      py: parseFloat(((endY - box.top) / box.height * 100).toFixed(2)) }
+  ];
+
+  const payload = {
+    anchor, _id,
+    action: 'MARKER',
+    uuid: _id,
+    shapeType: 'arrow',
+    drawing: normalizedPath,
+    isArrow: true,
+    color: getStrokeColor(),
+    strokeWidth: window.VellumState.strokeWidth
+  };
+
+  captureShape.remove();
+  captureShape = null;
+  shapeOrigin = null;
+
+  await saveMarkerPayload(blockElement, payload);
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// RECTANGLE TOOL
+// ═════════════════════════════════════════════════════════════════════════════
+
+function handleRectDown(e) {
+  shapeOrigin = { x: e.clientX, y: e.clientY };
+  captureShape = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+  captureShape.setAttribute('x', e.clientX);
+  captureShape.setAttribute('y', e.clientY);
+  captureShape.setAttribute('width', '0');
+  captureShape.setAttribute('height', '0');
+  captureShape.setAttribute('rx', '2');
+  captureShape.setAttribute('stroke', getStrokeColor());
+  captureShape.setAttribute('stroke-width', String(window.VellumState.strokeWidth));
+  captureShape.setAttribute('fill', 'none');
+  captureShape.setAttribute('stroke-linejoin', 'round');
+  captureSvg.appendChild(captureShape);
+}
+
+function handleRectMove(e) {
+  if (!captureShape || !shapeOrigin) return;
+  const x = Math.min(shapeOrigin.x, e.clientX);
+  const y = Math.min(shapeOrigin.y, e.clientY);
+  const w = Math.abs(e.clientX - shapeOrigin.x);
+  const h = Math.abs(e.clientY - shapeOrigin.y);
+  captureShape.setAttribute('x', x);
+  captureShape.setAttribute('y', y);
+  captureShape.setAttribute('width', w);
+  captureShape.setAttribute('height', h);
+}
+
+async function handleRectUp(e) {
+  if (!captureShape || !shapeOrigin) return;
+  const endX = e.clientX, endY = e.clientY;
+  const w = Math.abs(endX - shapeOrigin.x);
+  const h = Math.abs(endY - shapeOrigin.y);
+
+  // Too small — cancel
+  if (w < 5 && h < 5) {
+    captureShape.remove();
+    captureShape = null;
+    shapeOrigin = null;
+    return;
+  }
+
+  const topLeft = { x: Math.min(shapeOrigin.x, endX), y: Math.min(shapeOrigin.y, endY) };
+  const blockElement = findAnchorBlock(topLeft.x + w / 2, topLeft.y + h / 2);
+  const anchor = window.FuzzyAnchor.generate(blockElement);
+  const _id = Date.now() + Math.random().toString();
+  const box = blockElement.getBoundingClientRect();
+
+  const payload = {
+    anchor, _id,
+    action: 'MARKER',
+    uuid: _id,
+    shapeType: 'rect',
+    shape: {
+      x:  parseFloat(((topLeft.x - box.left) / box.width * 100).toFixed(2)),
+      y:  parseFloat(((topLeft.y - box.top) / box.height * 100).toFixed(2)),
+      w:  parseFloat((w / box.width * 100).toFixed(2)),
+      h:  parseFloat((h / box.height * 100).toFixed(2)),
+    },
+    color: getStrokeColor(),
+    strokeWidth: window.VellumState.strokeWidth
+  };
+
+  captureShape.remove();
+  captureShape = null;
+  shapeOrigin = null;
+
+  await saveMarkerPayload(blockElement, payload);
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// ELLIPSE TOOL
+// ═════════════════════════════════════════════════════════════════════════════
+
+function handleEllipseDown(e) {
+  shapeOrigin = { x: e.clientX, y: e.clientY };
+  captureShape = document.createElementNS('http://www.w3.org/2000/svg', 'ellipse');
+  captureShape.setAttribute('cx', e.clientX);
+  captureShape.setAttribute('cy', e.clientY);
+  captureShape.setAttribute('rx', '0');
+  captureShape.setAttribute('ry', '0');
+  captureShape.setAttribute('stroke', getStrokeColor());
+  captureShape.setAttribute('stroke-width', String(window.VellumState.strokeWidth));
+  captureShape.setAttribute('fill', 'none');
+  captureSvg.appendChild(captureShape);
+}
+
+function handleEllipseMove(e) {
+  if (!captureShape || !shapeOrigin) return;
+  const cx = (shapeOrigin.x + e.clientX) / 2;
+  const cy = (shapeOrigin.y + e.clientY) / 2;
+  const rx = Math.abs(e.clientX - shapeOrigin.x) / 2;
+  const ry = Math.abs(e.clientY - shapeOrigin.y) / 2;
+  captureShape.setAttribute('cx', cx);
+  captureShape.setAttribute('cy', cy);
+  captureShape.setAttribute('rx', rx);
+  captureShape.setAttribute('ry', ry);
+}
+
+async function handleEllipseUp(e) {
+  if (!captureShape || !shapeOrigin) return;
+  const endX = e.clientX, endY = e.clientY;
+  const rx = Math.abs(endX - shapeOrigin.x) / 2;
+  const ry = Math.abs(endY - shapeOrigin.y) / 2;
+
+  // Too small — cancel
+  if (rx < 4 && ry < 4) {
+    captureShape.remove();
+    captureShape = null;
+    shapeOrigin = null;
+    return;
+  }
+
+  const cx = (shapeOrigin.x + endX) / 2;
+  const cy = (shapeOrigin.y + endY) / 2;
+  const blockElement = findAnchorBlock(cx, cy);
+  const anchor = window.FuzzyAnchor.generate(blockElement);
+  const _id = Date.now() + Math.random().toString();
+  const box = blockElement.getBoundingClientRect();
+
+  const payload = {
+    anchor, _id,
+    action: 'MARKER',
+    uuid: _id,
+    shapeType: 'ellipse',
+    shape: {
+      cx: parseFloat(((cx - box.left) / box.width * 100).toFixed(2)),
+      cy: parseFloat(((cy - box.top) / box.height * 100).toFixed(2)),
+      rx: parseFloat((rx / box.width * 100).toFixed(2)),
+      ry: parseFloat((ry / box.height * 100).toFixed(2)),
+    },
+    color: getStrokeColor(),
+    strokeWidth: window.VellumState.strokeWidth
+  };
+
+  captureShape.remove();
+  captureShape = null;
+  shapeOrigin = null;
+
+  await saveMarkerPayload(blockElement, payload);
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// UNIFIED POINTER HANDLERS — dispatch to the active tool
+// ═════════════════════════════════════════════════════════════════════════════
+
+function handlePointerDown(e) {
+  const mode = window.VellumState.mode;
+  if (!_overlayModes.has(mode)) return;
+  if (isToolbarHit(e)) return;
+  e.preventDefault();
+
+  switch (mode) {
+    case 'pen':     handlePenDown(e); break;
+    case 'arrow':   handleArrowDown(e); break;
+    case 'rect':    handleRectDown(e); break;
+    case 'ellipse': handleEllipseDown(e); break;
+  }
+}
+
+function handlePointerMove(e) {
+  const mode = window.VellumState.mode;
+  if (!_overlayModes.has(mode)) return;
+  e.preventDefault();
+
+  switch (mode) {
+    case 'pen':     handlePenMove(e); break;
+    case 'arrow':   handleArrowMove(e); break;
+    case 'rect':    handleRectMove(e); break;
+    case 'ellipse': handleEllipseMove(e); break;
+  }
+}
+
+async function handlePointerUp(e) {
+  const mode = window.VellumState.mode;
+  if (!_overlayModes.has(mode)) return;
+  e.preventDefault();
+
+  switch (mode) {
+    case 'pen':     await handlePenUp(e); break;
+    case 'arrow':   await handleArrowUp(e); break;
+    case 'rect':    await handleRectUp(e); break;
+    case 'ellipse': await handleEllipseUp(e); break;
+  }
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// RENDER MARKER — handles all shape types for both live creation and restore
+// ═════════════════════════════════════════════════════════════════════════════
+
 // Bug 1 fix: Define VellumMarker BEFORE initCaptureOverlay and VellumState.subscribe
-// so that any immediate subscriber callbacks or pointer events can safely call renderMarker.
 window.VellumMarker = {
   renderMarker: function (anchorElement, payload) {
-    if (!payload.drawing || !Array.isArray(payload.drawing)) {
-      return;
-    }
+    const shapeType = payload.shapeType || (payload.isArrow ? 'arrow' : 'freehand');
+
+    // Freehand and arrow use drawing array; rect and ellipse use shape object
+    if ((shapeType === 'freehand' || shapeType === 'arrow') && (!payload.drawing || !Array.isArray(payload.drawing))) return;
+    if ((shapeType === 'rect' || shapeType === 'ellipse') && !payload.shape) return;
+
     const existing = document.querySelector(`.vellum-marker-wrapper[data-uuid="${payload.uuid}"]`);
     if (existing) return;
 
     const wrapper = document.createElement('div');
     wrapper.className = 'vellum-marker-wrapper';
     wrapper.dataset.uuid = payload.uuid;
+    wrapper.dataset.shapeType = shapeType;
     wrapper.style.display = areMarkersVisible ? 'block' : 'none';
 
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    let shapeEl;
 
-    path.setAttribute('stroke', payload.color || '#fbc02d');
-    path.setAttribute('stroke-width', '4');
-    path.setAttribute('fill', 'none');
-    path.setAttribute('stroke-linecap', 'round');
-    path.setAttribute('stroke-linejoin', 'round');
+    const color = payload.color || '#fbc02d';
+    const sw = String(payload.strokeWidth || 4);
 
-    if (payload.isArrow) {
-      const defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
-      const marker = document.createElementNS('http://www.w3.org/2000/svg', 'marker');
-      marker.setAttribute('id', `arrowhead-${payload.uuid}`);
-      marker.setAttribute('markerWidth', '6');
-      marker.setAttribute('markerHeight', '6');
-      marker.setAttribute('refX', '5');
-      marker.setAttribute('refY', '3');
-      marker.setAttribute('orient', 'auto-start-reverse');
-      marker.setAttribute('markerUnits', 'strokeWidth');
+    if (shapeType === 'rect') {
+      shapeEl = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+      shapeEl.setAttribute('rx', '2');
+      shapeEl.setAttribute('stroke', color);
+      shapeEl.setAttribute('stroke-width', sw);
+      shapeEl.setAttribute('fill', 'none');
+      shapeEl.setAttribute('stroke-linejoin', 'round');
+    } else if (shapeType === 'ellipse') {
+      shapeEl = document.createElementNS('http://www.w3.org/2000/svg', 'ellipse');
+      shapeEl.setAttribute('stroke', color);
+      shapeEl.setAttribute('stroke-width', sw);
+      shapeEl.setAttribute('fill', 'none');
+    } else {
+      // freehand or arrow — use a <path>
+      shapeEl = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      shapeEl.setAttribute('stroke', color);
+      shapeEl.setAttribute('stroke-width', sw);
+      shapeEl.setAttribute('fill', 'none');
+      shapeEl.setAttribute('stroke-linecap', 'round');
+      shapeEl.setAttribute('stroke-linejoin', 'round');
 
-      const polygon = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
-      polygon.setAttribute('points', '0 0, 6 3, 0 6');
-      polygon.setAttribute('fill', payload.color || '#fbc02d');
-
-      marker.appendChild(polygon);
-      defs.appendChild(marker);
-      svg.appendChild(defs);
-      path.setAttribute('marker-end', `url(#arrowhead-${payload.uuid})`);
+      if (shapeType === 'arrow' || payload.isArrow) {
+        const defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
+        const marker = document.createElementNS('http://www.w3.org/2000/svg', 'marker');
+        marker.setAttribute('id', `arrowhead-${payload.uuid}`);
+        marker.setAttribute('markerWidth', '6');
+        marker.setAttribute('markerHeight', '6');
+        marker.setAttribute('refX', '5');
+        marker.setAttribute('refY', '3');
+        marker.setAttribute('orient', 'auto');
+        marker.setAttribute('markerUnits', 'strokeWidth');
+        const polygon = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+        polygon.setAttribute('points', '0 0, 6 3, 0 6');
+        polygon.setAttribute('fill', color);
+        marker.appendChild(polygon);
+        defs.appendChild(marker);
+        svg.appendChild(defs);
+        shapeEl.setAttribute('marker-end', `url(#arrowhead-${payload.uuid})`);
+      }
     }
 
-    svg.appendChild(path);
+    svg.appendChild(shapeEl);
     wrapper.appendChild(svg);
     document.documentElement.appendChild(wrapper);
 
@@ -243,34 +539,146 @@ window.VellumMarker = {
       wrapper.style.width = `${rect.width}px`;
       wrapper.style.height = `${rect.height}px`;
 
-      // Map SVG points dynamically to physical pixels to avoid viewBox distortions!
-      if (payload.isArrow) {
+      if (shapeType === 'rect') {
+        const s = payload.shape;
+        shapeEl.setAttribute('x', (s.x / 100) * rect.width);
+        shapeEl.setAttribute('y', (s.y / 100) * rect.height);
+        shapeEl.setAttribute('width', (s.w / 100) * rect.width);
+        shapeEl.setAttribute('height', (s.h / 100) * rect.height);
+      } else if (shapeType === 'ellipse') {
+        const s = payload.shape;
+        shapeEl.setAttribute('cx', (s.cx / 100) * rect.width);
+        shapeEl.setAttribute('cy', (s.cy / 100) * rect.height);
+        shapeEl.setAttribute('rx', (s.rx / 100) * rect.width);
+        shapeEl.setAttribute('ry', (s.ry / 100) * rect.height);
+      } else if (shapeType === 'arrow' || payload.isArrow) {
         const start = payload.drawing[0];
         const end = payload.drawing[payload.drawing.length - 1];
-        const startX = (start.px / 100) * rect.width;
-        const startY = (start.py / 100) * rect.height;
-        const endX = (end.px / 100) * rect.width;
-        const endY = (end.py / 100) * rect.height;
-        path.setAttribute('d', `M ${startX} ${startY} L ${endX} ${endY}`);
+        shapeEl.setAttribute('d',
+          `M ${(start.px / 100) * rect.width} ${(start.py / 100) * rect.height} ` +
+          `L ${(end.px / 100) * rect.width} ${(end.py / 100) * rect.height}`
+        );
       } else {
+        // freehand
         const d = payload.drawing.map((p, i) => {
           const px = (p.px / 100) * rect.width;
           const py = (p.py / 100) * rect.height;
           return (i === 0 ? `M ${px} ${py}` : `L ${px} ${py}`);
         }).join(' ');
-        path.setAttribute('d', d);
+        shapeEl.setAttribute('d', d);
       }
     }
 
     syncBounds();
-    // Bug 3 fix: Re-sync on both resize AND scroll so markers don't drift on long pages.
     window.addEventListener('resize', syncBounds);
     window.addEventListener('scroll', syncBounds, { passive: true });
-
     const observer = new ResizeObserver(() => syncBounds());
     observer.observe(anchorElement);
   }
 };
+
+// ═════════════════════════════════════════════════════════════════════════════
+// SELECT TOOL
+// ═════════════════════════════════════════════════════════════════════════════
+
+let selectedWrapper = null;
+let selectBox = null;
+let selectDragState = null;
+
+function clearSelection() {
+  if (selectBox) {
+    selectBox.remove();
+    selectBox = null;
+  }
+  selectedWrapper = null;
+}
+
+function showSelectionUI(wrapper) {
+  clearSelection();
+  selectedWrapper = wrapper;
+
+  selectBox = document.createElement('div');
+  selectBox.className = 'vellum-select-box';
+  selectBox.setAttribute('data-vellum-ui', '1');
+
+  // Delete button
+  const delBtn = document.createElement('div');
+  delBtn.className = 'vellum-select-delete';
+  delBtn.textContent = '\u2715';
+  delBtn.title = 'Delete';
+  delBtn.onclick = async (e) => {
+    e.stopPropagation();
+    const uuid = wrapper.dataset.uuid;
+    wrapper.remove();
+    clearSelection();
+    if (window.VellumStorage) {
+      await window.VellumStorage.deleteItem(location.hostname, 'uuid', uuid);
+    }
+  };
+  selectBox.appendChild(delBtn);
+
+  document.documentElement.appendChild(selectBox);
+
+  function syncSelectBox() {
+    if (!selectBox || !selectedWrapper || !selectedWrapper.parentNode) {
+      clearSelection();
+      return;
+    }
+    const r = selectedWrapper.getBoundingClientRect();
+    Object.assign(selectBox.style, {
+      position: 'fixed',
+      top: (r.top - 2) + 'px',
+      left: (r.left - 2) + 'px',
+      width: (r.width + 4) + 'px',
+      height: (r.height + 4) + 'px',
+    });
+  }
+
+  syncSelectBox();
+  window.addEventListener('scroll', syncSelectBox, { passive: true });
+  window.addEventListener('resize', syncSelectBox);
+
+  // Store cleanup refs on the selectBox for later removal
+  selectBox._cleanup = () => {
+    window.removeEventListener('scroll', syncSelectBox);
+    window.removeEventListener('resize', syncSelectBox);
+  };
+}
+
+function handleSelectClick(e) {
+  if (window.VellumState.mode !== 'select') return;
+  if (isToolbarHit(e)) return;
+
+  // Find a marker wrapper at click point
+  const els = document.elementsFromPoint(e.clientX, e.clientY);
+  const wrapper = els.find(el => el.classList.contains('vellum-marker-wrapper'));
+
+  if (wrapper) {
+    e.preventDefault();
+    e.stopPropagation();
+    showSelectionUI(wrapper);
+  } else if (!e.target.closest('.vellum-select-box')) {
+    clearSelection();
+  }
+}
+
+// Delete key handler for selected element
+document.addEventListener('keydown', (e) => {
+  if (!selectedWrapper || window.VellumState.mode !== 'select') return;
+  if (e.key === 'Delete' || e.key === 'Backspace') {
+    e.preventDefault();
+    const uuid = selectedWrapper.dataset.uuid;
+    selectedWrapper.remove();
+    clearSelection();
+    if (window.VellumStorage) {
+      window.VellumStorage.deleteItem(location.hostname, 'uuid', uuid);
+    }
+  }
+});
+
+// ═════════════════════════════════════════════════════════════════════════════
+// OVERLAY INIT + STATE SUBSCRIPTION
+// ═════════════════════════════════════════════════════════════════════════════
 
 function initCaptureOverlay() {
   captureSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
@@ -284,23 +692,35 @@ function initCaptureOverlay() {
   document.documentElement.appendChild(captureSvg);
 }
 
-// Ensure overlay exists
 initCaptureOverlay();
 
-// VellumState Subscription — registered after VellumMarker is defined (Bug 1 fix).
-window.VellumState.subscribe(state => {
-  const isPenActive = state.isVisible && state.mode === 'pen';
+// Select tool click handler (on document, not on overlay — select doesn't use the overlay)
+document.addEventListener('click', handleSelectClick, true);
 
-  if (isPenActive) {
+// VellumState Subscription
+window.VellumState.subscribe(state => {
+  const isOverlayActive = state.isVisible && _overlayModes.has(state.mode);
+
+  if (isOverlayActive) {
     captureSvg.style.display = 'block';
     captureSvg.style.pointerEvents = 'auto';
   } else {
     captureSvg.style.display = 'none';
     captureSvg.style.pointerEvents = 'none';
-    if (capturePath) {
-      capturePath.remove();
-      capturePath = null;
-    }
+    // Clean up any in-progress drawing
+    if (capturePath) { capturePath.remove(); capturePath = null; }
+    if (captureShape) { captureShape.remove(); captureShape = null; }
+    shapeOrigin = null;
+  }
+
+  // Select mode: make marker wrappers clickable; otherwise keep them non-interactive
+  document.querySelectorAll('.vellum-marker-wrapper').forEach(el => {
+    el.style.pointerEvents = state.mode === 'select' ? 'auto' : 'none';
+  });
+
+  // Clear selection when leaving select mode
+  if (state.mode !== 'select') {
+    clearSelection();
   }
 });
 
