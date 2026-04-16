@@ -504,7 +504,7 @@ function handleTextClick(e) {
   let targetNode = document.elementFromPoint(screenX, screenY);
   if (!targetNode || targetNode.nodeType !== Node.ELEMENT_NODE) targetNode = document.body;
   // Skip Vellum UI elements
-  if (targetNode.closest('[data-vellum-ui]') || targetNode.closest('#vellum-highlighter-widget')) {
+  if (targetNode.closest('[data-vellum-ui]')) {
     targetNode = document.body;
   }
   const blockElement = targetNode.closest('p, div, section, article, main, li, h1, h2, h3, h4, td') || document.body;
@@ -1071,6 +1071,7 @@ document.addEventListener('keydown', (e) => {
 function initCaptureOverlay() {
   captureSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
   captureSvg.id = 'vellum-capture-canvas';
+  captureSvg.setAttribute('data-vellum-ui', '1');
   captureSvg.style.display = 'none';
 
   captureSvg.addEventListener('pointerdown', handlePointerDown);

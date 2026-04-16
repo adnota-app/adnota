@@ -1,19 +1,7 @@
 // content/eraser.js
 
 // ─── Hover overlay ────────────────────────────────────────────────────────────
-const highlightOverlay = document.createElement('div');
-highlightOverlay.id = 'vellum-highlight-overlay';
-Object.assign(highlightOverlay.style, {
-  position: 'absolute',
-  pointerEvents: 'none',
-  border: '2px solid red',
-  backgroundColor: 'rgba(255, 0, 0, 0.07)',
-  zIndex: '999999',
-  transition: 'all 0.08s ease',
-  display: 'none',
-  borderRadius: '2px',
-});
-document.documentElement.appendChild(highlightOverlay);
+const highlightOverlay = window.VellumUI.createHoverOverlay('vellum-highlight-overlay', 'red', 'rgba(255, 0, 0, 0.07)');
 
 // ─── Dimension badge (top-right corner of hover outline) ─────────────────────
 const dimensionBadge = document.createElement('div');
@@ -65,38 +53,7 @@ Object.assign(eraserHud.style, {
 document.documentElement.appendChild(eraserHud);
 
 // ─── HUD drag logic ─────────────────────────────────────────────────────────
-let hudDragState = null;
-
-eraserHud.addEventListener('pointerdown', (e) => {
-  e.preventDefault();
-  e.stopPropagation();
-  hudDragState = {
-    startX: e.clientX,
-    startY: e.clientY,
-    startLeft: eraserHud.getBoundingClientRect().left,
-    startTop: eraserHud.getBoundingClientRect().top,
-  };
-  eraserHud.style.cursor = 'grabbing';
-  eraserHud.setPointerCapture(e.pointerId);
-});
-
-eraserHud.addEventListener('pointermove', (e) => {
-  if (!hudDragState) return;
-  const dx = e.clientX - hudDragState.startX;
-  const dy = e.clientY - hudDragState.startY;
-  // Switch from centered positioning to absolute left/top
-  eraserHud.style.left = (hudDragState.startLeft + dx) + 'px';
-  eraserHud.style.top = (hudDragState.startTop + dy) + 'px';
-  eraserHud.style.bottom = 'auto';
-  eraserHud.style.transform = 'none';
-});
-
-eraserHud.addEventListener('pointerup', (e) => {
-  if (!hudDragState) return;
-  hudDragState = null;
-  eraserHud.style.cursor = 'grab';
-  eraserHud.releasePointerCapture(e.pointerId);
-});
+window.VellumUI.makeDraggable(eraserHud);
 
 // ─── Rotating help tips ─────────────────────────────────────────────────────
 const hudTips = [
@@ -454,19 +411,7 @@ function rebuildEraseStyleTag() {
 window.rebuildEraseStyleTag = rebuildEraseStyleTag;
 
 // ─── Guard: Vellum-owned elements are invisible to the eraser ─────────────────
-function isVellumElement(el) {
-  if (!el) return false;
-  return !!(
-    el.closest('[data-vellum-ui]') ||
-    el.closest('#vellum-highlighter-widget') ||
-    el.closest('#vellum-eraser-toast') ||
-    el.closest('.vellum-toast') ||
-    el.closest('.vellum-sticky-container') ||
-    el.closest('.vellum-marker-wrapper') ||
-    el.closest('#vellum-capture-canvas') ||
-    el.closest('#vellum-highlight-overlay')
-  );
-}
+const isVellumElement = window.VellumUI.isVellumElement;
 
 // ─── DOM traversal: walk up N parents, skip Vellum elements ─────────────────
 function getEraserTarget(raw, depth) {
@@ -506,10 +451,6 @@ function updateEraserOverlay() {
 }
 
 // ─── Animation helpers ────────────────────────────────────────────────────────
-
-function spawnRipples(x, y) {
-  // Reserved for future re-enablement.
-}
 
 /**
  * Momentary red-tinted border flash that traces the element's bounding box.
@@ -679,8 +620,7 @@ document.addEventListener('click', async (e) => {
   updateHUD(null);
   hoveredElement = null;
 
-  // ── Fire all three animation effects in parallel ──
-  spawnRipples(e.clientX, e.clientY);
+  // ── Fire animation effects in parallel ──
   spawnFlash(rect);
   let activeAnimation = dissolveTarget(target);
 
@@ -737,33 +677,9 @@ document.addEventListener('click', async (e) => {
   window.VellumUndo.push(undoEntry);
 
   // ── Toast ──
-  let existingToast = document.getElementById('vellum-eraser-toast');
-  if (existingToast) existingToast.remove();
-
-  const toast = document.createElement('div');
-  toast.id = 'vellum-eraser-toast';
-  toast.className = 'vellum-toast';
-  toast.setAttribute('data-vellum-ui', '1');
-  toast.innerHTML = `
-    <div class="vellum-toast-logo">V</div>
-    <span class="vellum-toast-message">Element erased</span>
-    <div class="vellum-toast-actions">
-      <span class="vellum-toast-undo">Undo</span>
-    </div>
-  `;
-  document.body.appendChild(toast);
-
-  toast.querySelector('.vellum-toast-undo').addEventListener('click', () => {
-    undoEntry.undo();
-    toast.style.opacity = '0';
-    setTimeout(() => toast.remove(), 300);
+  window.VellumUI.showToast('Element erased', {
+    id: 'vellum-eraser-toast',
+    onUndo: () => undoEntry.undo(),
   });
-
-  setTimeout(() => {
-    if (toast.parentNode) {
-      toast.style.opacity = '0';
-      setTimeout(() => toast.remove(), 300);
-    }
-  }, 5000);
 
 }, true); // Capture phase — intercept before the page's own handlers.

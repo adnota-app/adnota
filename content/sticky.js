@@ -150,6 +150,7 @@ window.StickyEngine = {
 
     const container = document.createElement('div');
     container.className = 'vellum-sticky-container vellum-theme-yellow' + (areNotesVisible ? '' : ' hidden');
+    container.setAttribute('data-vellum-ui', '1');
     container.dataset.uuid = uuid;
     container.style.position = 'absolute';
 
@@ -303,23 +304,28 @@ window.StickyEngine = {
     trashBtn.addEventListener('click', () => {
       container.style.display = 'none';
 
-      const toast = document.createElement('div');
-      toast.className = 'vellum-toast';
-      toast.innerHTML = `
-        <div class="vellum-toast-logo">V</div>
-        <span class="vellum-toast-message">Note deleted</span>
-        <div class="vellum-toast-actions">
-          <span class="vellum-toast-undo">Undo</span>
-        </div>
-      `;
-      document.body.appendChild(toast);
-
       let committed = false;
-      const deleteTimeout = setTimeout(async () => {
+      let deleteTimeout;
+
+      const performUndo = () => {
+        if (committed) return;
+        committed = true;
+        clearTimeout(deleteTimeout);
+        container.style.display = 'block';
+        window.VellumUI.dismissToast(toast);
+        window.VellumUndo.remove(undoEntry);
+      };
+
+      const toast = window.VellumUI.showToast('Note deleted', {
+        onUndo: performUndo,
+        timeout: 0, // managed by deleteTimeout below
+      });
+
+      deleteTimeout = setTimeout(async () => {
+        if (committed) return;
         committed = true;
         window.VellumUndo.remove(undoEntry);
-        toast.style.opacity = '0';
-        setTimeout(() => toast.remove(), 300);
+        window.VellumUI.dismissToast(toast);
         activeNotes.delete(uuid);
         container.remove();
         if (window.VellumStorage) {
@@ -327,18 +333,8 @@ window.StickyEngine = {
         }
       }, 5000);
 
-      function performUndo() {
-        if (committed) return;
-        clearTimeout(deleteTimeout);
-        container.style.display = 'block';
-        toast.style.opacity = '0';
-        setTimeout(() => toast.remove(), 300);
-        window.VellumUndo.remove(undoEntry);
-      }
-
       const undoEntry = { undo: performUndo };
       window.VellumUndo.push(undoEntry);
-      toast.querySelector('.vellum-toast-undo').addEventListener('click', performUndo);
     });
   },
 
