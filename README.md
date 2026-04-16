@@ -28,11 +28,11 @@ Minimal service worker. Routes keyboard command events from the browser to the a
 Wrapper around `chrome.storage.local`. All data is keyed by `hostname`, and each entry lives in a `items[]` array. Every item carries:
 - `action`: `'ERASE'` | `'NOTE'` | `'HIGHLIGHT'` | `'MARKER'`
 - `version`: schema version field (currently `2`) — future-proofs migrations
-- `anchor`: nested object containing all FuzzyAnchor signals (cssSelector, tagName, textFingerprint, attributes, structure, geometry) — only present on items that need DOM resolution (ERASE, HIGHLIGHT, MARKER)
+- `anchor`: nested object containing all FuzzyAnchor signals (cssSelector, tagName, textFingerprint, attributes, structure, geometry) — present on ERASE, HIGHLIGHT, MARKER, and NOTE (for hybrid anchor placement)
 - `timestamp` / `createdAt` / `updatedAt` as appropriate per action type
 - FuzzyAnchor fields for restoration
 
-Methods: `saveItem`, `saveNote`, `deleteItem`, `getAnchorsForUrl`, `clearPage`.
+Methods: `saveItem`, `saveNote` (generic upsert-by-uuid — caller passes full payload), `deleteItem`, `getAnchorsForUrl`, `clearPage`.
 
 #### `lib/annotationState.js` — `window.VellumState`, `window.VellumUndo`
 **`VellumState`**: Single source of truth for active tool mode (`null` | `'eraser'` | `'sticky'` | `'highlight'` | `'pen'` | `'arrow'` | `'rect'` | `'ellipse'` | `'text'` | `'select'`), active highlight color, and stroke width. Persists `vellumActiveMode`, `vellumHighlightColor`, and `vellumStrokeWidth` to storage for cross-component sync (popup reads these live). Subscriber pattern — all tools react to state changes without polling.
@@ -81,15 +81,17 @@ Also exposes `generateCSSSelector(el)` as a shared utility (used by the resizer)
 
 #### `content/sticky.js` — `window.StickyEngine`
 - Activated via popup or `Alt+S`
-- Click anywhere on the page to drop a free-floating sticky note
-- **Coordinate model**: position is stored as `{ xPct, yScrollPct }` — percentages of total page scroll width/height — not a DOM anchor. This means notes survive any page restructure; the worst case is a note floats ~100px from its original spot if content above it shifts significantly.
-- **Drag and Drop**: pointer-event drag on the header repositions notes freely. On drop, new coordinates are converted back to percentages and persisted.
+- Click anywhere on the page to drop a sticky note; stays in sticky mode for rapid placement — exit via `Escape` or re-toggle
+- **Dark frosted-glass toolbar** (fixed, bottom-center, draggable) — matches marker/eraser HUD aesthetic
+- **Toolbar layout**: drag handle → V logo chip → 5 sticky-note-shaped color swatches → undo button
+- **Five colors**: yellow, green, blue, pink, white — swatches are mini sticky note icons (folded corner shape) filled with the theme color. Active swatch gets a purple glow ring. Choice persists to `vellumStickyColor` in storage.
+- **Hybrid anchor placement**: on click, finds the nearest block-level DOM element via `FuzzyAnchor.generate()` and stores the note's pixel offset (`dx`, `dy`) from that element alongside a percentage-based fallback (`xPct`, `yScrollPct`). On restore, tries the anchor first (element re-found via FuzzyAnchor tournament scoring → apply offset). If the anchor can't be resolved (score < 40 — page was restructured), falls back to percentage placement. **You never lose your work.**
+- **Drag and Drop**: pointer-event drag on the header repositions notes freely. On drop, re-anchors to the element underneath the new position and persists updated coordinates.
 - Autosaves content on a 1.5s debounce
-- Create undo: `Ctrl+Z` / `Cmd+Z` immediately after placing a note removes it from DOM and storage
+- Create undo: `Ctrl+Z` / `Cmd+Z` immediately after placing a note removes it from DOM and storage; also available via toolbar undo button
 - Delete: instant visual hide + 5s undo window before storage commit
 - `Alt+V` toggles all note visibility. Visibility state (`vellumHidden`) is persisted to storage and queried live by the popup via `get-view` message
 - Smart Z-index elevation on focus
-- Colors: yellow only for MVP
 
 #### `content/highlighter.js` — `window.VellumHighlighter`
 - Activated via popup or `Alt+H`
@@ -156,7 +158,7 @@ Also exposes `generateCSSSelector(el)` as a shared utility (used by the resizer)
 - Dispatches to the correct engine by `action` type:
   - `RESIZE` → injects stored CSS rule into `<style id="vellum-style-overrides">` — **bypasses FuzzyAnchor entirely** since the CSS selector is self-contained
   - `ERASE` → `element.style.setProperty('display', 'none', 'important')` + adds element to `VellumErasedElements` for show/hide toggling
-  - `NOTE` → `StickyEngine.renderNote()` directly from stored `placement` — **bypasses FuzzyAnchor entirely** since position is self-contained percentage coordinates
+  - `NOTE` → `StickyEngine.renderNote()` with stored `anchor`, `anchorOffset`, `placement`, `theme`, and `dimensions` — tries FuzzyAnchor resolution first, falls back to percentage placement
   - `HIGHLIGHT` → `VellumHighlighter.applyStoredHighlight()`
   - `MARKER` → `VellumMarker.renderMarker()`
 - Deduplicates with a `processedItems` Set so MutationObserver re-runs don't re-render already-applied annotations
@@ -208,7 +210,7 @@ Dedicated extension page (opened as a new tab via `chrome.runtime.getURL`). Aggr
 | Cloud sync | Deferred — all data is `chrome.storage.local` only (5 MB cap) |
 | Amber "broken anchor" UI | Toast notification shown on initial page load when anchors can't be resolved |
 | Cross-origin iframe contents | Out of scope — users can erase the top-level `<iframe>` element |
-| Multi-color sticky notes | Yellow-only for MVP; schema is theme-ready |
+| Multi-color sticky notes | 5 colors (yellow, green, blue, pink, white) with HUD toolbar |
 | `<40 point` confidence restoration | Silent skip on MutationObserver retries; toast notification on initial page load |
 
 ---
@@ -249,19 +251,16 @@ Users annotate pages for a reason — research, review, redaction for screenshot
 
 ### Medium Alignment
 
-**4. Multi-color Sticky Notes**
-The schema already has `theme` support. Yellow-only was an MVP simplicity call. Adding the same 5-color palette as the highlighter would make the tool feel more personal.
-
-**5. Highlighter ↔ Note Cross-Linking**
+**4. Highlighter ↔ Note Cross-Linking**
 `attachedNoteId` is already reserved in the highlight schema. Clicking a highlight could summon a linked sticky note ("Note on this highlight"), connecting the two tools natively.
 
-**6. Annotation Search**
+**5. Annotation Search**
 From the Sites page, allow searching by annotation *content* (not just hostname) — find every page where you highlighted the word "privacy" or left a note mentioning "follow up."
 
 ### Lower Priority / Later
 
-**7. Team Sharing**
+**6. Team Sharing**
 Requires cloud sync first. Share your annotated version of a page with a link — collaborator opens it, Vellum re-applies all annotations on their end. Powerful for editorial review, research handoff, redaction sign-off.
 
-**8. Presentation / Focus Mode**
+**7. Presentation / Focus Mode**
 `Alt+V` already hides everything. A dedicated presentation mode could selectively show only highlights (no sticky notes) or only notes (no erasures) depending on context.
