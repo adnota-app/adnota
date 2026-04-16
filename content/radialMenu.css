@@ -189,8 +189,8 @@
 /* ── Invisible hover zone so the menu doesn't collapse when moving between buttons ── */
 #vellum-radial-hitzone {
   position: absolute;
-  width: 200px;
-  height: 200px;
+  width: 100px;
+  height: 100px;
   bottom: -10px;
   left: -10px;
   border-radius: 50%;
