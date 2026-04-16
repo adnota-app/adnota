@@ -11,6 +11,149 @@ const activeNotes = new Map(); // uuid -> note data
 const r4 = n => parseFloat(n.toFixed(4));
 
 // ---------------------------------------------------------------------------
+// Inline DOM element classification — find the best block-level anchor target
+// near a click point. Mirrors the eraser's logic of walking up past inline
+// tags to find a meaningful container.
+// ---------------------------------------------------------------------------
+
+const _inlineTags = new Set([
+  'A', 'ABBR', 'B', 'BDO', 'BR', 'CITE', 'CODE', 'DFN', 'EM', 'I',
+  'IMG', 'KBD', 'LABEL', 'Q', 'S', 'SAMP', 'SMALL', 'SPAN', 'STRONG',
+  'SUB', 'SUP', 'U', 'VAR', 'WBR', 'MARK', 'TIME',
+]);
+
+/**
+ * Walk from a click target up to find the nearest meaningful block element
+ * that FuzzyAnchor can reliably re-identify on reload.
+ * Stops at <body>/<html> — we never anchor to those.
+ */
+function findAnchorTarget(el) {
+  let current = el;
+  while (current && current !== document.body && current !== document.documentElement) {
+    // Skip Vellum's own UI
+    if (current.closest('[data-vellum-ui]')) {
+      current = current.parentElement;
+      continue;
+    }
+    // Accept block-level elements with some visual substance
+    if (!_inlineTags.has(current.tagName) && current.offsetHeight >= 20) {
+      return current;
+    }
+    current = current.parentElement;
+  }
+  return null; // Couldn't find a good target — fall back to percent-only
+}
+
+// ---------------------------------------------------------------------------
+// Sticky note color palette — matches the highlighter/marker theme names
+// ---------------------------------------------------------------------------
+
+const STICKY_THEMES = {
+  'vellum-theme-yellow': { bg: '#FBE6A1', swatch: 'rgb(251, 230, 161)' },
+  'vellum-theme-green':  { bg: '#B8F5B8', swatch: 'rgb(184, 245, 184)' },
+  'vellum-theme-blue':   { bg: '#A3DDFB', swatch: 'rgb(163, 221, 251)' },
+  'vellum-theme-pink':   { bg: '#FFC0C8', swatch: 'rgb(255, 192, 200)' },
+  'vellum-theme-white':  { bg: '#F5F5F0', swatch: 'rgb(245, 245, 240)' },
+};
+
+// Track the active note color. Defaults to yellow, persisted to storage.
+let activeStickyColor = 'vellum-theme-yellow';
+
+// Restore persisted sticky color on load.
+chrome.storage.local.get(['vellumStickyColor'], (result) => {
+  if (result.vellumStickyColor && STICKY_THEMES[result.vellumStickyColor]) {
+    activeStickyColor = result.vellumStickyColor;
+    updateStickySwatches();
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Undo icon SVG path (shared with marker toolbar)
+// ---------------------------------------------------------------------------
+const UNDO_ICON = '<path d="M4 8h10a3 3 0 010 6H10"/><path d="M7 5L4 8l3 3"/>';
+
+// Mini sticky note SVG icon — a filled note shape with a folded corner
+function stickyNoteSVG(fillColor) {
+  return `<svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <path d="M3 2h12a1 1 0 011 1v9l-4 4H3a1 1 0 01-1-1V3a1 1 0 011-1z" fill="${fillColor}" stroke="rgba(0,0,0,0.15)" stroke-width="0.75"/>
+    <path d="M12 12v4l4-4h-4z" fill="rgba(0,0,0,0.1)"/>
+  </svg>`;
+}
+
+// ---------------------------------------------------------------------------
+// Sticky HUD Toolbar — frosted glass bar, matches marker/eraser aesthetic
+// ---------------------------------------------------------------------------
+
+const stickyToolbar = document.createElement('div');
+stickyToolbar.id = 'vellum-sticky-toolbar';
+stickyToolbar.setAttribute('data-vellum-ui', '1');
+stickyToolbar.style.display = 'none';
+stickyToolbar.style.bottom = '20px';
+stickyToolbar.style.left = '50%';
+stickyToolbar.style.transform = 'translateX(-50%)';
+document.documentElement.appendChild(stickyToolbar);
+
+// Drag handle (namespaced to avoid collision with highlighter.js)
+const stickyDragHandle = document.createElement('span');
+stickyDragHandle.className = 'vellum-toolbar-drag';
+stickyDragHandle.textContent = '\u2847';
+stickyDragHandle.title = 'Drag to reposition';
+stickyToolbar.appendChild(stickyDragHandle);
+
+// Logo chip
+const stickyLogoChip = document.createElement('span');
+stickyLogoChip.className = 'vellum-toolbar-logo';
+stickyLogoChip.textContent = 'V';
+stickyToolbar.appendChild(stickyLogoChip);
+
+// Divider
+stickyToolbar.appendChild(Object.assign(document.createElement('div'), { className: 'vellum-toolbar-divider' }));
+
+// Color swatches — mini sticky note icons instead of plain circles
+const stickySwatches = {};
+for (const [themeClass, info] of Object.entries(STICKY_THEMES)) {
+  const swatch = document.createElement('div');
+  swatch.className = 'vellum-sticky-swatch';
+  swatch.innerHTML = stickyNoteSVG(info.swatch);
+  swatch.dataset.theme = themeClass;
+  swatch.onclick = (e) => {
+    e.stopPropagation();
+    activeStickyColor = themeClass;
+    chrome.storage.local.set({ vellumStickyColor: themeClass });
+    updateStickySwatches();
+  };
+  stickySwatches[themeClass] = swatch;
+  stickyToolbar.appendChild(swatch);
+}
+
+function updateStickySwatches() {
+  for (const [theme, swatch] of Object.entries(stickySwatches)) {
+    swatch.classList.toggle('active', theme === activeStickyColor);
+  }
+}
+updateStickySwatches();
+
+// Divider
+stickyToolbar.appendChild(Object.assign(document.createElement('div'), { className: 'vellum-toolbar-divider' }));
+
+// Undo button
+const stickyUndoBtn = document.createElement('div');
+stickyUndoBtn.className = 'vellum-undo-btn';
+stickyUndoBtn.title = 'Undo';
+const stickyUndoSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+stickyUndoSvg.setAttribute('viewBox', '0 0 20 20');
+stickyUndoSvg.innerHTML = UNDO_ICON;
+stickyUndoBtn.appendChild(stickyUndoSvg);
+stickyUndoBtn.onclick = (e) => {
+  e.stopPropagation();
+  window.VellumUndo.undo();
+};
+stickyToolbar.appendChild(stickyUndoBtn);
+
+// Make toolbar draggable
+window.VellumUI.makeDraggable(stickyToolbar, stickyDragHandle);
+
+// ---------------------------------------------------------------------------
 // Keyboard / message routing
 // ---------------------------------------------------------------------------
 
@@ -31,37 +174,80 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   }
 });
 
-// React to VellumState changes — no cursor overlay needed anymore (free-placement).
+// Escape to exit sticky mode
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && window.VellumState.mode === 'sticky') {
+    window.VellumState.set({ mode: null });
+  }
+});
+
+// React to VellumState changes — show/hide toolbar, update cursor.
 window.VellumState.subscribe(state => {
   document.body.classList.toggle('vellum-sticky-active', state.mode === 'sticky');
+
+  const showToolbar = state.mode === 'sticky';
+  stickyToolbar.style.display = showToolbar ? 'flex' : 'none';
+
+  // Reset toolbar position when hidden
+  if (!showToolbar) {
+    stickyToolbar.style.left = '50%';
+    stickyToolbar.style.top = '';
+    stickyToolbar.style.bottom = '20px';
+    stickyToolbar.style.transform = 'translateX(-50%)';
+  }
 });
 
 // ---------------------------------------------------------------------------
-// Click to drop a note — pure coordinate capture, zero DOM anchoring
+// Click to drop a note — hybrid anchor + percentage fallback
 // ---------------------------------------------------------------------------
 
 document.addEventListener('click', async (e) => {
   if (window.VellumState.mode !== 'sticky') return;
-  if (e.target.closest('.vellum-sticky-container') || e.target.closest('.vellum-toast')) return;
+
+  // Don't fire through any Vellum UI (toolbar, existing notes, toasts, radial menu, etc.)
+  if (window.VellumUI.isVellumElement(e.target)) return;
 
   e.preventDefault();
   e.stopPropagation();
 
-  // Capture percentage-based position relative to the full scrollable document.
+  // ── Build hybrid placement ────────────────────────────────────────────────
   const placement = clientToPlacement(e.clientX, e.clientY);
 
-  window.VellumState.set({ mode: null });
+  // Find the nearest meaningful DOM element to anchor to
+  const anchorTarget = findAnchorTarget(e.target);
+  let anchor = null;
+  let anchorOffset = null;
 
+  if (anchorTarget && window.FuzzyAnchor) {
+    anchor = window.FuzzyAnchor.generate(anchorTarget);
+
+    // Compute the note's offset from the anchor element's top-left corner
+    const rect = anchorTarget.getBoundingClientRect();
+    const scrollTop  = window.pageYOffset || document.documentElement.scrollTop;
+    const scrollLeft = window.pageXOffset || document.documentElement.scrollLeft;
+
+    const noteAbsX = e.clientX + scrollLeft;
+    const noteAbsY = e.clientY + scrollTop;
+    const elAbsX   = rect.left + scrollLeft;
+    const elAbsY   = rect.top  + scrollTop;
+
+    anchorOffset = {
+      dx: Math.round(noteAbsX - elAbsX),
+      dy: Math.round(noteAbsY - elAbsY),
+    };
+  }
+
+  // Stay in sticky mode — user exits via Escape or toggling the tool off
   const uuid     = Date.now() + Math.random().toString();
   const comments = [{ text: '', author: 'Me', createdAt: Date.now() }];
+  const theme    = activeStickyColor;
 
-  window.StickyEngine.renderNote(placement, comments, uuid, true);
+  window.StickyEngine.renderNote(placement, comments, uuid, true, null, theme, anchor, anchorOffset);
 
   if (window.VellumStorage) {
     await window.VellumStorage.saveNote(
-      location.hostname, location.pathname,
-      null,      // anchor is intentionally null — position is self-contained
-      placement, comments, uuid
+      location.hostname, location.pathname, uuid,
+      { placement, comments, theme, anchor, anchorOffset }
     );
   }
 
@@ -105,8 +291,8 @@ function clientToPlacement(clientX, clientY) {
   const totalHeight = Math.max(document.documentElement.scrollHeight, 1);
 
   // Clamp so the note card stays fully on-page.
-  const NOTE_W = 240;
-  const NOTE_H = 120;
+  const NOTE_W = 260;
+  const NOTE_H = 140;
   const clampedX = Math.min(absX, totalWidth  - NOTE_W);
   const clampedY = Math.min(absY, totalHeight - NOTE_H);
 
@@ -138,18 +324,22 @@ window.StickyEngine = {
   /**
    * Render a sticky note from a placement object.
    *
-   * @param {object}  placement  { position:'percent', xPct, yScrollPct }
-   *                             Legacy { position:'manual', top, left } also accepted.
-   * @param {array}   comments   [{ text, author, createdAt }]
+   * @param {object}  placement     { position:'percent', xPct, yScrollPct }
+   *                                Legacy { position:'manual', top, left } also accepted.
+   * @param {array}   comments      [{ text, author, createdAt }]
    * @param {string}  uuid
-   * @param {boolean} isNew      Focus textarea when true.
+   * @param {boolean} isNew         Focus textarea when true.
+   * @param {object}  dimensions    { width, height } or null
+   * @param {string}  theme         CSS class name, e.g. 'vellum-theme-yellow'
+   * @param {object}  anchor        FuzzyAnchor data or null
+   * @param {object}  anchorOffset  { dx, dy } pixel offset from anchor element
    */
-  renderNote(placement, comments, uuid, isNew = false, dimensions = null) {
+  renderNote(placement, comments, uuid, isNew = false, dimensions = null, theme = 'vellum-theme-yellow', anchor = null, anchorOffset = null) {
     // Guard duplicate renders.
     if (document.querySelector(`.vellum-sticky-container[data-uuid="${uuid}"]`)) return;
 
     const container = document.createElement('div');
-    container.className = 'vellum-sticky-container vellum-theme-yellow' + (areNotesVisible ? '' : ' hidden');
+    container.className = 'vellum-sticky-container ' + (theme || 'vellum-theme-yellow') + (areNotesVisible ? '' : ' hidden');
     container.setAttribute('data-vellum-ui', '1');
     container.dataset.uuid = uuid;
     container.style.position = 'absolute';
@@ -185,7 +375,13 @@ window.StickyEngine = {
 
     // In-memory record holds a *mutable* copy of placement so drag updates
     // propagate to updatePosition without re-rendering.
-    const noteState = { container, placement: { ...placement } };
+    const noteState = {
+      container,
+      placement: { ...placement },
+      anchor: anchor || null,
+      anchorOffset: anchorOffset || null,
+      theme: theme || 'vellum-theme-yellow',
+    };
     activeNotes.set(uuid, noteState);
 
     this.updatePosition(uuid);
@@ -203,8 +399,8 @@ window.StickyEngine = {
           if (!window.VellumStorage) return;
           const savedDimensions = { width: Math.round(width), height: Math.round(height) };
           await window.VellumStorage.saveNote(
-            location.hostname, location.pathname,
-            null, noteState.placement, comments, uuid, savedDimensions
+            location.hostname, location.pathname, uuid,
+            { placement: noteState.placement, comments, theme: noteState.theme, anchor: noteState.anchor, anchorOffset: noteState.anchorOffset, dimensions: savedDimensions }
           );
         }, DEBOUNCE_MS);
       }
@@ -274,10 +470,32 @@ window.StickyEngine = {
 
       noteState.placement = updatedPlacement;
 
+      // Re-anchor to whatever element is now underneath the note's position
+      const centerX = newLeft + 130; // half of card width
+      const centerY = newTop + 70;   // half of card height
+      const scrollTop  = window.pageYOffset || document.documentElement.scrollTop;
+      const scrollLeft = window.pageXOffset || document.documentElement.scrollLeft;
+      const elAtPoint = document.elementFromPoint(centerX - scrollLeft, centerY - scrollTop);
+
+      if (elAtPoint) {
+        const newAnchorTarget = findAnchorTarget(elAtPoint);
+        if (newAnchorTarget && window.FuzzyAnchor) {
+          noteState.anchor = window.FuzzyAnchor.generate(newAnchorTarget);
+          const rect = newAnchorTarget.getBoundingClientRect();
+          noteState.anchorOffset = {
+            dx: Math.round(newLeft - (rect.left + scrollLeft)),
+            dy: Math.round(newTop  - (rect.top  + scrollTop)),
+          };
+        } else {
+          noteState.anchor = null;
+          noteState.anchorOffset = null;
+        }
+      }
+
       if (window.VellumStorage) {
         await window.VellumStorage.saveNote(
-          location.hostname, location.pathname,
-          null, updatedPlacement, comments, uuid
+          location.hostname, location.pathname, uuid,
+          { placement: updatedPlacement, comments, theme: noteState.theme, anchor: noteState.anchor, anchorOffset: noteState.anchorOffset }
         );
       }
     });
@@ -293,8 +511,8 @@ window.StickyEngine = {
         if (!window.VellumStorage) return;
         comments[0].text = textarea.value;
         await window.VellumStorage.saveNote(
-          location.hostname, location.pathname,
-          null, noteState.placement, comments, uuid
+          location.hostname, location.pathname, uuid,
+          { placement: noteState.placement, comments, theme: noteState.theme, anchor: noteState.anchor, anchorOffset: noteState.anchorOffset }
         );
       }, DEBOUNCE_MS);
     });
@@ -339,24 +557,42 @@ window.StickyEngine = {
   },
 
   /**
-   * Reposition a note based on its current placement object.
+   * Reposition a note based on its anchor (preferred) or placement (fallback).
    * Called after initial render and on window resize.
    */
   updatePosition(uuid) {
     const noteState = activeNotes.get(uuid);
     if (!noteState) return;
 
-    const { container, placement } = noteState;
+    const { container, placement, anchor, anchorOffset } = noteState;
     let left, top;
+    let anchorResolved = false;
 
-    if (placement.position === 'percent') {
-      ({ left, top } = placementToPixels(placement));
-    } else if (placement.position === 'manual') {
-      // Legacy format from before this refactor — treat stored px directly.
-      left = placement.left;
-      top  = placement.top;
-    } else {
-      return; // Unknown format — do nothing rather than misplace the note.
+    // ── Primary: try FuzzyAnchor resolution ─────────────────────────────────
+    if (anchor && anchorOffset && window.FuzzyAnchor) {
+      const match = window.FuzzyAnchor.findMatch(anchor);
+      if (match.confidence >= 40 && match.element) {
+        const rect = match.element.getBoundingClientRect();
+        const scrollTop  = window.pageYOffset || document.documentElement.scrollTop;
+        const scrollLeft = window.pageXOffset || document.documentElement.scrollLeft;
+
+        left = rect.left + scrollLeft + anchorOffset.dx;
+        top  = rect.top  + scrollTop  + anchorOffset.dy;
+        anchorResolved = true;
+      }
+    }
+
+    // ── Fallback: percentage placement (never lose your work) ───────────────
+    if (!anchorResolved) {
+      if (placement.position === 'percent') {
+        ({ left, top } = placementToPixels(placement));
+      } else if (placement.position === 'manual') {
+        // Legacy format from before this refactor — treat stored px directly.
+        left = placement.left;
+        top  = placement.top;
+      } else {
+        return; // Unknown format — do nothing rather than misplace the note.
+      }
     }
 
     container.style.left = `${left}px`;
