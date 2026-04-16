@@ -81,11 +81,19 @@ async function performRestoration() {
       continue;
     }
 
-    // ── Sticky notes: placement is self-contained (percent-based coords). ────
-    // No DOM anchoring needed — notes always restore regardless of page changes.
+    // ── Sticky notes: hybrid anchor + percentage fallback. ────────────────
+    // Anchor resolution happens inside StickyEngine.updatePosition() —
+    // we just pass through all stored fields. Notes always render; if the
+    // anchor can't be resolved, percentage placement ensures no work is lost.
     if (item.action === 'NOTE') {
       if (window.StickyEngine) {
-        window.StickyEngine.renderNote(item.placement, item.comments, item.uuid, false, item.dimensions || null);
+        window.StickyEngine.renderNote(
+          item.placement, item.comments, item.uuid, false,
+          item.dimensions || null,
+          item.theme || 'vellum-theme-yellow',
+          item.anchor || null,
+          item.anchorOffset || null
+        );
       }
       processedItems.add(id);
       notesCount++;

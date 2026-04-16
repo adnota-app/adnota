@@ -32,6 +32,14 @@
   --btn-bg: rgba(158, 31, 47, 0.08);
 }
 
+.vellum-theme-white {
+  --bg: #F5F5F0;
+  --text: #3A3A3A;
+  --line: rgba(58, 58, 58, 0.12);
+  --btn-hover: rgba(58, 58, 58, 0.08);
+  --btn-bg: rgba(58, 58, 58, 0.06);
+}
+
 .vellum-sticky-container {
   position: absolute;
   z-index: 2147483640;
@@ -141,6 +149,52 @@
 .vellum-sticky-textarea::placeholder {
   color: var(--text);
   opacity: 0.6;
+}
+
+/* ─── Sticky note icon swatches ─── */
+.vellum-sticky-swatch {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 5px;
+  cursor: pointer;
+  transition: transform 0.15s, background 0.15s;
+  margin: 0 1px;
+  flex-shrink: 0;
+}
+
+.vellum-sticky-swatch:hover {
+  transform: scale(1.15);
+  background: rgba(124, 58, 237, 0.12);
+}
+
+.vellum-sticky-swatch.active {
+  background: rgba(124, 58, 237, 0.25);
+  box-shadow: 0 0 0 1.5px rgba(124, 58, 237, 0.6);
+}
+
+/* ─── Sticky Notes HUD Toolbar ─── */
+#vellum-sticky-toolbar {
+  position: fixed;
+  z-index: 2147483646;
+  background: rgba(15, 15, 15, 0.92);
+  backdrop-filter: blur(8px);
+  border-radius: 10px;
+  border: 1px solid rgba(124, 58, 237, 0.45);
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  gap: 0;
+  padding: 6px 10px;
+  pointer-events: auto;
+  cursor: default;
+  white-space: nowrap;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-size: 12.5px;
+  line-height: 1;
+  color: #e4e4e7;
 }
 
 /* ─── Vellum Toast — brand-consistent across all tools ─── */
