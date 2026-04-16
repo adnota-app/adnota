@@ -629,7 +629,7 @@ body {
 ═══════════════════════════════════════════════ */
 .toast {
   position: fixed;
-  bottom: 24px; left: 50%;
+  bottom: 60px; left: 50%;
   transform: translateX(-50%) translateY(20px);
   background: #1a1a2e;
   color: #fff;
