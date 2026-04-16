@@ -4,6 +4,10 @@
 
 Vellum is a Manifest V3 Chrome Extension built around a single core idea: **your annotations live with the page, not in a silo.** Every change you make to a website persists automatically, restores on the next visit, and is instantly accessible from a dedicated history view. No accounts, no cloud, no data leaving the browser.
 
+Highlight what's notable, eliminate what's not.
+
+Mark it up. Block it out. Make it yours.
+
 ---
 
 ## Shipped: Current Architecture
