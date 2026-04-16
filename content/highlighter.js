@@ -156,40 +156,8 @@ undoBtn.onclick = (e) => {
 };
 highlightToolbar.appendChild(undoBtn);
 
-// ── Toolbar drag logic (matches eraser HUD pattern) ─────────────────────────
-let toolbarDragState = null;
-
-highlightToolbar.addEventListener('pointerdown', (e) => {
-  // Only drag from the handle area
-  if (!e.target.closest('.vellum-toolbar-drag')) return;
-  e.preventDefault();
-  e.stopPropagation();
-  toolbarDragState = {
-    startX: e.clientX,
-    startY: e.clientY,
-    startLeft: highlightToolbar.getBoundingClientRect().left,
-    startTop: highlightToolbar.getBoundingClientRect().top,
-  };
-  dragHandle.style.cursor = 'grabbing';
-  highlightToolbar.setPointerCapture(e.pointerId);
-});
-
-highlightToolbar.addEventListener('pointermove', (e) => {
-  if (!toolbarDragState) return;
-  const dx = e.clientX - toolbarDragState.startX;
-  const dy = e.clientY - toolbarDragState.startY;
-  highlightToolbar.style.left = (toolbarDragState.startLeft + dx) + 'px';
-  highlightToolbar.style.top = (toolbarDragState.startTop + dy) + 'px';
-  highlightToolbar.style.bottom = 'auto';
-  highlightToolbar.style.transform = 'none';
-});
-
-highlightToolbar.addEventListener('pointerup', (e) => {
-  if (!toolbarDragState) return;
-  toolbarDragState = null;
-  dragHandle.style.cursor = 'grab';
-  highlightToolbar.releasePointerCapture(e.pointerId);
-});
+// ── Toolbar drag logic ──────────────────────────────────────────────────────
+window.VellumUI.makeDraggable(highlightToolbar, dragHandle);
 
 // All drawing-family modes that show this toolbar
 const _drawingModes = new Set(['pen', 'highlight', 'arrow', 'rect', 'ellipse', 'text', 'select']);

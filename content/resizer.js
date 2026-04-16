@@ -12,20 +12,7 @@ const MIN_WIDTH = 120;
 const MIN_HEIGHT = 60;
 
 // ─── Hover overlay (blue) ────────────────────────────────────────────────────
-const hoverOverlay = document.createElement('div');
-hoverOverlay.id = 'vellum-resizer-overlay';
-hoverOverlay.setAttribute('data-vellum-ui', '1');
-Object.assign(hoverOverlay.style, {
-  position: 'absolute',
-  pointerEvents: 'none',
-  border: '2px solid #3b82f6',
-  backgroundColor: 'rgba(59, 130, 246, 0.07)',
-  zIndex: '999999',
-  transition: 'all 0.08s ease',
-  display: 'none',
-  borderRadius: '2px',
-});
-document.documentElement.appendChild(hoverOverlay);
+const hoverOverlay = window.VellumUI.createHoverOverlay('vellum-resizer-overlay', '#3b82f6', 'rgba(59, 130, 246, 0.07)');
 
 let hoveredEl = null;
 let selectedEl = null;
@@ -49,19 +36,7 @@ let startHeight = 0;
 let startMarginLeft = 0;
 
 // ─── Guard: Vellum-owned elements ────────────────────────────────────────────
-function isVellumElement(el) {
-  if (!el) return false;
-  return !!(
-    el.closest('[data-vellum-ui]') ||
-    el.closest('#vellum-highlighter-widget') ||
-    el.closest('#vellum-eraser-toast') ||
-    el.closest('.vellum-toast') ||
-    el.closest('.vellum-sticky-container') ||
-    el.closest('.vellum-marker-wrapper') ||
-    el.closest('#vellum-capture-canvas') ||
-    el.closest('#vellum-highlight-overlay')
-  );
-}
+const isVellumElement = window.VellumUI.isVellumElement;
 
 // ─── Smart element targeting: bubble up to layout-significant elements ───────
 // extraLevels: walk up N additional qualifying parents past the natural target
@@ -488,34 +463,10 @@ async function persistResize(el, cssText, originalWidth, originalHeight) {
   window.VellumUndo.push(undoEntry);
 
   // ── Toast ────────────────────────────────────────────────────────────────
-  let existingToast = document.getElementById('vellum-resizer-toast');
-  if (existingToast) existingToast.remove();
-
-  const toast = document.createElement('div');
-  toast.id = 'vellum-resizer-toast';
-  toast.className = 'vellum-toast';
-  toast.setAttribute('data-vellum-ui', '1');
-  toast.innerHTML = `
-    <div class="vellum-toast-logo">V</div>
-    <span class="vellum-toast-message">Element resized</span>
-    <div class="vellum-toast-actions">
-      <span class="vellum-toast-undo">Undo</span>
-    </div>
-  `;
-  document.body.appendChild(toast);
-
-  toast.querySelector('.vellum-toast-undo').addEventListener('click', () => {
-    undoEntry.undo();
-    toast.style.opacity = '0';
-    setTimeout(() => toast.remove(), 300);
+  window.VellumUI.showToast('Element resized', {
+    id: 'vellum-resizer-toast',
+    onUndo: () => undoEntry.undo(),
   });
-
-  setTimeout(() => {
-    if (toast.parentNode) {
-      toast.style.opacity = '0';
-      setTimeout(() => toast.remove(), 300);
-    }
-  }, 5000);
 }
 
 // ─── Message routing ─────────────────────────────────────────────────────────

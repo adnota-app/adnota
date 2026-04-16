@@ -39,6 +39,11 @@ Methods: `saveItem`, `saveNote`, `deleteItem`, `getAnchorsForUrl`, `clearPage`.
 
 **`VellumUndo`**: Central undo stack shared by all tools. Pressing `Ctrl+Z` / `Cmd+Z` anywhere on the page pops and executes the most recent `{ undo: async fn }` entry, regardless of which tool created it.
 
+#### `lib/vellumUI.js` — `window.VellumUI`                                                                           
+Shared UI utilities that prevent duplication across content scripts.                                                                                                     
+
+**`data-vellum-ui` convention**: Every Vellum UI element (overlays, toolbars, toasts, sticky notes, marker wrappers, etc.) must be tagged with `data-vellum-ui="1"`. This is how the eraser, resizer, and marker know to ignore Vellum's own elements — `isVellumElement(el)` is a single `.closest('[data-vellum-ui]')` check. When adding new UI elements, always set this attribute or they will be erasable/selectable by the user's own tools.     
+
 ---
 
 ### Content Scripts

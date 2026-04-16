@@ -136,3 +136,34 @@ parent against the erased element's anchor and surface high-confidence matches. 
 
 
 thin=16px, medium=24px, thick=36px - this works well for lines, but is too big for text.
+
+remove eye from radial menu, have global eye turn off radial menu
+
+fix show/hide global persistance
+
+make all huds consistent look and feel
+
+make solid circles and squares with a fill (for covering up stuff you can't erase!)
+
+
+  7. Oversized functions worth splitting
+
+  - updateHUD() — eraser.js:336-420 (84 lines) mixes confidence scoring, ad detection,
+  badge building, and DOM updates
+  - renderMarker() — marker.js:708-879 (172 lines) handles text rendering, SVG shape
+  rendering, and position syncing all in one function
+
+
+  6. syncBounds / ResizeObserver anchoring pattern
+
+  Both marker and highlighter implement the same "get bounding rect → add scroll offset
+  → update wrapper position → watch with ResizeObserver + scroll listener" pattern:
+  - content/marker.js:756-771, 833-878
+  - content/highlighter.js:428-447
+
+    9. Inconsistent storage access
+
+  popup/popup.js:105-107 hits chrome.storage.local.get() directly rather than going
+  through the VellumStorage wrapper. Content scripts do this too in some places. Not a
+  bug, since the popup can't access window globals from content scripts, but worth
+  noting.

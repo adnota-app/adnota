@@ -67,6 +67,7 @@
       "js": [
         "lib/storage.js",
         "lib/annotationState.js",
+        "lib/vellumUI.js",
         "content/fuzzyAnchor.js",
         "content/eraser.js",
         "content/sticky.js",
