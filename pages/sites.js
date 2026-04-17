@@ -31,8 +31,8 @@
 
   function formatBytes(n) {
     if (n < 1024) return `${n} B`;
-    if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
-    return `${(n / (1024 * 1024)).toFixed(2)} MB`;
+    if (n < 1024 * 1024) return `${Math.round(n / 1024)} KB`;
+    return `${Math.round(n / (1024 * 1024))} MB`;
   }
 
   async function updateStorageMeter() {
@@ -118,12 +118,15 @@
         else                        counts.ERASE++;
       }
 
+      const bytes = new Blob([JSON.stringify(value)]).size;
+
       sites.push({
         hostname:  key,
         totalEdits: items.length,
         latestTs,
         counts,
         pathMap,
+        bytes,
       });
     }
 
@@ -158,7 +161,7 @@
 
   // ─── Build a site card DOM node ───────────────────────────────────────────
   function buildSiteCard(site) {
-    const { hostname, totalEdits: total, latestTs, counts, pathMap } = site;
+    const { hostname, totalEdits: total, latestTs, counts, pathMap, bytes } = site;
 
     const card = document.createElement('div');
     card.className = 'site-card';
@@ -207,6 +210,18 @@
     const pageCount = pathMap.size;
     pageLabel.textContent = `${pageCount} ${pageCount === 1 ? 'page' : 'pages'}`;
     meta.appendChild(pageLabel);
+
+    if (bytes > 0) {
+      const dot = document.createElement('span');
+      dot.className = 'site-meta-dot';
+      meta.appendChild(dot);
+
+      const sizeEl = document.createElement('span');
+      sizeEl.className = 'site-size';
+      sizeEl.textContent = formatBytes(bytes);
+      sizeEl.title = `Approx. ${bytes.toLocaleString()} bytes stored for ${hostname}`;
+      meta.appendChild(sizeEl);
+    }
 
     if (latestTs) {
       const dot = document.createElement('span');

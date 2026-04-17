@@ -313,7 +313,7 @@ body {
 ═══════════════════════════════════════════════ */
 .main {
   padding: 24px 28px 40px;
-  max-width: 860px;
+  max-width: 1024px;
   margin: 0 auto;
 }
 
@@ -484,6 +484,13 @@ body {
   font-size: 11.5px;
   color: var(--text-3);
   font-weight: 400;
+}
+
+.site-size {
+  font-size: 11.5px;
+  color: var(--text-3);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
 }
 
 .site-meta-dot {
