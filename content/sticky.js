@@ -347,7 +347,7 @@ window.StickyEngine = {
     const initialText = comments && comments.length > 0 ? comments[0].text : '';
     const createdAt   = comments && comments[0]?.createdAt ? new Date(comments[0].createdAt) : new Date();
     const pad = n => String(n).padStart(2, '0');
-    const ts  = `${pad(createdAt.getMonth() + 1)}/${pad(createdAt.getDate())}/${createdAt.getFullYear()} ${pad(createdAt.getHours())}:${pad(createdAt.getMinutes())}`;
+    const ts  = `${pad(createdAt.getMonth() + 1)}/${pad(createdAt.getDate())}/${String(createdAt.getFullYear()).slice(-2)} ${pad(createdAt.getHours())}:${pad(createdAt.getMinutes())}`;
 
     container.innerHTML = `
       <div class="vellum-sticky-card">
