@@ -143,6 +143,8 @@ remove eye from radial menu, have global eye turn off radial menu
 
 make all huds consistent look and feel
 
+fix the resize tool, does it need a HUD? (it's the oldest tool at this point...) Should it have same element fill as eraser tool?
+
 make solid circles and squares with a fill (for covering up stuff you can't erase!)
 
 ~~if you click to do a post it note and the eye ball is off, turn it on!~~
