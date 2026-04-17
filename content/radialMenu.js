@@ -154,7 +154,6 @@
     menu.classList.add('expanded');
     positionSatellites(true);
     syncActiveState();
-    updateVisibilityIcon();
   }
 
   function collapse() {
