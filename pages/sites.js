@@ -19,7 +19,35 @@
   const totalSites     = document.getElementById('total-sites');
   const totalEdits     = document.getElementById('total-edits');
   const totalPages     = document.getElementById('total-pages');
+  const storageMeter   = document.getElementById('storage-meter');
+  const storageText    = document.getElementById('storage-text');
+  const storageBarFill = document.getElementById('storage-bar-fill');
   const toast          = document.getElementById('toast');
+
+  // ─── Storage quota (MV3: 10MB; falls back to API value on older Chrome) ───
+  const STORAGE_QUOTA = chrome.storage.local.QUOTA_BYTES || 10 * 1024 * 1024;
+  const WARN_PCT = 0.80;
+  const CRIT_PCT = 0.95;
+
+  function formatBytes(n) {
+    if (n < 1024) return `${n} B`;
+    if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+    return `${(n / (1024 * 1024)).toFixed(2)} MB`;
+  }
+
+  async function updateStorageMeter() {
+    const bytes = await chrome.storage.local.getBytesInUse(null);
+    const pct = Math.min(bytes / STORAGE_QUOTA, 1);
+    const pctWhole = Math.round(pct * 100);
+    const quotaMb = (STORAGE_QUOTA / (1024 * 1024)).toFixed(0);
+    storageText.textContent = `${formatBytes(bytes)} / ${quotaMb} MB · ${pctWhole}%`;
+    storageBarFill.style.width = `${pct * 100}%`;
+    storageMeter.classList.toggle('warn', pct >= WARN_PCT && pct < CRIT_PCT);
+    storageMeter.classList.toggle('crit', pct >= CRIT_PCT);
+    storageMeter.title = pct >= WARN_PCT
+      ? `Storage is ${pctWhole}% full. Delete unused sites to free space.`
+      : `${formatBytes(bytes)} of ${quotaMb} MB used`;
+  }
 
   // ─── Toast helper ─────────────────────────────────────────────────────────
   let toastTimer;
@@ -234,24 +262,68 @@
     });
     actions.appendChild(btnVisit);
 
-    // Expand toggle (only if more than 1 page)
-    if (pathMap.size > 1 || (pathMap.size === 1 && ![...pathMap.keys()].every(k => k === '/'))) {
-      const btnExpand = document.createElement('button');
-      btnExpand.className = 'btn-expand';
+    // Delete-domain trash button
+    const btnDelete = document.createElement('button');
+    btnDelete.className = 'btn-delete-domain';
+    btnDelete.title = `Delete all edits for ${hostname}`;
+    btnDelete.innerHTML = `
+      <svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="3 6 5 6 17 6"/>
+        <path d="M15 6l-1 10a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/>
+        <path d="M8 9v6"/><path d="M12 9v6"/>
+        <path d="M8 6V4h4v2"/>
+      </svg>`;
+    btnDelete.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const pageCount = pathMap.size;
+      const ok = await window.VellumUI.confirmDialog({
+        title: 'Delete all edits?',
+        message: `Delete all edits for ${hostname}?`,
+        subtext: `This removes ${total} ${total === 1 ? 'edit' : 'edits'} across ${pageCount} ${pageCount === 1 ? 'page' : 'pages'}. This cannot be undone.`,
+        confirmText: 'Delete All',
+      });
+      if (!ok) return;
+      await chrome.storage.local.remove(hostname);
+      showToast(`Deleted all edits for ${hostname}`);
+      // storage.onChanged listener will refresh the list + meter.
+    });
+    actions.appendChild(btnDelete);
+
+    // Expand toggle — always rendered to keep action column aligned across
+    // cards. When there are no sub-pages to show, it stays inert + invisible
+    // but reserves the layout slot so Visit/trash line up row-to-row.
+    const hasExpandablePages = pathMap.size > 1 || (pathMap.size === 1 && ![...pathMap.keys()].every(k => k === '/'));
+    const btnExpand = document.createElement('button');
+    btnExpand.className = 'btn-expand';
+    btnExpand.innerHTML = `
+      <svg class="chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="6 9 12 15 18 9"/>
+      </svg>`;
+    if (hasExpandablePages) {
       btnExpand.title = 'Show individual pages';
-      btnExpand.innerHTML = `
-        <svg class="chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
-          <polyline points="6 9 12 15 18 9"/>
-        </svg>`;
       btnExpand.addEventListener('click', (e) => {
         e.stopPropagation();
         card.classList.toggle('expanded');
       });
-      actions.appendChild(btnExpand);
+    } else {
+      btnExpand.classList.add('btn-expand-placeholder');
+      btnExpand.setAttribute('aria-hidden', 'true');
+      btnExpand.tabIndex = -1;
     }
+    actions.appendChild(btnExpand);
 
     body.appendChild(actions);
     card.appendChild(body);
+
+    // Whole-header click toggles expansion when there's a drawer to reveal.
+    // Interactive children (Visit, trash, chevron) stopPropagation on click,
+    // so this only fires on "empty" header space (favicon / title / pills).
+    if (hasExpandablePages) {
+      body.classList.add('site-card-body-expandable');
+      body.addEventListener('click', () => {
+        card.classList.toggle('expanded');
+      });
+    }
 
     // ── Pages drawer ──
     const drawer = document.createElement('div');
@@ -278,10 +350,44 @@
       const row = document.createElement('div');
       row.className = 'page-row';
 
-      const pathEl = document.createElement('span');
-      pathEl.className = 'page-path' + (path === '/' || path === '*' ? ' page-path-root' : '');
-      pathEl.textContent = path === '*' ? '(domain-wide)' : path;
-      pathEl.title = path;
+      const isRootPath = path === '/' || path === '*';
+      const pathClasses = 'page-path' + (isRootPath ? ' page-path-root' : '');
+
+      let pathEl;
+      if (path === '*') {
+        pathEl = document.createElement('span');
+        pathEl.className = pathClasses;
+        pathEl.textContent = '(domain-wide)';
+      } else {
+        pathEl = document.createElement('a');
+        pathEl.className = pathClasses;
+        pathEl.href = `https://${hostname}${path}`;
+        pathEl.target = '_blank';
+        pathEl.rel = 'noopener noreferrer';
+        pathEl.title = `Open ${hostname}${path} in a new tab`;
+
+        const label = document.createElement('span');
+        label.className = 'page-path-label';
+        label.textContent = path;
+        pathEl.appendChild(label);
+
+        const icon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        icon.setAttribute('class', 'page-path-icon');
+        icon.setAttribute('width', '11');
+        icon.setAttribute('height', '11');
+        icon.setAttribute('viewBox', '0 0 24 24');
+        icon.setAttribute('fill', 'none');
+        icon.setAttribute('stroke', 'currentColor');
+        icon.setAttribute('stroke-width', '2.2');
+        icon.setAttribute('stroke-linecap', 'round');
+        icon.setAttribute('stroke-linejoin', 'round');
+        icon.setAttribute('aria-hidden', 'true');
+        icon.innerHTML = `
+          <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
+          <polyline points="15 3 21 3 21 9"/>
+          <line x1="10" y1="14" x2="21" y2="3"/>`;
+        pathEl.appendChild(icon);
+      }
       row.appendChild(pathEl);
 
       const pagePillsEl = document.createElement('div');
@@ -291,16 +397,6 @@
         if (p) pagePillsEl.appendChild(p);
       }
       row.appendChild(pagePillsEl);
-
-      if (path !== '*') {
-        const btnPage = document.createElement('button');
-        btnPage.className = 'btn-page-visit';
-        btnPage.textContent = 'Open';
-        btnPage.addEventListener('click', () => {
-          chrome.tabs.create({ url: `https://${hostname}${path}` });
-        });
-        row.appendChild(btnPage);
-      }
 
       drawerInner.appendChild(row);
     }
@@ -384,6 +480,7 @@
 
   stateLoading.hidden = true;
   updateSummary(allSites);
+  updateStorageMeter();
   render();
 
   // ─── Search wiring ────────────────────────────────────────────────────────
@@ -413,6 +510,7 @@
 
     allSites = await loadSiteData();
     updateSummary(allSites);
+    updateStorageMeter();
     render();
   });
 })();

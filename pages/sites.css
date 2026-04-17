@@ -219,6 +219,13 @@ body {
   border-top: 1px solid rgba(255,255,255,0.05);
   position: relative;
   z-index: 1;
+  flex-wrap: wrap;
+  row-gap: 10px;
+}
+
+.summary-bar .storage-meter {
+  margin-left: auto;
+  padding-left: 16px;
 }
 
 .summary-stat {
@@ -246,6 +253,59 @@ body {
   height: 14px;
   background: rgba(255,255,255,0.10);
   margin: 0 18px;
+}
+
+/* Storage meter */
+.storage-meter {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 160px;
+}
+
+.storage-meter-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.storage-text {
+  font-size: 11.5px;
+  color: rgba(255,255,255,0.85);
+  font-weight: 600;
+  letter-spacing: -0.2px;
+}
+
+.storage-bar {
+  width: 100%;
+  height: 5px;
+  background: rgba(255,255,255,0.08);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.storage-bar-fill {
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(90deg, #10b981, #059669);
+  border-radius: 3px;
+  transition: width 0.35s cubic-bezier(0.4,0,0.2,1), background 0.2s;
+}
+
+.storage-meter.warn .storage-bar-fill {
+  background: linear-gradient(90deg, #f59e0b, #d97706);
+}
+
+.storage-meter.warn .storage-text {
+  color: #fbbf24;
+}
+
+.storage-meter.crit .storage-bar-fill {
+  background: linear-gradient(90deg, #ef4444, #dc2626);
+}
+
+.storage-meter.crit .storage-text {
+  color: #fca5a5;
 }
 
 /* ═══════════════════════════════════════════════
@@ -361,6 +421,10 @@ body {
   align-items: center;
   gap: 14px;
   padding: 16px 18px;
+}
+
+.site-card-body-expandable {
+  cursor: pointer;
 }
 
 /* Favicon */
@@ -507,6 +571,25 @@ body {
 
 .btn-visit svg { flex-shrink: 0; }
 
+/* Delete-domain button */
+.btn-delete-domain {
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text-3);
+  cursor: pointer;
+  padding: 7px;
+  display: flex; align-items: center; justify-content: center;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+  flex-shrink: 0;
+}
+
+.btn-delete-domain:hover {
+  background: rgba(239,68,68,0.08);
+  border-color: rgba(239,68,68,0.4);
+  color: #dc2626;
+}
+
 /* Expand toggle */
 .btn-expand {
   background: transparent;
@@ -532,6 +615,13 @@ body {
 
 .site-card.expanded .btn-expand { border-color: var(--border-strong); color: var(--text-2); }
 .site-card.expanded .chevron { transform: rotate(180deg); }
+
+/* Invisible placeholder — reserves the expand-toggle slot on cards with only
+   one sub-page, so Visit/trash align vertically across every row. */
+.btn-expand-placeholder {
+  visibility: hidden;
+  pointer-events: none;
+}
 
 /* ─── Pages Drawer ─── */
 .pages-drawer {
@@ -587,6 +677,46 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
   letter-spacing: -0.1px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  text-decoration: none;
+}
+
+.page-path-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+a.page-path {
+  color: #5b21b6;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: color 0.14s;
+}
+
+a.page-path:hover {
+  color: #7c3aed;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+a.page-path:focus-visible {
+  outline: 2px solid rgba(124,58,237,0.55);
+  outline-offset: 2px;
+}
+
+.page-path-icon {
+  flex-shrink: 0;
+  opacity: 0.55;
+  transition: opacity 0.14s, transform 0.14s;
+}
+
+a.page-path:hover .page-path-icon {
+  opacity: 1;
+  transform: translate(1px, -1px);
 }
 
 .page-path-root { color: var(--text-3); font-weight: 400; }
@@ -600,28 +730,6 @@ body {
 .page-pills .pill {
   font-size: 10px;
   padding: 2px 6px 2px 5px;
-}
-
-.btn-page-visit {
-  background: none;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  color: var(--text-3);
-  cursor: pointer;
-  padding: 5px 9px;
-  font-size: 11px;
-  font-weight: 500;
-  font-family: 'Inter', sans-serif;
-  white-space: nowrap;
-  transition: all 0.14s;
-  flex-shrink: 0;
-}
-
-.btn-page-visit:hover {
-  background: var(--surface);
-  border-color: rgba(124,58,237,0.35);
-  color: #7c3aed;
-  box-shadow: 0 1px 6px rgba(124,58,237,0.12);
 }
 
 /* ═══════════════════════════════════════════════

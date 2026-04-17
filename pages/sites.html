@@ -7,6 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../lib/vellumUI.css">
   <link rel="stylesheet" href="sites.css">
 </head>
 <body>
@@ -62,6 +63,15 @@
         <span id="total-pages" class="summary-num">0</span>
         <span class="summary-lbl">Pages</span>
       </div>
+      <div id="storage-meter" class="storage-meter" title="Storage used">
+        <div class="storage-meter-head">
+          <span class="summary-lbl">Storage</span>
+          <span id="storage-text" class="storage-text">—</span>
+        </div>
+        <div class="storage-bar">
+          <div id="storage-bar-fill" class="storage-bar-fill"></div>
+        </div>
+      </div>
     </div>
   </header>
 
@@ -106,6 +116,7 @@
   <!-- ─── Toast ─── -->
   <div id="toast" class="toast" aria-live="polite"></div>
 
+  <script src="../lib/vellumUI.js"></script>
   <script src="sites.js"></script>
 </body>
 </html>
