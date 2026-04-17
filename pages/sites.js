@@ -430,6 +430,7 @@
       switch (order) {
         case 'alpha':  return a.hostname.localeCompare(b.hostname);
         case 'count':  return b.totalEdits - a.totalEdits;
+        case 'size':   return b.bytes - a.bytes;
         case 'recent':
         default:       return b.latestTs - a.latestTs;
       }
