@@ -203,11 +203,13 @@ Animated floating widget (fixed bottom-left) that provides one-click access to a
 Dedicated extension page (opened as a new tab via `chrome.runtime.getURL`). Aggregates all `chrome.storage.local` data and renders a browseable history of every site Vellum has touched:
 - **Per-domain cards**: favicon, hostname, page count, last-edited timestamp
 - **Annotation type pills**: Erased / Notes / Highlights / Resized / Strokes with color-coded badges
-- **Expandable page drawer**: chevron reveals every individual path within a domain, each with its own pills and an "Open" button
+- **Expandable page drawer**: chevron reveals every individual path within a domain, each with its own pills. The path itself is a `target="_blank"` hyperlink with an external-link icon to the right (icon brightens + nudges on hover); domain-wide `*` entries stay as non-clickable labels
 - **Visit button**: opens the most recently edited page for that domain
+- **Delete-domain button**: red trash icon next to Visit wipes every edit for that hostname in one confirmation step (uses the shared branded confirmDialog)
 - **Search + Sort**: real-time filter by hostname; sort by Most Recent / A→Z / Most Edits
 - **Live updates**: `storage.onChanged` listener refreshes the view automatically
 - **Summary bar**: total sites, total edits, total pages at a glance
+- **Storage meter**: live `chrome.storage.local.getBytesInUse(null)` reading against `QUOTA_BYTES` (10 MB on MV3). Shows `X.XX MB / 10 MB · N%` with a gradient progress bar that turns amber at ≥80% and red at ≥95% so users can self-manage before hitting the cap
 
 ---
 
@@ -215,7 +217,7 @@ Dedicated extension page (opened as a new tab via `chrome.runtime.getURL`). Aggr
 
 | Item | Decision |
 |---|---|
-| Cloud sync | Deferred — all data is `chrome.storage.local` only (5 MB cap) |
+| Cloud sync | Deferred — all data is `chrome.storage.local` only (10 MB cap on MV3; meter in Sites page surfaces usage) |
 | Amber "broken anchor" UI | Toast notification shown on initial page load when anchors can't be resolved |
 | Cross-origin iframe contents | Out of scope — users can erase the top-level `<iframe>` element |
 | Multi-color sticky notes | 5 colors (yellow, green, blue, pink, white) with HUD toolbar |
