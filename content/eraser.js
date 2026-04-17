@@ -585,9 +585,16 @@ document.addEventListener('mousemove', (e) => {
     return;
   }
 
-  // When cursor is over the HUD (or any Vellum UI), freeze the current
-  // hover state so the HUD stays visible and can be dragged.
-  if (isVellumElement(raw)) return;
+  // When cursor is over Vellum UI (radial menu, HUD, etc.), hide the hover
+  // overlay so our own controls aren't visually framed as erase targets.
+  if (isVellumElement(raw)) {
+    hoveredElement = null;
+    rawHoveredEl = null;
+    traverseDepth = 0;
+    highlightOverlay.style.display = 'none';
+    updateHUD(null);
+    return;
+  }
 
   // Reset traverse depth when cursor moves to a different element
   if (raw !== rawHoveredEl) {
