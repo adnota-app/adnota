@@ -44,8 +44,8 @@ document.addEventListener('DOMContentLoaded', async () => {
       : 'Hide changes (Alt+V)';
   }
 
-  // Seed from content script on open — reads the actual live areNotesVisible value,
-  // not storage (which can be stale from a previous page navigation).
+  // Seed from content script on open. Visibility is ephemeral and per-tab,
+  // so we always ask the live page rather than reading from storage.
   chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
     if (!tabs.length) return;
     chrome.tabs.sendMessage(tabs[0].id, { action: 'get-view' }, (response) => {
@@ -82,8 +82,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     if ('vellumActiveMode' in changes) {
       setActiveCard(changes.vellumActiveMode.newValue);
     }
-    if ('vellumHidden' in changes) {
-      setVisibilityBtn(!!changes.vellumHidden.newValue);
+  });
+
+  // Visibility is ephemeral (not persisted). Content scripts broadcast
+  // 'visibility-changed' via chrome.runtime on every toggle/show; catch it
+  // here so the popup icon stays in sync with Alt+V and the radial menu.
+  chrome.runtime.onMessage.addListener((msg) => {
+    if (msg?.action === 'visibility-changed') {
+      setVisibilityBtn(!!msg.hidden);
     }
   });
 

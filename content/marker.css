@@ -20,6 +20,10 @@
   transition: opacity 0.2s ease;
 }
 
+html.vellum-hidden .vellum-marker-wrapper {
+  display: none !important;
+}
+
 .vellum-marker-wrapper svg {
   display: block;
   width: 100%;

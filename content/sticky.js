@@ -1,6 +1,5 @@
 // content/sticky.js
 
-let areNotesVisible = true;
 let highestZIndex = 2147483640;
 const DEBOUNCE_MS = 1500;
 const activeNotes = new Map(); // uuid -> note data
@@ -157,20 +156,9 @@ window.VellumUI.makeDraggable(stickyToolbar, stickyDragHandle);
 // Keyboard / message routing
 // ---------------------------------------------------------------------------
 
-chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+chrome.runtime.onMessage.addListener((request) => {
   if (request.action === 'toggle-sticky') {
     window.VellumState.set({ mode: window.VellumState.mode === 'sticky' ? null : 'sticky' });
-  }
-  if (request.action === 'toggle-view') {
-    areNotesVisible = !areNotesVisible;
-    document.querySelectorAll('.vellum-sticky-container').forEach(el => {
-      el.classList.toggle('hidden', !areNotesVisible);
-    });
-    chrome.storage.local.set({ vellumHidden: !areNotesVisible });
-  }
-  if (request.action === 'get-view') {
-    sendResponse({ hidden: !areNotesVisible });
-    return true;
   }
 });
 
@@ -209,6 +197,10 @@ document.addEventListener('click', async (e) => {
 
   e.preventDefault();
   e.stopPropagation();
+
+  // Hide mode must never obscure work. If the user is placing a note while
+  // annotations are hidden, reveal everything so they can see the result.
+  window.VellumVisibility.show();
 
   // ── Build hybrid placement ────────────────────────────────────────────────
   const placement = clientToPlacement(e.clientX, e.clientY);
@@ -339,7 +331,7 @@ window.StickyEngine = {
     if (document.querySelector(`.vellum-sticky-container[data-uuid="${uuid}"]`)) return;
 
     const container = document.createElement('div');
-    container.className = 'vellum-sticky-container ' + (theme || 'vellum-theme-yellow') + (areNotesVisible ? '' : ' hidden');
+    container.className = 'vellum-sticky-container ' + (theme || 'vellum-theme-yellow');
     container.setAttribute('data-vellum-ui', '1');
     container.dataset.uuid = uuid;
     container.style.position = 'absolute';

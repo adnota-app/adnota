@@ -379,9 +379,9 @@ function updateHUD(target) {
 let hoveredElement = null;
 let rawHoveredEl = null;     // actual element under cursor (before traversal)
 let traverseDepth = 0;       // 0 = raw element, >0 = walked up N parents
-let areErasuresVisible = true;
 
 // Shared set of erased elements — restorer.js also adds to this.
+// VellumVisibility iterates this set to toggle show/hide on each erased node.
 window.VellumErasedElements = new Set();
 
 // ─── CSS rule injection for persistent erasure ──────────────────────────────
@@ -500,29 +500,6 @@ function dissolveTarget(target) {
 chrome.runtime.onMessage.addListener((request) => {
   if (request.action === 'toggle-eraser') {
     window.VellumState.set({ mode: window.VellumState.mode === 'eraser' ? null : 'eraser' });
-  }
-
-  if (request.action === 'toggle-view') {
-    areErasuresVisible = !areErasuresVisible;
-    for (const el of window.VellumErasedElements) {
-      if (areErasuresVisible) {
-        el.style.setProperty('display', 'none', 'important');
-      } else {
-        el.style.removeProperty('display');
-      }
-    }
-    // Also toggle the CSS rule style tag (covers re-created elements like ads)
-    const eraseTag = document.getElementById('vellum-erase-overrides');
-    if (eraseTag) eraseTag.disabled = !areErasuresVisible;
-  }
-});
-
-// ─── Seed erase visibility from storage on load ─────────────────────────────
-chrome.storage.local.get(['vellumHidden'], (result) => {
-  if (result.vellumHidden) {
-    areErasuresVisible = false;
-    const eraseTag = document.getElementById('vellum-erase-overrides');
-    if (eraseTag) eraseTag.disabled = true;
   }
 });
 

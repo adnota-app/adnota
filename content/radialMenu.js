@@ -192,10 +192,8 @@
     }
 
     if (sat.action === 'toggle-view') {
-      // Toggle visibility — same message the popup sends
-      chrome.runtime.sendMessage({ action: 'relay-toggle-view' });
-      // Optimistically flip the icon
-      setTimeout(updateVisibilityIcon, 100);
+      // Visibility lives in the same page context — call it directly.
+      window.VellumVisibility?.toggle();
       collapse();
       return;
     }
@@ -248,24 +246,20 @@
       // Small delay to let VellumState update first
       setTimeout(syncActiveState, 50);
     }
-    if (area === 'local' && 'vellumHidden' in changes) {
-      setTimeout(updateVisibilityIcon, 50);
-    }
   });
 
-  // ── Update the visibility satellite icon ────────────────────────────────
-  function updateVisibilityIcon() {
+  // ── Sync the visibility satellite icon directly from VellumVisibility ──
+  function setVisibilityIcon(isHidden) {
     const visSat = satEls.find(s => s.sat.id === 'vis');
     if (!visSat) return;
-    // Check the current hidden state via storage
-    chrome.storage.local.get('vellumHidden', (result) => {
-      const isHidden = !!result.vellumHidden;
-      visSat.el.innerHTML = isHidden ? icons.visibilityOff : icons.visibility;
-      visSat.el.setAttribute('data-tooltip', isHidden ? 'Show All' : 'Hide All');
-    });
+    visSat.el.innerHTML = isHidden ? icons.visibilityOff : icons.visibility;
+    visSat.el.setAttribute('data-tooltip', isHidden ? 'Show All' : 'Hide All');
   }
 
-  // Initial icon state
-  updateVisibilityIcon();
+  if (window.VellumVisibility?.subscribe) {
+    window.VellumVisibility.subscribe(setVisibilityIcon);
+  } else {
+    setVisibilityIcon(false);
+  }
 
 })();

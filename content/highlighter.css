@@ -20,6 +20,11 @@
   color: #000 !important;
 }
 
+/* Hide-all toggle: overlay-mode fallback highlights hide alongside the rest. */
+html.vellum-hidden .vellum-highlight-fallback {
+  display: none !important;
+}
+
 /* ── Dark toolbar (matches eraser HUD aesthetic) ─────────────────────────── */
 #vellum-highlighter-widget {
   position: fixed;
