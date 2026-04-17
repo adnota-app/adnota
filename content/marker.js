@@ -1089,6 +1089,17 @@ function initCaptureOverlay() {
 
 initCaptureOverlay();
 
+// Let other Vellum UI (sticky headers, HUDs, toolbars) pierce the capture
+// overlay. Without this, the full-page SVG swallows pointerdown so you can't
+// drag a sticky note or click a HUD button while a shape tool is active.
+document.addEventListener('pointermove', (e) => {
+  if (!_overlayModes.has(window.VellumState.mode)) return;
+  if (capturePath || captureShape) return; // mid-stroke — keep capturing
+  const stack = document.elementsFromPoint(e.clientX, e.clientY);
+  const overUI = stack.some(el => el !== captureSvg && el.closest('[data-vellum-ui]'));
+  captureSvg.style.pointerEvents = overUI ? 'none' : 'auto';
+}, true);
+
 // Select tool click handler (on document, not on overlay — select doesn't use the overlay)
 document.addEventListener('click', handleSelectClick, true);
 // Text tool click handler
