@@ -99,9 +99,9 @@
 
 .vellum-timestamp {
   font-size: 10px;
-  font-family: 'SF Mono', 'Menlo', 'Monaco', 'Consolas', monospace;
-  letter-spacing: 0.02em;
-  opacity: 0.5;
+  font-family: inherit;
+  letter-spacing: 0.01em;
+  opacity: 0.45;
   font-weight: 500;
   user-select: none;
   line-height: 1;
