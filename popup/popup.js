@@ -143,8 +143,10 @@ document.addEventListener('DOMContentLoaded', async () => {
 
       card.addEventListener('click', async () => {
         const label = labelMap[actionType] ?? 'these items';
-        // Use a simple window.confirm — works fine in extension popups.
-        if (!window.confirm(`Delete ${label} from this page? This cannot be undone.`)) return;
+        const ok = await window.VellumUI.confirmDialog({
+          message: `Delete ${label}?`,
+        });
+        if (!ok) return;
 
         const fresh     = await chrome.storage.local.get(domain);
         const freshData = fresh[domain];
@@ -167,7 +169,10 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // ── Clear ALL page edits ──────────────────────────────────────────────
     btnClear.addEventListener('click', async () => {
-      if (!window.confirm('Delete ALL Vellum edits on this page? This cannot be undone.')) return;
+      const ok = await window.VellumUI.confirmDialog({
+        message: 'Delete all Vellum edits on this page?',
+      });
+      if (!ok) return;
 
       const fresh     = await chrome.storage.local.get(domain);
       const freshData = fresh[domain];

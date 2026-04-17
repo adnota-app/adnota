@@ -78,6 +78,7 @@
         "content/radialMenu.js"
       ],
       "css": [
+        "lib/vellumUI.css",
         "content/sticky.css",
         "content/marker.css",
         "content/highlighter.css",

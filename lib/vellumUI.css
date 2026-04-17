@@ -1,0 +1,129 @@
+/* lib/vellumUI.css — shared Vellum UI styles loaded in both content scripts
+   (via manifest content_scripts.css) and the extension popup (via <link>). */
+
+/* ─── Confirmation modal ─────────────────────────────────────────────────── */
+
+.vellum-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483647;
+  background: rgba(8, 4, 18, 0.55);
+  -webkit-backdrop-filter: blur(3px);
+  backdrop-filter: blur(3px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: vellum-modal-fade-in 0.15s ease-out;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+
+@keyframes vellum-modal-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.vellum-modal {
+  min-width: 280px;
+  max-width: 380px;
+  background: linear-gradient(135deg, #12082b 0%, #0c0519 100%);
+  border: 1px solid rgba(124, 58, 237, 0.35);
+  border-radius: 14px;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(124, 58, 237, 0.1);
+  padding: 18px 20px 16px;
+  animation: vellum-modal-pop 0.18s cubic-bezier(.2,.8,.3,1);
+}
+
+@keyframes vellum-modal-pop {
+  from { opacity: 0; transform: scale(0.94); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+.vellum-modal-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.vellum-modal-logo {
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+  background: linear-gradient(135deg, #7c3aed 0%, #4f46e5 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 14px;
+  color: #fff;
+  letter-spacing: -0.5px;
+  box-shadow: 0 2px 8px rgba(124, 58, 237, 0.45);
+  flex-shrink: 0;
+  user-select: none;
+}
+
+.vellum-modal-title {
+  color: rgba(255, 255, 255, 0.95);
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.vellum-modal-message {
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 13.5px;
+  line-height: 1.5;
+  margin: 4px 0 2px;
+}
+
+.vellum-modal-subtext {
+  color: rgba(255, 255, 255, 0.55);
+  font-size: 12px;
+  line-height: 1.45;
+  margin-bottom: 16px;
+}
+
+.vellum-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.vellum-modal-btn {
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  padding: 7px 14px;
+  border-radius: 7px;
+  cursor: pointer;
+  border: 1px solid transparent;
+  letter-spacing: 0.02em;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.vellum-modal-btn:focus {
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(124, 58, 237, 0.55);
+}
+
+.vellum-modal-cancel {
+  background: transparent;
+  border-color: rgba(255, 255, 255, 0.18);
+  color: rgba(255, 255, 255, 0.8);
+}
+.vellum-modal-cancel:hover {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.3);
+  color: #fff;
+}
+
+.vellum-modal-danger {
+  background: linear-gradient(135deg, rgba(239, 68, 68, 0.85) 0%, rgba(220, 38, 38, 0.85) 100%);
+  border-color: rgba(239, 68, 68, 0.55);
+  color: #fff;
+}
+.vellum-modal-danger:hover {
+  background: linear-gradient(135deg, rgba(239, 68, 68, 1) 0%, rgba(220, 38, 38, 1) 100%);
+  border-color: rgba(239, 68, 68, 0.9);
+}
