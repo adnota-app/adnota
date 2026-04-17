@@ -96,11 +96,10 @@ document.addEventListener('DOMContentLoaded', async () => {
   // ─── Load stats & wire stat-card clear interactions ───────────────────────
   chrome.tabs.query({ active: true, currentWindow: true }, async (tabs) => {
     if (!tabs.length) return;
-    const url = tabs[0].url;
 
     let domain, path;
     try {
-      const parsed = new URL(url);
+      const parsed = new URL(tabs[0].url);
       domain = parsed.hostname;
       path   = parsed.pathname;
     } catch {
@@ -129,68 +128,47 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.getElementById('count-strokes').textContent    = strokes;
     document.getElementById('count-resizes').textContent    = resizes;
 
-    // ── Per-class clear: clicking a stat card deletes that action type ──────
+    // ── Per-class clear: each card dispatches a soft-delete to the content
+    //    script, which handles confirm, toast, and 5s undo. The popup just
+    //    sends the request and closes.
     const nounMap = {
-      ERASE:     { singular: 'erasure',     plural: 'erasures',     count: () => erasures },
-      NOTE:      { singular: 'sticky note', plural: 'sticky notes', count: () => notes },
-      HIGHLIGHT: { singular: 'highlight',   plural: 'highlights',   count: () => highlights },
-      MARKER:    { singular: 'pen stroke',  plural: 'pen strokes',  count: () => strokes },
-      RESIZE:    { singular: 'resize',      plural: 'resizes',      count: () => resizes },
+      ERASE:     { singular: 'erasure',     plural: 'erasures',     count: () => erasures,   actionTypes: ['ERASE'] },
+      NOTE:      { singular: 'sticky note', plural: 'sticky notes', count: () => notes,      actionTypes: ['NOTE'] },
+      HIGHLIGHT: { singular: 'highlight',   plural: 'highlights',   count: () => highlights, actionTypes: ['HIGHLIGHT'] },
+      MARKER:    { singular: 'pen stroke',  plural: 'pen strokes',  count: () => strokes,    actionTypes: ['MARKER'] },
+      RESIZE:    { singular: 'resize',      plural: 'resizes',      count: () => resizes,    actionTypes: ['RESIZE'] },
     };
 
-    document.querySelectorAll('.stat-card[data-clear-action]').forEach(card => {
-      const actionType = card.dataset.clearAction;
-      const info = nounMap[actionType];
-
-      card.addEventListener('click', async () => {
-        const n = info?.count() ?? 0;
-        if (n === 0) return;
-        const noun = window.VellumUI.pluralize(n, info.singular, info.plural);
-        const ok = await window.VellumUI.confirmDialog({
-          message: `Delete ${n} ${noun} from this page?`,
-        });
-        if (!ok) return;
-
-        const fresh     = await chrome.storage.local.get(domain);
-        const freshData = fresh[domain];
-        if (!freshData?.items) return;
-
-        freshData.items = freshData.items.filter(item => {
-          const onThisPage    = item.path === path || item.path === '*';
-          const matchesAction = actionType === 'ERASE'
-            ? (item.action === 'ERASE' || !item.action)  // legacy erasures may lack the field
-            : item.action === actionType;
-          // Keep items that are NOT (on this page AND the right action type).
-          return !(onThisPage && matchesAction);
-        });
-
-        await chrome.storage.local.set({ [domain]: freshData });
-        chrome.tabs.reload(tabs[0].id);
+    function sendSoftDelete(payload) {
+      chrome.tabs.sendMessage(tabs[0].id, { action: 'vellum-soft-delete', ...payload }, () => {
+        void chrome.runtime.lastError;
         window.close();
+      });
+    }
+
+    document.querySelectorAll('.stat-card[data-clear-action]').forEach(card => {
+      const info = nounMap[card.dataset.clearAction];
+      if (!info) return;
+
+      card.addEventListener('click', () => {
+        if ((info.count() ?? 0) === 0) return;
+        sendSoftDelete({
+          singular: info.singular,
+          plural: info.plural,
+          actionTypes: info.actionTypes,
+        });
       });
     });
 
     // ── Clear ALL page edits ──────────────────────────────────────────────
-    btnClear.addEventListener('click', async () => {
+    btnClear.addEventListener('click', () => {
       const total = erasures + notes + highlights + strokes + resizes;
       if (total === 0) return;
-      const noun = window.VellumUI.pluralize(total, 'edit', 'edits');
-      const ok = await window.VellumUI.confirmDialog({
-        message: `Delete all ${total} ${noun} on this page?`,
+      sendSoftDelete({
+        singular: 'edit',
+        plural: 'edits',
+        actionTypes: ['ERASE', 'NOTE', 'HIGHLIGHT', 'MARKER', 'RESIZE'],
       });
-      if (!ok) return;
-
-      const fresh     = await chrome.storage.local.get(domain);
-      const freshData = fresh[domain];
-      if (freshData?.items) {
-        freshData.items = freshData.items.filter(
-          item => item.path !== path && item.path !== '*'
-        );
-        await chrome.storage.local.set({ [domain]: freshData });
-      }
-
-      chrome.tabs.reload(tabs[0].id);
-      window.close();
     });
   });
 });

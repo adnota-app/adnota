@@ -48,7 +48,7 @@ Shared UI utilities that prevent duplication across content scripts.
 
 **`data-vellum-ui` convention**: Every Vellum UI element (overlays, toolbars, toasts, sticky notes, marker wrappers, etc.) must be tagged with `data-vellum-ui="1"`. This is how the eraser, resizer, and marker know to ignore Vellum's own elements — `isVellumElement(el)` is a single `.closest('[data-vellum-ui]')` check. When adding new UI elements, always set this attribute or they will be erasable/selectable by the user's own tools.
 
-**Shared HUD button helpers**: `createToolbarIconButton`, `createUndoButton`, and `createTrashButton` produce the dark-frosted `vellum-undo-btn`-styled controls used across every HUD. `clearPageAnnotations(actionTypes)` is the single implementation behind the popup's per-stat trash icons and the HUD trash buttons — it filters `items[]` by page + action type and writes back.
+**Shared HUD button helpers**: `createToolbarIconButton`, `createUndoButton`, and `createTrashButton` produce the dark-frosted `vellum-undo-btn`-styled controls used across every HUD. `softDeleteItems({singular, plural, actionTypes})` is the single implementation behind every bulk trash action (popup stat cards, popup "Clear All," and HUD trash buttons): it snapshots matching items by ID, removes them from storage, hides them from the DOM, and shows a 5-second toast with Undo. Undo re-writes storage and re-renders in place; Ctrl+Z also pops the batch off `VellumUndo`.
 
 ---
 
