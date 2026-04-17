@@ -150,24 +150,43 @@ document.addEventListener('DOMContentLoaded', async () => {
       const info = nounMap[card.dataset.clearAction];
       if (!info) return;
 
-      card.addEventListener('click', () => {
-        if ((info.count() ?? 0) === 0) return;
+      card.addEventListener('click', async () => {
+        const count = info.count() ?? 0;
+        if (count === 0) return;
+
+        const noun = window.VellumUI.pluralize(count, info.singular, info.plural);
+        const ok = await window.VellumUI.confirmDialog({
+          message: `Delete ${count} ${noun} from this page?`,
+          subtext: 'You\u2019ll have 5 seconds to undo.',
+        });
+        if (!ok) return;
+
         sendSoftDelete({
           singular: info.singular,
           plural: info.plural,
           actionTypes: info.actionTypes,
+          skipConfirm: true,
         });
       });
     });
 
     // ── Clear ALL page edits ──────────────────────────────────────────────
-    btnClear.addEventListener('click', () => {
+    btnClear.addEventListener('click', async () => {
       const total = erasures + notes + highlights + strokes + resizes;
       if (total === 0) return;
+
+      const noun = window.VellumUI.pluralize(total, 'edit', 'edits');
+      const ok = await window.VellumUI.confirmDialog({
+        message: `Delete ${total} ${noun} from this page?`,
+        subtext: 'You\u2019ll have 5 seconds to undo.',
+      });
+      if (!ok) return;
+
       sendSoftDelete({
         singular: 'edit',
         plural: 'edits',
         actionTypes: ['ERASE', 'NOTE', 'HIGHLIGHT', 'MARKER', 'RESIZE'],
+        skipConfirm: true,
       });
     });
   });
