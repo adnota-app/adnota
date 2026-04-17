@@ -126,28 +126,23 @@ The sidebar-swapping use case you described ("I want my news feed on the left") 
 this site has bugs with sticky note styles:
 https://superuser.com/questions/608296/how-to-disable-iframes-in-browsers
 
-Add mouse scroll to ERASE elements!
-
-Apply add deletes to exact page OR domain OR just path etc.
+~~Add mouse scroll to ERASE elements!~~
+~~if you click to do a post it note and the eye ball is off, turn it on!~~
+~~fix show/hide global persistance~~
+~~Apply add deletes to exact page OR domain OR just path etc.~~
 
 "Remove things like this" (#11, the "killer feature") — This is the most interesting idea in the whole list. After erasing one element, find        
 structurally similar siblings and offer bulk removal. This plays to FuzzyAnchor's strengths — you could score all siblings of the erased element's
 parent against the erased element's anchor and surface high-confidence matches. Worth prototyping.
 
 
-thin=16px, medium=24px, thick=36px - this works well for lines, but is too big for text.
+thin=16px, medium=24px, thick=36px - this works well for lines, but might be too big for text size?
 
-remove eye from radial menu, have global eye turn off radial menu
-
-~~fix show/hide global persistance~~
-
-make all huds consistent look and feel
+make all huds consistent look and feel!
 
 fix the resize tool, does it need a HUD? (it's the oldest tool at this point...) Should it have same element fill as eraser tool? It also doesn't set "ACTIVE" when you use the tool in popup.js.
 
-make solid circles and squares with a fill (for covering up stuff you can't erase!)
-
-~~if you click to do a post it note and the eye ball is off, turn it on!~~
+make solid circles and squares with a fill (for covering up stuff you can't erase! e.g., can't erase that ad, COVER IT UP!!!)
 
 If in ERASE mode, and you hover over radial menu, TURN OFF THE SELECTION BORDER!
 
@@ -155,8 +150,12 @@ Make clicking on the V logo from a HUD take you to the HOME PAGE??
 
 FIX HUD MENU DRAG BAR ICONS...
 
-Add storage size to HOME page
-Add ability to delete all storage for entire domain from HOME page
+Add total storage size to HOME page (flag when user is getting over 80% of local storage limit?)
+Add ability to delete all storage for entire domain from HOME page (you can already delete per page during navigation using the trash icon, etc, but no way to clear an entire site, not sure you'd ever want too, but...)
+
+if you're in draw rectangle mode, you can't drag a sticky note (even if you hover over the header, it doesn't work).
+
+Consider making tags like in GMAIL. Each color of sticky note/highlighter/etc could be a tag defined by the user. Then they could filter all their saved highlights, notes, etc. by tag. Maybe you don't even need text tags at all, maybe color would be sufficient. If people understood they could filter their sites by color, then they'd get the idea that each color represented whatever they wanted? 
 
 
 
