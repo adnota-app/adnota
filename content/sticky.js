@@ -66,11 +66,6 @@ chrome.storage.local.get(['vellumStickyColor'], (result) => {
   }
 });
 
-// ---------------------------------------------------------------------------
-// Undo icon SVG path (shared with marker toolbar)
-// ---------------------------------------------------------------------------
-const UNDO_ICON = '<path d="M4 8h10a3 3 0 010 6H10"/><path d="M7 5L4 8l3 3"/>';
-
 // Mini sticky note SVG icon — a filled note shape with a folded corner
 function stickyNoteSVG(fillColor) {
   return `<svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -135,19 +130,14 @@ updateStickySwatches();
 // Divider
 stickyToolbar.appendChild(Object.assign(document.createElement('div'), { className: 'vellum-toolbar-divider' }));
 
-// Undo button
-const stickyUndoBtn = document.createElement('div');
-stickyUndoBtn.className = 'vellum-undo-btn';
-stickyUndoBtn.title = 'Undo';
-const stickyUndoSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-stickyUndoSvg.setAttribute('viewBox', '0 0 20 20');
-stickyUndoSvg.innerHTML = UNDO_ICON;
-stickyUndoBtn.appendChild(stickyUndoSvg);
-stickyUndoBtn.onclick = (e) => {
-  e.stopPropagation();
-  window.VellumUndo.undo();
-};
-stickyToolbar.appendChild(stickyUndoBtn);
+// Trash — clears all sticky notes on this page
+stickyToolbar.appendChild(window.VellumUI.createTrashButton({
+  label: 'all sticky notes',
+  actionTypes: ['NOTE'],
+}));
+
+// Undo
+stickyToolbar.appendChild(window.VellumUI.createUndoButton());
 
 // Make toolbar draggable
 window.VellumUI.makeDraggable(stickyToolbar, stickyDragHandle);
