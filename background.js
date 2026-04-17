@@ -80,11 +80,6 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     return;
   }
 
-  if (msg.action === 'relay-toggle-view' && sender.tab?.id) {
-    chrome.tabs.sendMessage(sender.tab.id, { action: 'toggle-view' }).catch(() => {});
-    return;
-  }
-
   if (msg.action === 'relay-to-tab' && sender.tab?.id && msg.payload?.action) {
     chrome.tabs.sendMessage(sender.tab.id, { action: msg.payload.action }).catch(() => {});
     return;

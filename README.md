@@ -8,6 +8,8 @@ Highlight what's notable, eliminate what's not.
 
 Mark it up. Block it out. Make it yours.
 
+NOTE: WE ARE NOT IN PRODUCTION YET, SO MAKE AN EFFORT TO CLEAN UP CODE AND REDUCE DUPLICATE AS WE GO!
+
 ---
 
 ## Shipped: Current Architecture
@@ -18,7 +20,7 @@ Mark it up. Block it out. Make it yours.
 MV3 manifest. Permissions: `storage`, `activeTab`, `scripting`, `tabs`. Host permissions: `*://*/*`. Declares keyboard commands for all four tools (Alt+E, Alt+S, Alt+H, Alt+V). Declares `web_accessible_resources` for the `pages/` directory (Sites history page).
 
 #### `background.js`
-Minimal service worker. Routes keyboard command events from the browser to the active tab's content scripts via `chrome.tabs.sendMessage`. Also relays messages from the radial quick-access menu (content scripts can't `sendMessage` to their own tab): `open-sites`, `relay-toggle-view`, and `relay-to-tab`.
+Minimal service worker. Routes keyboard command events from the browser to the active tab's content scripts via `chrome.tabs.sendMessage`. Also relays messages from the radial quick-access menu (content scripts can't `sendMessage` to their own tab): `open-sites` and `relay-to-tab`.
 
 ---
 
@@ -34,10 +36,12 @@ Wrapper around `chrome.storage.local`. All data is keyed by `hostname`, and each
 
 Methods: `saveItem`, `saveNote` (generic upsert-by-uuid — caller passes full payload), `deleteItem`, `getAnchorsForUrl`, `clearPage`.
 
-#### `lib/annotationState.js` — `window.VellumState`, `window.VellumUndo`
+#### `lib/annotationState.js` — `window.VellumState`, `window.VellumUndo`, `window.VellumVisibility`
 **`VellumState`**: Single source of truth for active tool mode (`null` | `'eraser'` | `'sticky'` | `'highlight'` | `'pen'` | `'arrow'` | `'rect'` | `'ellipse'` | `'text'` | `'select'`), active highlight color, and stroke width. Persists `vellumActiveMode`, `vellumHighlightColor`, and `vellumStrokeWidth` to storage for cross-component sync (popup reads these live). Subscriber pattern — all tools react to state changes without polling.
 
 **`VellumUndo`**: Central undo stack shared by all tools. Pressing `Ctrl+Z` / `Cmd+Z` anywhere on the page pops and executes the most recent `{ undo: async fn }` entry, regardless of which tool created it.
+
+**`VellumVisibility`**: Ephemeral show/hide-all controller. `toggle()` flips a `vellum-hidden` class on `<html>` (which component CSS rules target), iterates `VellumErasedElements` to flip inline `display:none`, disables/re-enables the `vellum-erase-overrides` + `vellum-style-overrides` style tags, and injects/removes a transient stylesheet that zeroes out CSS Custom Highlights backgrounds. State is NOT persisted — every page load starts visible. `show()` idempotently reveals; called from sticky/highlight/marker handlers so hide mode can't block or obscure new work. The central `toggle-view` / `get-view` message handler and a `visibility-changed` broadcast (for popup icon sync) also live here.
 
 #### `lib/vellumUI.js` — `window.VellumUI`                                                                           
 Shared UI utilities that prevent duplication across content scripts.                                                                                                     
@@ -76,7 +80,7 @@ Also exposes `generateCSSSelector(el)` as a shared utility (used by the resizer)
 - Click to erase: fires a 3-stage animation sequence (ripples → bounding-box flash → dissolve) then hard-hides the element with `display: none !important`
 - `Shift+Click` for domain-wide erasure (stored with `path: '*'`)
 - Undo: shared `VellumUndo` stack + 5s toast button, both cancel mid-flight animations
-- Show/Hide (`Alt+V`): tracks erased elements in a shared `VellumErasedElements` Set (populated by both eraser clicks and restorer) to toggle visibility
+- Show/Hide (`Alt+V`): erased elements are tracked in the shared `VellumErasedElements` Set (populated by both eraser clicks and restorer); `VellumVisibility` iterates this set to toggle inline `display:none` on each node
 - Storage write is non-blocking (does not delay animation)
 
 #### `content/sticky.js` — `window.StickyEngine`
@@ -90,7 +94,7 @@ Also exposes `generateCSSSelector(el)` as a shared utility (used by the resizer)
 - Autosaves content on a 1.5s debounce
 - Create undo: `Ctrl+Z` / `Cmd+Z` immediately after placing a note removes it from DOM and storage; also available via toolbar undo button
 - Delete: instant visual hide + 5s undo window before storage commit
-- `Alt+V` toggles all note visibility. Visibility state (`vellumHidden`) is persisted to storage and queried live by the popup via `get-view` message
+- `Alt+V` toggles note visibility via the shared `VellumVisibility` controller (see below)
 - Smart Z-index elevation on focus
 
 #### `content/highlighter.js` — `window.VellumHighlighter`

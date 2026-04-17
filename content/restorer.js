@@ -52,10 +52,6 @@ async function performRestoration() {
   const anchors = await window.VellumStorage.getAnchorsForUrl(location.href);
   if (!anchors || anchors.length === 0) return;
 
-  // Check once whether annotations are currently hidden.
-  const hiddenResult = await chrome.storage.local.get(['vellumHidden']);
-  const isHidden = !!hiddenResult.vellumHidden;
-
   let erasuresCount = 0;
   let notesCount = 0;
   let resizeCount = 0;
@@ -72,7 +68,6 @@ async function performRestoration() {
         styleTag = document.createElement('style');
         styleTag.id = 'vellum-style-overrides';
         styleTag.setAttribute('data-vellum-ui', '1');
-        if (isHidden) styleTag.disabled = true;
         document.head.appendChild(styleTag);
       }
       styleTag.textContent += `${item.selector} { ${item.cssText} }\n`;
@@ -108,7 +103,6 @@ async function performRestoration() {
         eraseTag = document.createElement('style');
         eraseTag.id = 'vellum-erase-overrides';
         eraseTag.setAttribute('data-vellum-ui', '1');
-        if (isHidden) eraseTag.disabled = true;
         document.head.appendChild(eraseTag);
       }
       if (window.VellumEraseRules) {

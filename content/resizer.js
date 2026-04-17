@@ -476,18 +476,6 @@ chrome.runtime.onMessage.addListener((request) => {
       mode: window.VellumState.mode === 'resizer' ? null : 'resizer',
     });
   }
-  if (request.action === 'toggle-view') {
-    const tag = document.getElementById('vellum-style-overrides');
-    if (tag) tag.disabled = !tag.disabled;
-  }
-});
-
-// ─── Seed resize visibility from storage on load ────────────────────────────
-chrome.storage.local.get(['vellumHidden'], (result) => {
-  if (result.vellumHidden) {
-    const tag = document.getElementById('vellum-style-overrides');
-    if (tag) tag.disabled = true;
-  }
 });
 
 // ─── React to mode changes ──────────────────────────────────────────────────

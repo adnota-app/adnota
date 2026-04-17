@@ -5,7 +5,6 @@ let captureSvg = null;
 let capturePath = null;    // freehand live path
 let captureShape = null;   // arrow/rect/ellipse live shape
 let shapeOrigin = null;    // { x, y } screen coords at pointerdown for shape tools
-let areMarkersVisible = true;
 
 // ── Utility: Ramer-Douglas-Peucker (RDP) Algorithm ─────────────────────────
 function pointLineDistance(p, a, b) {
@@ -497,6 +496,9 @@ function handleTextClick(e) {
   e.preventDefault();
   e.stopPropagation();
 
+  // Hide mode must never block work — reveal before placing the editor.
+  window.VellumVisibility.show();
+
   const screenX = e.clientX;
   const screenY = e.clientY;
 
@@ -665,6 +667,10 @@ function handlePointerDown(e) {
   if (isToolbarHit(e)) return;
   e.preventDefault();
 
+  // Hide mode must never block work — reveal before the stroke starts so the
+  // user can see what they're drawing.
+  window.VellumVisibility.show();
+
   switch (mode) {
     case 'pen':     handlePenDown(e); break;
     case 'arrow':   handleArrowDown(e); break;
@@ -722,7 +728,6 @@ window.VellumMarker = {
       wrapper.className = 'vellum-marker-wrapper';
       wrapper.dataset.uuid = payload.uuid;
       wrapper.dataset.shapeType = 'text';
-      wrapper.style.display = areMarkersVisible ? 'block' : 'none';
       // Pin to document origin so textEl absolute coords work correctly
       wrapper.style.top = '0';
       wrapper.style.left = '0';
@@ -775,7 +780,6 @@ window.VellumMarker = {
     wrapper.className = 'vellum-marker-wrapper';
     wrapper.dataset.uuid = payload.uuid;
     wrapper.dataset.shapeType = shapeType;
-    wrapper.style.display = areMarkersVisible ? 'block' : 'none';
 
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
     let shapeEl;
@@ -1036,7 +1040,9 @@ function handleSelectClick(e) {
   let bestArea = Infinity;
 
   for (const wrapper of wrappers) {
-    if (wrapper.style.display === 'none') continue;
+    // Hidden wrappers (either directly or via the root vellum-hidden class)
+    // shouldn't be selectable — they aren't visible to the user.
+    if (window.getComputedStyle(wrapper).display === 'none') continue;
     if (!isPointNearShape(wrapper, e.clientX, e.clientY)) continue;
     const bbox = getShapeBBox(wrapper);
     const area = bbox.width * bbox.height;
@@ -1121,12 +1127,3 @@ window.VellumState.subscribe(state => {
   }
 });
 
-// External visibility handler
-chrome.runtime.onMessage.addListener((request) => {
-  if (request.action === 'toggle-view') {
-    areMarkersVisible = !areMarkersVisible;
-    document.querySelectorAll('.vellum-marker-wrapper').forEach(el => {
-      el.style.display = areMarkersVisible ? 'block' : 'none';
-    });
-  }
-});

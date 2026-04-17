@@ -48,7 +48,7 @@
   transition: opacity 0.2s ease;
 }
 
-.vellum-sticky-container.hidden {
+html.vellum-hidden .vellum-sticky-container {
   opacity: 0 !important;
   pointer-events: none !important;
 }
