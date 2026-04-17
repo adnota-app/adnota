@@ -139,13 +139,13 @@ thin=16px, medium=24px, thick=36px - this works well for lines, but is too big f
 
 remove eye from radial menu, have global eye turn off radial menu
 
-fix show/hide global persistance
+~~fix show/hide global persistance~~
 
 make all huds consistent look and feel
 
 make solid circles and squares with a fill (for covering up stuff you can't erase!)
 
-if you click to do a post it note and the eye ball is off, turn it on!
+~~if you click to do a post it note and the eye ball is off, turn it on!~~
 
 If in ERASE mode, and you hover over radial menu, TURN OFF THE SELECTION BORDER!
 
