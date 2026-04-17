@@ -24,7 +24,6 @@ const toolIcons = {
   rect:      '<rect x="4" y="5" width="12" height="10" rx="1"/>',
   ellipse:   '<ellipse cx="10" cy="10" rx="7" ry="5"/>',
   text:      '<text x="4" y="15" font-size="14" font-weight="700" font-family="serif" fill="currentColor" stroke="none">T</text>',
-  undo:      '<path d="M4 8h10a3 3 0 010 6H10"/><path d="M7 5L4 8l3 3"/>',
 };
 
 // ── Toolbar helpers ─────────────────────────────────────────────────────────
@@ -145,16 +144,14 @@ for (const preset of strokePresets) {
 // Divider
 highlightToolbar.appendChild(Object.assign(document.createElement('div'), { className: 'vellum-toolbar-divider' }));
 
-// Undo button
-const undoBtn = document.createElement('div');
-undoBtn.className = 'vellum-undo-btn';
-undoBtn.title = 'Undo';
-undoBtn.appendChild(svgIcon('undo'));
-undoBtn.onclick = (e) => {
-  e.stopPropagation();
-  window.VellumUndo.undo();
-};
-highlightToolbar.appendChild(undoBtn);
+// Trash — clears every drawing annotation on this page (highlights + markers)
+highlightToolbar.appendChild(window.VellumUI.createTrashButton({
+  label: 'all highlights and drawings',
+  actionTypes: ['HIGHLIGHT', 'MARKER'],
+}));
+
+// Undo
+highlightToolbar.appendChild(window.VellumUI.createUndoButton());
 
 // ── Toolbar drag logic ──────────────────────────────────────────────────────
 window.VellumUI.makeDraggable(highlightToolbar, dragHandle);

@@ -46,7 +46,9 @@ Methods: `saveItem`, `saveNote` (generic upsert-by-uuid — caller passes full p
 #### `lib/vellumUI.js` — `window.VellumUI`                                                                           
 Shared UI utilities that prevent duplication across content scripts.                                                                                                     
 
-**`data-vellum-ui` convention**: Every Vellum UI element (overlays, toolbars, toasts, sticky notes, marker wrappers, etc.) must be tagged with `data-vellum-ui="1"`. This is how the eraser, resizer, and marker know to ignore Vellum's own elements — `isVellumElement(el)` is a single `.closest('[data-vellum-ui]')` check. When adding new UI elements, always set this attribute or they will be erasable/selectable by the user's own tools.     
+**`data-vellum-ui` convention**: Every Vellum UI element (overlays, toolbars, toasts, sticky notes, marker wrappers, etc.) must be tagged with `data-vellum-ui="1"`. This is how the eraser, resizer, and marker know to ignore Vellum's own elements — `isVellumElement(el)` is a single `.closest('[data-vellum-ui]')` check. When adding new UI elements, always set this attribute or they will be erasable/selectable by the user's own tools.
+
+**Shared HUD button helpers**: `createToolbarIconButton`, `createUndoButton`, and `createTrashButton` produce the dark-frosted `vellum-undo-btn`-styled controls used across every HUD. `clearPageAnnotations(actionTypes)` is the single implementation behind the popup's per-stat trash icons and the HUD trash buttons — it filters `items[]` by page + action type and writes back.
 
 ---
 
@@ -70,11 +72,13 @@ Also exposes `generateCSSSelector(el)` as a shared utility (used by the resizer)
 - Activated via popup or `Alt+E` keyboard shortcut
 - Red outline hover preview tracks the cursor; Vellum's own UI elements are guarded and invisible to the eraser
 - **Dimension badge**: small `W×H` pixel label in the top-right corner of the red hover outline — useful for gauging element size, especially when parts extend off-screen
-- **HUD strip**: fixed bottom-center bar (draggable) that provides live contextual guidance while hovering:
+- **HUD strip**: fixed bottom-center bar (draggable) that stays visible whenever the eraser is active. Layout: drag handle → V logo chip → info section → trash → undo. Info section updates live while hovering:
   - **Confidence score** with contextual label — "likely ad" (red, when ad signals detected), "strong anchor" (green, ≥70), "moderate" (amber, ≥40), "weak anchor" (red, <40)
   - **Ad signal badges** — colored pills (e.g., `ad-keyword`, `iframe`, `ad-network`) shown when detected
   - **Scroll nudge** — "▲ Scroll up N× for better target" shown when `findBetterTarget()` identifies a higher parent with a stronger anchor score
   - **Rotating help tips** — cycles every 4s with crossfade: click scope (page vs domain), scroll traversal, Escape to exit
+  - **Trash button** — deletes every erasure on the current page after a confirm (same action as the popup's "Erased" stat card)
+  - **Undo button** — fires the shared `VellumUndo.undo()` stack
   - **Draggable** — grab handle + pointer capture drag; position resets on mode exit
 - **Scroll-wheel DOM traversal**: while hovering, scroll up to walk to the parent element, scroll down to walk back toward children — no minimum size filter (unlike resizer), so small elements like links and icons can be erased too
 - Click to erase: fires a 3-stage animation sequence (ripples → bounding-box flash → dissolve) then hard-hides the element with `display: none !important`
@@ -87,7 +91,7 @@ Also exposes `generateCSSSelector(el)` as a shared utility (used by the resizer)
 - Activated via popup or `Alt+S`
 - Click anywhere on the page to drop a sticky note; stays in sticky mode for rapid placement — exit via `Escape` or re-toggle
 - **Dark frosted-glass toolbar** (fixed, bottom-center, draggable) — matches marker/eraser HUD aesthetic
-- **Toolbar layout**: drag handle → V logo chip → 5 sticky-note-shaped color swatches → undo button
+- **Toolbar layout**: drag handle → V logo chip → 5 sticky-note-shaped color swatches → trash → undo. Trash clears every sticky note on the current page after a confirm.
 - **Five colors**: yellow, green, blue, pink, white — swatches are mini sticky note icons (folded corner shape) filled with the theme color. Active swatch gets a purple glow ring. Choice persists to `vellumStickyColor` in storage.
 - **Hybrid anchor placement**: on click, finds the nearest block-level DOM element via `FuzzyAnchor.generate()` and stores the note's pixel offset (`dx`, `dy`) from that element alongside a percentage-based fallback (`xPct`, `yScrollPct`). On restore, tries the anchor first (element re-found via FuzzyAnchor tournament scoring → apply offset). If the anchor can't be resolved (score < 40 — page was restructured), falls back to percentage placement. **You never lose your work.**
 - **Drag and Drop**: pointer-event drag on the header repositions notes freely. On drop, re-anchors to the element underneath the new position and persists updated coordinates.
@@ -100,7 +104,7 @@ Also exposes `generateCSSSelector(el)` as a shared utility (used by the resizer)
 #### `content/highlighter.js` — `window.VellumHighlighter`
 - Activated via popup or `Alt+H`
 - **Dark frosted-glass toolbar** (fixed, bottom-center, draggable) — matches eraser HUD aesthetic with `rgba(15,15,15,0.92)` background, `backdrop-filter: blur(8px)`, and purple accent border
-- **Toolbar layout**: drag handle → V logo chip → tool icons → color swatches → stroke width presets → undo button
+- **Toolbar layout**: drag handle → V logo chip → tool icons → color swatches → stroke width presets → trash → undo. Trash clears every highlight and marker shape on the current page after a confirm.
 - **Seven tool buttons** (SVG icons with purple hover/active states):
   - **Select** — click to select existing annotations; delete via red ✕ or Delete/Backspace key; double-click text to re-edit
   - **Pencil** — freehand drawing (original pen mode)

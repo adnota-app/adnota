@@ -24,6 +24,9 @@ Object.assign(dimensionBadge.style, {
 highlightOverlay.appendChild(dimensionBadge);
 
 // ─── HUD strip (fixed bottom bar, draggable) ────────────────────────────────
+// Persistent chrome: drag handle + logo + info section + trash + undo.
+// Only the info section's contents update on hover — the buttons stay mounted
+// so the user can undo or clear erasures without a target hovered.
 const eraserHud = document.createElement('div');
 eraserHud.id = 'vellum-eraser-hud';
 eraserHud.setAttribute('data-vellum-ui', '1');
@@ -38,22 +41,55 @@ Object.assign(eraserHud.style, {
   fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
   fontSize: '12.5px',
   lineHeight: '1',
-  padding: '8px 14px',
+  padding: '6px 10px',
   borderRadius: '10px',
   border: '1px solid rgba(124, 58, 237, 0.45)',
   boxShadow: '0 4px 24px rgba(0,0,0,0.5)',
   zIndex: '2147483646',
   pointerEvents: 'auto',
-  cursor: 'grab',
   display: 'none',
+  alignItems: 'center',
   whiteSpace: 'nowrap',
   opacity: '0',
   transition: 'opacity 0.15s ease',
 });
 document.documentElement.appendChild(eraserHud);
 
+// Drag handle
+const eraserDragHandle = document.createElement('span');
+eraserDragHandle.className = 'vellum-toolbar-drag';
+eraserDragHandle.textContent = '\u2847';
+eraserDragHandle.title = 'Drag to reposition';
+eraserHud.appendChild(eraserDragHandle);
+
+// Logo chip
+const eraserLogo = document.createElement('span');
+eraserLogo.className = 'vellum-toolbar-logo';
+eraserLogo.textContent = 'V';
+eraserHud.appendChild(eraserLogo);
+
+// Info section (dynamic — updated on hover)
+const eraserHudInfo = document.createElement('span');
+eraserHudInfo.id = 'vellum-eraser-hud-info';
+eraserHudInfo.style.display = 'inline-flex';
+eraserHudInfo.style.alignItems = 'center';
+eraserHudInfo.style.minWidth = '220px';
+eraserHud.appendChild(eraserHudInfo);
+
+// Divider
+eraserHud.appendChild(Object.assign(document.createElement('div'), { className: 'vellum-toolbar-divider' }));
+
+// Trash — clears all erasures on this page
+eraserHud.appendChild(window.VellumUI.createTrashButton({
+  label: 'all erasures',
+  actionTypes: ['ERASE'],
+}));
+
+// Undo
+eraserHud.appendChild(window.VellumUI.createUndoButton());
+
 // ─── HUD drag logic ─────────────────────────────────────────────────────────
-window.VellumUI.makeDraggable(eraserHud);
+window.VellumUI.makeDraggable(eraserHud, eraserDragHandle);
 
 // ─── Rotating help tips ─────────────────────────────────────────────────────
 const hudTips = [
@@ -292,10 +328,10 @@ function resetHudPosition() {
 
 function updateHUD(target) {
   if (!target) {
-    eraserHud.style.display = 'none';
-    eraserHud.style.opacity = '0';
     dimensionBadge.textContent = '';
-    stopHudTips();
+    // Idle state: rotating help tip, no confidence/ad info.
+    eraserHudInfo.innerHTML = `<span id="vellum-hud-tip" style="display:inline-block;min-width:180px">${hudTips[hudTipIndex]}</span>`;
+    ensureTipRotation();
     return;
   }
 
@@ -303,7 +339,7 @@ function updateHUD(target) {
   const rect = target.getBoundingClientRect();
   dimensionBadge.textContent = `${Math.round(rect.width)}\u00d7${Math.round(rect.height)}`;
 
-  // ── HUD strip ──
+  // ── HUD info section ──
   const anchor = getAnchorStrength(target);
   const adSignals = detectAdSignals(target);
   const betterTarget = findBetterTarget(target);
@@ -328,10 +364,6 @@ function updateHUD(target) {
 
   let html = '';
 
-  // Drag handle + logo chip
-  html += '<span style="color:#525264;margin-right:6px;font-size:10px;letter-spacing:1px;vertical-align:middle;cursor:grab" title="Drag to reposition">\u2847</span>';
-  html += '<span style="display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;background:rgba(124,58,237,0.35);color:#c084fc;font-weight:700;font-size:10px;margin-right:8px;vertical-align:middle;flex-shrink:0">V</span>';
-
   // Confidence score
   html += `<span style="color:${confColor};font-weight:600">${anchor.score}/100</span>`;
   html += `<span style="color:${confColor};margin-left:4px">${confLabel}</span>`;
@@ -353,26 +385,37 @@ function updateHUD(target) {
     html += `<span id="vellum-hud-tip" style="display:inline-block;min-width:180px">${hudTips[hudTipIndex]}</span>`;
   }
 
-  eraserHud.innerHTML = html;
-  eraserHud.style.display = 'block';
-  // Force reflow then fade in
-  eraserHud.offsetHeight;
-  eraserHud.style.opacity = '1';
+  eraserHudInfo.innerHTML = html;
+  ensureTipRotation();
+}
 
-  // Start tip rotation if not already running
-  if (!hudTipInterval) {
-    hudTipInterval = setInterval(() => {
-      hudTipIndex = (hudTipIndex + 1) % hudTips.length;
-      const tipEl = document.getElementById('vellum-hud-tip');
-      if (tipEl) {
-        tipEl.style.opacity = '0';
-        tipEl.style.transition = 'opacity 0.2s ease';
-        setTimeout(() => {
-          tipEl.innerHTML = hudTips[hudTipIndex];
-          tipEl.style.opacity = '1';
-        }, 200);
-      }
-    }, 4000);
+function ensureTipRotation() {
+  if (hudTipInterval) return;
+  hudTipInterval = setInterval(() => {
+    hudTipIndex = (hudTipIndex + 1) % hudTips.length;
+    const tipEl = document.getElementById('vellum-hud-tip');
+    if (tipEl) {
+      tipEl.style.opacity = '0';
+      tipEl.style.transition = 'opacity 0.2s ease';
+      setTimeout(() => {
+        tipEl.innerHTML = hudTips[hudTipIndex];
+        tipEl.style.opacity = '1';
+      }, 200);
+    }
+  }, 4000);
+}
+
+// Show/hide the entire HUD shell. Visible whenever eraser mode is active so
+// the trash/undo buttons stay reachable even when no element is hovered.
+function setHudVisible(visible) {
+  if (visible) {
+    eraserHud.style.display = 'flex';
+    // Force reflow then fade in
+    eraserHud.offsetHeight;
+    eraserHud.style.opacity = '1';
+  } else {
+    eraserHud.style.display = 'none';
+    eraserHud.style.opacity = '0';
   }
 }
 
@@ -505,10 +548,13 @@ chrome.runtime.onMessage.addListener((request) => {
 
 // ─── React to mode changes ────────────────────────────────────────────────────
 window.VellumState.subscribe(state => {
-  if (state.mode !== 'eraser') {
+  if (state.mode === 'eraser') {
+    // Show HUD as soon as the tool is active — trash/undo are always reachable.
+    setHudVisible(true);
+    updateHUD(null);
+  } else {
     highlightOverlay.style.display = 'none';
-    eraserHud.style.display = 'none';
-    eraserHud.style.opacity = '0';
+    setHudVisible(false);
     stopHudTips();
     resetHudPosition();
     hudTipIndex = 0;
