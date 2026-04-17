@@ -143,7 +143,7 @@ remove eye from radial menu, have global eye turn off radial menu
 
 make all huds consistent look and feel
 
-fix the resize tool, does it need a HUD? (it's the oldest tool at this point...) Should it have same element fill as eraser tool?
+fix the resize tool, does it need a HUD? (it's the oldest tool at this point...) Should it have same element fill as eraser tool? It also doesn't set "ACTIVE" when you use the tool in popup.js.
 
 make solid circles and squares with a fill (for covering up stuff you can't erase!)
 
@@ -152,6 +152,13 @@ make solid circles and squares with a fill (for covering up stuff you can't eras
 If in ERASE mode, and you hover over radial menu, TURN OFF THE SELECTION BORDER!
 
 Make clicking on the V logo from a HUD take you to the HOME PAGE??
+
+FIX HUD MENU DRAG BAR ICONS...
+
+Add storage size to HOME page
+Add ability to delete all storage for entire domain from HOME page
+
+
 
   7. Oversized functions worth splitting
 

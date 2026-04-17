@@ -130,21 +130,24 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.getElementById('count-resizes').textContent    = resizes;
 
     // ── Per-class clear: clicking a stat card deletes that action type ──────
-    const labelMap = {
-      ERASE:     'all erasures',
-      NOTE:      'all sticky notes',
-      HIGHLIGHT: 'all highlights',
-      MARKER:    'all pen strokes',
-      RESIZE:    'all resizes',
+    const nounMap = {
+      ERASE:     { singular: 'erasure',     plural: 'erasures',     count: () => erasures },
+      NOTE:      { singular: 'sticky note', plural: 'sticky notes', count: () => notes },
+      HIGHLIGHT: { singular: 'highlight',   plural: 'highlights',   count: () => highlights },
+      MARKER:    { singular: 'pen stroke',  plural: 'pen strokes',  count: () => strokes },
+      RESIZE:    { singular: 'resize',      plural: 'resizes',      count: () => resizes },
     };
 
     document.querySelectorAll('.stat-card[data-clear-action]').forEach(card => {
       const actionType = card.dataset.clearAction;
+      const info = nounMap[actionType];
 
       card.addEventListener('click', async () => {
-        const label = labelMap[actionType] ?? 'these items';
+        const n = info?.count() ?? 0;
+        if (n === 0) return;
+        const noun = window.VellumUI.pluralize(n, info.singular, info.plural);
         const ok = await window.VellumUI.confirmDialog({
-          message: `Delete ${label}?`,
+          message: `Delete ${n} ${noun} from this page?`,
         });
         if (!ok) return;
 
@@ -169,8 +172,11 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // ── Clear ALL page edits ──────────────────────────────────────────────
     btnClear.addEventListener('click', async () => {
+      const total = erasures + notes + highlights + strokes + resizes;
+      if (total === 0) return;
+      const noun = window.VellumUI.pluralize(total, 'edit', 'edits');
       const ok = await window.VellumUI.confirmDialog({
-        message: 'Delete all Vellum edits on this page?',
+        message: `Delete all ${total} ${noun} on this page?`,
       });
       if (!ok) return;
 

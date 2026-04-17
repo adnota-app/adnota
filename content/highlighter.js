@@ -146,7 +146,8 @@ highlightToolbar.appendChild(Object.assign(document.createElement('div'), { clas
 
 // Trash — clears every drawing annotation on this page (highlights + markers)
 highlightToolbar.appendChild(window.VellumUI.createTrashButton({
-  label: 'all highlights and drawings',
+  singular: 'highlight or drawing',
+  plural: 'highlights & drawings',
   actionTypes: ['HIGHLIGHT', 'MARKER'],
 }));
 
