@@ -446,7 +446,7 @@ window.StickyEngine = {
       const scrollTop  = window.pageYOffset || document.documentElement.scrollTop;
       const scrollLeft = window.pageXOffset || document.documentElement.scrollLeft;
       container.style.left = `${e.clientX + scrollLeft - dragOffsetX}px`;
-      container.style.top  = `${e.clientY + scrollTop  - dragOffsetY}px`;
+      container.style.top  = `${Math.max(0, e.clientY + scrollTop - dragOffsetY)}px`;
     });
 
     header.addEventListener('pointerup', async (e) => {
@@ -596,7 +596,7 @@ window.StickyEngine = {
     }
 
     container.style.left = `${left}px`;
-    container.style.top  = `${top}px`;
+    container.style.top  = `${Math.max(0, top)}px`;
   },
 };
 
