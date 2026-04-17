@@ -132,7 +132,8 @@ stickyToolbar.appendChild(Object.assign(document.createElement('div'), { classNa
 
 // Trash — clears all sticky notes on this page
 stickyToolbar.appendChild(window.VellumUI.createTrashButton({
-  label: 'all sticky notes',
+  singular: 'sticky note',
+  plural: 'sticky notes',
   actionTypes: ['NOTE'],
 }));
 

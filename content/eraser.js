@@ -81,7 +81,8 @@ eraserHud.appendChild(Object.assign(document.createElement('div'), { className: 
 
 // Trash — clears all erasures on this page
 eraserHud.appendChild(window.VellumUI.createTrashButton({
-  label: 'all erasures',
+  singular: 'erasure',
+  plural: 'erasures',
   actionTypes: ['ERASE'],
 }));
 
