@@ -743,6 +743,7 @@ window.VellumMarker = {
     if (shapeType === 'text') {
       const wrapper = document.createElement('div');
       wrapper.className = 'vellum-marker-wrapper';
+      wrapper.setAttribute('data-vellum-ui', '1');
       wrapper.dataset.uuid = payload.uuid;
       wrapper.dataset.shapeType = 'text';
       // Pin to document origin so textEl absolute coords work correctly
@@ -795,6 +796,7 @@ window.VellumMarker = {
     // ── SVG SHAPES (freehand, arrow, rect, ellipse) ─────────────────────
     const wrapper = document.createElement('div');
     wrapper.className = 'vellum-marker-wrapper';
+    wrapper.setAttribute('data-vellum-ui', '1');
     wrapper.dataset.uuid = payload.uuid;
     wrapper.dataset.shapeType = shapeType;
 
@@ -1109,8 +1111,10 @@ function handleSelectPointerMove(e) {
   if (!moveDragState.moved) {
     if (Math.abs(dx) < DRAG_THRESHOLD_PX && Math.abs(dy) < DRAG_THRESHOLD_PX) return;
     moveDragState.moved = true;
-    // Cursor hint; !important so it beats the body-level select cursor.
-    document.body.style.setProperty('cursor', 'grabbing', 'important');
+    // Cursor swap; the cursor-lock stylesheet in highlighter.js has an
+    // `html.vellum-dragging` override that swaps every descendant to
+    // `grabbing !important`, beating the select-mode arrow.
+    document.documentElement.classList.add('vellum-dragging');
     // Retarget the selection box onto the wrapper we're actually dragging,
     // otherwise a stale bbox from a prior selection follows the drag.
     if (selectedWrapper !== moveDragState.wrapper) {
@@ -1129,7 +1133,7 @@ async function handleSelectPointerUp(e) {
   const dy = e.clientY - startY;
   moveDragState = null;
 
-  document.body.style.removeProperty('cursor');
+  document.documentElement.classList.remove('vellum-dragging');
 
   if (!moved) {
     // Fall through to the normal click-to-select flow.

@@ -235,6 +235,82 @@ window.VellumUI.makeDraggable(highlightToolbar, dragHandle);
 // All drawing-family modes that show this toolbar
 const _drawingModes = new Set(['pen', 'highlight', 'arrow', 'rect', 'ellipse', 'text', 'select']);
 
+// ── Per-tool cursor icons ─────────────────────────────────────────────────
+// Distinctive cursors per tool so "tool mode" is visually unambiguous.
+// Trailing `, <fallback>` keeps things sane if the data URL fails to parse.
+function svgCursor(svg, hx, hy, fallback = 'crosshair') {
+  // `%22` = `"` — required for a well-formed data: URL with inline attributes.
+  const encoded = svg.replace(/"/g, '%22').replace(/#/g, '%23').replace(/\n/g, '');
+  return `url("data:image/svg+xml;utf8,${encoded}") ${hx} ${hy}, ${fallback}`;
+}
+
+const CURSORS = {
+  crosshair: 'crosshair',
+  text: 'text',
+  // White arrow for select mode — reads as "tool active" on any page background.
+  select: svgCursor(
+    `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 18 18">
+       <path d="M2 1 L2 14 L5 11 L7 15 L9 14 L7 10 L12 10 Z"
+             fill="white" stroke="black" stroke-width="1.2" stroke-linejoin="round"/>
+     </svg>`, 2, 1, 'default'),
+  // Highlight marker — chisel tip + yellow shaft, hotspot at the tip.
+  highlight: svgCursor(
+    `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
+       <path d="M3 20 L6 17 L9 20 L6 23 Z" fill="#fde047" stroke="black" stroke-width="1"/>
+       <path d="M6 17 L17 6 L20 9 L9 20 Z" fill="#facc15" stroke="black" stroke-width="1"/>
+       <path d="M17 6 L19 4 L21 6 L20 9 Z" fill="#64748b" stroke="black" stroke-width="1"/>
+     </svg>`, 3, 20, 'text'),
+  // Sticky-note icon — folded-corner yellow square; hotspot at the top-left
+  // where the note's anchor point will land.
+  sticky: svgCursor(
+    `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
+       <path d="M3 3 H17 L21 7 V21 H3 Z" fill="#fde68a" stroke="black" stroke-width="1.5" stroke-linejoin="round"/>
+       <path d="M17 3 V7 H21" fill="#fcd34d" stroke="black" stroke-width="1.5" stroke-linejoin="round"/>
+       <path d="M6 11 H15 M6 14 H13 M6 17 H11" stroke="#92400e" stroke-width="1" stroke-linecap="round"/>
+     </svg>`, 3, 3, 'crosshair'),
+  // Eraser — pink rubber tipped tool tilted at -30°; hotspot at the tip (bottom-left).
+  eraser: svgCursor(
+    `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
+       <g transform="rotate(-35 12 13)">
+         <rect x="2" y="9" width="20" height="8" rx="1.5" fill="#fca5a5" stroke="black" stroke-width="1.5"/>
+         <line x1="9" y1="9" x2="9" y2="17" stroke="black" stroke-width="1.5"/>
+       </g>
+     </svg>`, 3, 20, 'crosshair'),
+};
+
+// Inject/update a stylesheet that forces the tool cursor on every non-Vellum
+// element with `!important`. Page-defined `cursor: pointer` on links/buttons
+// would otherwise win over an inline body cursor — that's the exact bug where
+// hovering a link made the cursor look clickable, then sticky mode dropped a
+// note instead of following the link.
+//
+// `html.vellum-dragging` override lets marker-drag swap to `grabbing` without
+// fighting the lock.
+function setCursorLock(cursor) {
+  let tag = document.getElementById('vellum-cursor-lock');
+  if (!cursor) {
+    if (tag) tag.remove();
+    return;
+  }
+  if (!tag) {
+    tag = document.createElement('style');
+    tag.id = 'vellum-cursor-lock';
+    tag.setAttribute('data-vellum-ui', '1');
+    document.head.appendChild(tag);
+  }
+  // `:not([data-vellum-ui] *)` excludes descendants of Vellum UI — the project
+  // convention is every Vellum UI element carries `data-vellum-ui="1"`, so
+  // toolbars/buttons/sticky notes keep their own cursors (grab, pointer, etc.).
+  const scope = '*:not([data-vellum-ui]):not([data-vellum-ui] *)';
+  tag.textContent =
+    `${scope} { cursor: ${cursor} !important; }\n` +
+    // Drag override: beats the base lock on page elements via specificity, and
+    // beats marker.css's select-mode `grab` rule on wrappers via !important.
+    `html.vellum-dragging ${scope} { cursor: grabbing !important; }\n` +
+    `html.vellum-dragging .vellum-marker-wrapper,\n` +
+    `html.vellum-dragging .vellum-marker-wrapper * { cursor: grabbing !important; }`;
+}
+
 // Global VellumState Subscription — single place that owns cursor and toolbar state
 // for ALL modes. Eraser and sticky manage their own overlays but delegate cursor here.
 window.VellumState.subscribe(state => {
@@ -250,28 +326,26 @@ window.VellumState.subscribe(state => {
     highlightToolbar.style.transform = 'translateX(-50%)';
   }
 
-  // Central cursor management for every mode. Select uses a white SVG arrow so
-  // it reads as "tool active" against any page background; hovering a marker
-  // upgrades to `grab` via CSS (see marker.css).
-  const WHITE_ARROW_CURSOR =
-    "url('data:image/svg+xml;utf8," +
-    "<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%2218%22 height=%2218%22 viewBox=%220 0 18 18%22>" +
-    "<path d=%22M2 1 L2 14 L5 11 L7 15 L9 14 L7 10 L12 10 Z%22 " +
-    "fill=%22white%22 stroke=%22black%22 stroke-width=%221.2%22 stroke-linejoin=%22round%22/>" +
-    "</svg>') 2 1, default";
-
+  // Central cursor management for every mode. Custom icons for sticky/eraser
+  // make "tool mode" visually unambiguous — a plain `text` or `crosshair`
+  // cursor still reads ambiguously when hovering links.
+  //
+  // The cursor is applied via an injected stylesheet with `!important` so that
+  // link/button `cursor: pointer` rules on the host page can't override it.
+  // Without this lock, hovering any link flips the cursor back to pointer and
+  // the user thinks they're about to click — instead they drop a text field.
   switch (state.mode) {
-    case 'highlight': document.body.style.cursor = 'text'; break;
-    case 'select': document.body.style.cursor = WHITE_ARROW_CURSOR; break;
-    case 'text': document.body.style.cursor = 'text'; break;
+    case 'highlight': setCursorLock(CURSORS.highlight); break;
+    case 'select':    setCursorLock(CURSORS.select);    break;
+    case 'text':      setCursorLock(CURSORS.text);      break;
+    case 'sticky':    setCursorLock(CURSORS.sticky);    break;
+    case 'eraser':    setCursorLock(CURSORS.eraser);    break;
     case 'pen':
     case 'arrow':
     case 'rect':
     case 'ellipse':
-    case 'eraser':
-    case 'sticky':
-      document.body.style.cursor = 'crosshair'; break;
-    default: document.body.style.cursor = ''; break;
+      setCursorLock(CURSORS.crosshair); break;
+    default: setCursorLock(null); break;
   }
   // Drive the `grab` cursor on marker hover + any other select-mode-only CSS.
   document.documentElement.classList.toggle('vellum-select-mode', state.mode === 'select');
