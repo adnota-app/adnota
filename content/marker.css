@@ -40,6 +40,26 @@ html.vellum-hidden .vellum-marker-wrapper {
   box-shadow: 0 0 0 1px rgba(124, 58, 237, 0.15);
 }
 
+/* Grab affordance on marker wrappers whenever select mode is active. JS toggles
+   the `vellum-select-mode` class on <html> so this rule stays inert otherwise. */
+html.vellum-select-mode .vellum-marker-wrapper,
+html.vellum-select-mode .vellum-marker-wrapper * {
+  cursor: grab;
+}
+
+/* Suppress accidental text selection while select mode is active (drags would
+   otherwise paint selections across page text). Contenteditable text
+   annotations still allow editing via the override below. */
+html.vellum-select-mode body {
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+html.vellum-select-mode [contenteditable="true"] {
+  user-select: text;
+  -webkit-user-select: text;
+}
+
 .vellum-select-delete {
   position: absolute;
   top: -10px;

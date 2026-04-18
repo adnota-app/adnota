@@ -857,8 +857,9 @@ window.VellumMarker = {
 
     svg.appendChild(shapeEl);
     wrapper.appendChild(svg);
-    // Stash payload for select-tool undo (re-save after delete)
+    // Stash payload + anchor for select-tool operations (delete, undo, move).
     wrapper._vellumPayload = payload;
+    wrapper._vellumAnchorElement = anchorElement;
     document.documentElement.appendChild(wrapper);
 
     function syncBounds() {
@@ -1054,23 +1055,16 @@ function showSelectionUI(wrapper) {
   };
 }
 
-function handleSelectClick(e) {
-  if (window.VellumState.mode !== 'select') return;
-  if (isToolbarHit(e)) return;
-
-  // Don't deselect when clicking the select box itself
-  if (e.target.closest('.vellum-select-box')) return;
-
-  // Hit-test all marker wrappers against click point, pick the closest (smallest bbox)
+// Hit-test helper shared by click-to-select and pointerdown-to-drag. Picks the
+// smallest visible wrapper whose shape is near the pointer.
+function hitTestMarker(clientX, clientY) {
   const wrappers = document.querySelectorAll('.vellum-marker-wrapper');
   let bestWrapper = null;
   let bestArea = Infinity;
-
   for (const wrapper of wrappers) {
-    // Hidden wrappers (either directly or via the root vellum-hidden class)
-    // shouldn't be selectable — they aren't visible to the user.
+    // Hidden wrappers (direct display:none or ancestor .vellum-hidden) are not targetable.
     if (window.getComputedStyle(wrapper).display === 'none') continue;
-    if (!isPointNearShape(wrapper, e.clientX, e.clientY)) continue;
+    if (!isPointNearShape(wrapper, clientX, clientY)) continue;
     const bbox = getShapeBBox(wrapper);
     const area = bbox.width * bbox.height;
     if (area < bestArea) {
@@ -1078,7 +1072,167 @@ function handleSelectClick(e) {
       bestWrapper = wrapper;
     }
   }
+  return bestWrapper;
+}
 
+// Drag state for move-in-select-mode. A single pointerdown kicks this off;
+// pointermove only promotes to an active drag after the pointer travels beyond
+// DRAG_THRESHOLD_PX, so a plain click still falls through to selection.
+const DRAG_THRESHOLD_PX = 3;
+let moveDragState = null;
+let suppressNextClick = false;
+
+function handleSelectPointerDown(e) {
+  if (window.VellumState.mode !== 'select') return;
+  if (isToolbarHit(e)) return;
+  if (e.button !== 0) return; // left-click only
+  if (e.target.closest('.vellum-select-box')) return; // delete button handles itself
+  if (e.target.closest('.vellum-text-content[contenteditable="true"]')) return; // editing — don't drag
+
+  const wrapper = hitTestMarker(e.clientX, e.clientY);
+  if (!wrapper) return;
+
+  moveDragState = {
+    wrapper,
+    startX: e.clientX,
+    startY: e.clientY,
+    moved: false,
+    pointerId: e.pointerId,
+  };
+}
+
+function handleSelectPointerMove(e) {
+  if (!moveDragState) return;
+  const dx = e.clientX - moveDragState.startX;
+  const dy = e.clientY - moveDragState.startY;
+
+  if (!moveDragState.moved) {
+    if (Math.abs(dx) < DRAG_THRESHOLD_PX && Math.abs(dy) < DRAG_THRESHOLD_PX) return;
+    moveDragState.moved = true;
+    // Cursor hint; !important so it beats the body-level select cursor.
+    document.body.style.setProperty('cursor', 'grabbing', 'important');
+    // Retarget the selection box onto the wrapper we're actually dragging,
+    // otherwise a stale bbox from a prior selection follows the drag.
+    if (selectedWrapper !== moveDragState.wrapper) {
+      showSelectionUI(moveDragState.wrapper);
+    }
+  }
+
+  moveDragState.wrapper.style.transform = `translate(${dx}px, ${dy}px)`;
+  if (selectBox) selectBox.style.transform = `translate(${dx}px, ${dy}px)`;
+}
+
+async function handleSelectPointerUp(e) {
+  if (!moveDragState) return;
+  const { wrapper, moved, startX, startY } = moveDragState;
+  const dx = e.clientX - startX;
+  const dy = e.clientY - startY;
+  moveDragState = null;
+
+  document.body.style.removeProperty('cursor');
+
+  if (!moved) {
+    // Fall through to the normal click-to-select flow.
+    return;
+  }
+
+  // Suppress the synthetic click that fires right after this pointerup — a
+  // move shouldn't also register as a click on the (new) element beneath.
+  suppressNextClick = true;
+
+  const payload = wrapper._vellumPayload;
+  const anchorElement = wrapper._vellumAnchorElement;
+  if (!payload || !anchorElement) {
+    wrapper.style.transform = '';
+    return;
+  }
+
+  // Convert pixel delta to a percentage of the anchor rect, matching the
+  // anchor-relative coord system used everywhere else.
+  const rect = anchorElement.getBoundingClientRect();
+  if (rect.width === 0 || rect.height === 0) {
+    wrapper.style.transform = '';
+    return;
+  }
+  const dxPct = (dx / rect.width) * 100;
+  const dyPct = (dy / rect.height) * 100;
+
+  // Deep-clone original coords for undo; shallow copy is enough for shape/textPos.
+  const oldSnapshot = {
+    shape: payload.shape ? { ...payload.shape } : null,
+    textPos: payload.textPos ? { ...payload.textPos } : null,
+    drawing: payload.drawing ? payload.drawing.map(p => ({ ...p })) : null,
+  };
+
+  shiftMarkerPayload(payload, dxPct, dyPct);
+
+  // Re-render from the updated payload. renderMarker early-exits if the uuid
+  // is already on the page, so we must remove the old wrapper first.
+  wrapper.remove();
+  if (selectBox) { selectBox.style.transform = ''; clearSelection(); }
+  window.VellumMarker.renderMarker(anchorElement, payload);
+
+  // Persist: delete old row, save updated payload.
+  if (window.VellumStorage) {
+    await window.VellumStorage.deleteItem(location.hostname, 'uuid', payload.uuid);
+    await window.VellumStorage.saveItem(location.hostname, location.pathname, payload);
+  }
+
+  // Re-select the moved marker so the user sees where it landed.
+  const fresh = document.querySelector(`.vellum-marker-wrapper[data-uuid="${payload.uuid}"]`);
+  if (fresh) showSelectionUI(fresh);
+
+  // Undo: restore old coords + storage row.
+  window.VellumUndo.push({
+    undo: async () => {
+      if (oldSnapshot.shape) payload.shape = oldSnapshot.shape;
+      if (oldSnapshot.textPos) payload.textPos = oldSnapshot.textPos;
+      if (oldSnapshot.drawing) payload.drawing = oldSnapshot.drawing;
+      const current = document.querySelector(`.vellum-marker-wrapper[data-uuid="${payload.uuid}"]`);
+      if (current) current.remove();
+      clearSelection();
+      window.VellumMarker.renderMarker(anchorElement, payload);
+      if (window.VellumStorage) {
+        await window.VellumStorage.deleteItem(location.hostname, 'uuid', payload.uuid);
+        await window.VellumStorage.saveItem(location.hostname, location.pathname, payload);
+      }
+    },
+  });
+}
+
+// Shifts all coordinate fields on a MARKER payload by (dxPct, dyPct). Every
+// shape type stores its position as percentages of the anchor rect, so a
+// uniform shift is all we need.
+function shiftMarkerPayload(payload, dxPct, dyPct) {
+  const type = payload.shapeType || (payload.isArrow ? 'arrow' : 'freehand');
+  if (type === 'rect' && payload.shape) {
+    payload.shape = { ...payload.shape, x: payload.shape.x + dxPct, y: payload.shape.y + dyPct };
+  } else if (type === 'ellipse' && payload.shape) {
+    payload.shape = { ...payload.shape, cx: payload.shape.cx + dxPct, cy: payload.shape.cy + dyPct };
+  } else if (type === 'text' && payload.textPos) {
+    payload.textPos = { x: payload.textPos.x + dxPct, y: payload.textPos.y + dyPct };
+  } else if (payload.drawing) {
+    payload.drawing = payload.drawing.map(p => ({ px: p.px + dxPct, py: p.py + dyPct }));
+  }
+}
+
+function handleSelectClick(e) {
+  if (window.VellumState.mode !== 'select') return;
+  if (isToolbarHit(e)) return;
+
+  // A drag just committed — its pointerup bubbles into a synthetic click that
+  // would otherwise clear or re-select. Swallow exactly one click.
+  if (suppressNextClick) {
+    suppressNextClick = false;
+    e.preventDefault();
+    e.stopPropagation();
+    return;
+  }
+
+  // Don't deselect when clicking the select box itself
+  if (e.target.closest('.vellum-select-box')) return;
+
+  const bestWrapper = hitTestMarker(e.clientX, e.clientY);
   if (bestWrapper) {
     e.preventDefault();
     e.stopPropagation();
@@ -1129,6 +1283,11 @@ document.addEventListener('pointermove', (e) => {
 
 // Select tool click handler (on document, not on overlay — select doesn't use the overlay)
 document.addEventListener('click', handleSelectClick, true);
+// Drag-to-move handlers for select mode. Capture phase so we see the pointerdown
+// before the marker wrapper's own handlers (e.g., text re-edit double-click).
+document.addEventListener('pointerdown', handleSelectPointerDown, true);
+document.addEventListener('pointermove', handleSelectPointerMove, true);
+document.addEventListener('pointerup', handleSelectPointerUp, true);
 // Text tool click handler
 document.addEventListener('click', handleTextClick, true);
 // Double-click to edit text (works in select and text modes)
