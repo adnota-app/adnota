@@ -180,61 +180,48 @@ window.VellumState.subscribe(state => {
 // Click to drop a note — hybrid anchor + percentage fallback
 // ---------------------------------------------------------------------------
 
-document.addEventListener('click', async (e) => {
-  if (window.VellumState.mode !== 'sticky') return;
-
-  // Don't fire through any Vellum UI (toolbar, existing notes, toasts, radial menu, etc.)
-  if (window.VellumUI.isVellumElement(e.target)) return;
-
-  e.preventDefault();
-  e.stopPropagation();
-
-  // Hide mode must never obscure work. If the user is placing a note while
-  // annotations are hidden, reveal everything so they can see the result.
+// Shared note creation — used by the sticky click handler AND by the quick
+// highlight popup's "add sticky" shortcut. Builds anchor + placement, renders,
+// saves, and pushes an undo entry. Returns the new note's uuid.
+async function createStickyAt(clientX, clientY, { targetEl = null, theme = null } = {}) {
   window.VellumVisibility.show();
 
-  // ── Build hybrid placement ────────────────────────────────────────────────
-  const placement = clientToPlacement(e.clientX, e.clientY);
+  const placement = clientToPlacement(clientX, clientY);
 
-  // Find the nearest meaningful DOM element to anchor to
-  const anchorTarget = findAnchorTarget(e.target);
+  // If no explicit target was provided, probe the DOM at the click point.
+  const target = targetEl || document.elementFromPoint(clientX, clientY);
+  const anchorTarget = target ? findAnchorTarget(target) : null;
   let anchor = null;
   let anchorOffset = null;
 
   if (anchorTarget && window.FuzzyAnchor) {
     anchor = window.FuzzyAnchor.generate(anchorTarget);
-
-    // Compute the note's offset from the anchor element's top-left corner
     const rect = anchorTarget.getBoundingClientRect();
     const scrollTop  = window.pageYOffset || document.documentElement.scrollTop;
     const scrollLeft = window.pageXOffset || document.documentElement.scrollLeft;
-
-    const noteAbsX = e.clientX + scrollLeft;
-    const noteAbsY = e.clientY + scrollTop;
+    const noteAbsX = clientX + scrollLeft;
+    const noteAbsY = clientY + scrollTop;
     const elAbsX   = rect.left + scrollLeft;
     const elAbsY   = rect.top  + scrollTop;
-
     anchorOffset = {
       dx: Math.round(noteAbsX - elAbsX),
       dy: Math.round(noteAbsY - elAbsY),
     };
   }
 
-  // Stay in sticky mode — user exits via Escape or toggling the tool off
   const uuid     = Date.now() + Math.random().toString();
   const comments = [{ text: '', author: 'Me', createdAt: Date.now() }];
-  const theme    = activeStickyColor;
+  const resolvedTheme = theme || activeStickyColor;
 
-  window.StickyEngine.renderNote(placement, comments, uuid, true, null, theme, anchor, anchorOffset);
+  window.StickyEngine.renderNote(placement, comments, uuid, true, null, resolvedTheme, anchor, anchorOffset);
 
   if (window.VellumStorage) {
     await window.VellumStorage.saveNote(
       location.hostname, location.pathname, uuid,
-      { placement, comments, theme, anchor, anchorOffset }
+      { placement, comments, theme: resolvedTheme, anchor, anchorOffset }
     );
   }
 
-  // Undo: remove the note from DOM and storage
   const domain = location.hostname;
   const undoEntry = {
     undo: async () => {
@@ -248,6 +235,20 @@ document.addEventListener('click', async (e) => {
     }
   };
   window.VellumUndo.push(undoEntry);
+
+  return uuid;
+}
+
+document.addEventListener('click', async (e) => {
+  if (window.VellumState.mode !== 'sticky') return;
+
+  // Don't fire through any Vellum UI (toolbar, existing notes, toasts, radial menu, etc.)
+  if (window.VellumUI.isVellumElement(e.target)) return;
+
+  e.preventDefault();
+  e.stopPropagation();
+
+  await createStickyAt(e.clientX, e.clientY, { targetEl: e.target });
 }, true);
 
 // ---------------------------------------------------------------------------
@@ -304,6 +305,8 @@ function placementToPixels(placement) {
 // ---------------------------------------------------------------------------
 
 window.StickyEngine = {
+  createAt: createStickyAt,
+
   /**
    * Render a sticky note from a placement object.
    *

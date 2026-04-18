@@ -244,6 +244,77 @@ function getOccurrenceIndex(range, anchorElement) {
   return count;
 }
 
+// Shared highlight creation — used by the Alt+H mouseup handler AND by the
+// contextual "quick highlight" popup. Accepts any range and color, writes to
+// storage, adds to the CSS Highlights registry (or renders fallback), and
+// pushes an undo entry. Selection clearing is the caller's responsibility.
+async function createHighlightFromRange(range, color) {
+  let anchorElement = range.commonAncestorContainer;
+  if (anchorElement.nodeType !== Node.ELEMENT_NODE) {
+    anchorElement = anchorElement.parentNode;
+  }
+
+  const blockElement = anchorElement.closest('p, div, section, article, main, li, h1, h2, h3, h4, td') || document.body;
+  const anchor = window.FuzzyAnchor.generate(blockElement);
+  const _id = Date.now() + Math.random().toString();
+
+  const payload = {
+    anchor,
+    _id,
+    action: 'HIGHLIGHT',
+    text: range.toString(),
+    occurrenceIndex: getOccurrenceIndex(range, blockElement),
+    color,
+    attachedNoteId: null
+  };
+
+  if (typeof CSS !== 'undefined' && 'highlights' in CSS) {
+    const registry = highlightRegistries[color];
+    if (registry) {
+      try {
+        const clonedRange = range.cloneRange();
+        registry.add(clonedRange);
+        payload._clonedRange = clonedRange;
+      } catch (err) {
+        console.warn("Vellum: CSS Highlight API rejected range, likely crossing a Shadow DOM boundary. Range:", range);
+        payload.isFallback = true;
+        const box = blockElement.getBoundingClientRect();
+        payload.fallbackRects = Array.from(range.getClientRects()).map(r => ({
+          left: ((r.left - box.left) / box.width) * 100,
+          top: ((r.top - box.top) / box.height) * 100,
+          width: (r.width / box.width) * 100,
+          height: (r.height / box.height) * 100
+        }));
+        window.VellumHighlighter?.renderFallback?.(blockElement, payload);
+      }
+    }
+  }
+
+  if (window.VellumStorage) {
+    await window.VellumStorage.saveItem(location.hostname, location.pathname, payload);
+  }
+
+  const capturedId = _id;
+  const capturedColor = color;
+  const capturedRange = payload._clonedRange || null;
+  const capturedFallback = payload.isFallback || false;
+  window.VellumUndo.push({
+    undo: async () => {
+      if (capturedFallback) {
+        const fallbackEl = document.querySelector(`.vellum-highlight-fallback[data-highlight-id="${capturedId}"]`);
+        if (fallbackEl) fallbackEl.remove();
+      } else if (capturedRange) {
+        highlightRegistries[capturedColor]?.delete(capturedRange);
+      }
+      if (window.VellumStorage) {
+        await window.VellumStorage.deleteItem(location.hostname, '_id', capturedId);
+      }
+    }
+  });
+
+  return payload;
+}
+
 document.addEventListener('mouseup', async (e) => {
   if (window.VellumState.mode !== 'highlight') return;
 
@@ -261,80 +332,16 @@ document.addEventListener('mouseup', async (e) => {
   // Hide mode must never obscure work — reveal everything before applying.
   window.VellumVisibility.show();
 
-  let anchorElement = range.commonAncestorContainer;
-  if (anchorElement.nodeType !== Node.ELEMENT_NODE) {
-    anchorElement = anchorElement.parentNode;
-  }
-
-  const blockElement = anchorElement.closest('p, div, section, article, main, li, h1, h2, h3, h4, td') || document.body;
-
-  const anchor = window.FuzzyAnchor.generate(blockElement);
-  const _id = Date.now() + Math.random().toString();
-
-  const payload = {
-    anchor,
-    _id,
-    action: 'HIGHLIGHT',
-    text: range.toString(),
-    occurrenceIndex: getOccurrenceIndex(range, blockElement),
-    color: window.VellumState.color,
-    attachedNoteId: null
-  };
-
-  if (typeof CSS !== 'undefined' && 'highlights' in CSS) {
-    const registry = highlightRegistries[window.VellumState.color];
-    if (registry) {
-      try {
-        // Keep a ref to the cloned range so undo can delete it from the registry.
-        const clonedRange = range.cloneRange();
-        registry.add(clonedRange);
-        payload._clonedRange = clonedRange;
-      } catch (e) {
-        console.warn("Vellum: CSS Highlight API rejected range, likely crossing a Shadow DOM boundary. Range:", range);
-        payload.isFallback = true;
-        const box = blockElement.getBoundingClientRect();
-        payload.fallbackRects = Array.from(range.getClientRects()).map(r => ({
-          left: ((r.left - box.left) / box.width) * 100,
-          top: ((r.top - box.top) / box.height) * 100,
-          width: (r.width / box.width) * 100,
-          height: (r.height / box.height) * 100
-        }));
-        if (window.VellumHighlighter && window.VellumHighlighter.renderFallback) {
-          window.VellumHighlighter.renderFallback(blockElement, payload);
-        }
-      }
-    }
-  }
+  await createHighlightFromRange(range, window.VellumState.color);
 
   try {
     selection.removeAllRanges();
   } catch (e) { }
-
-  if (window.VellumStorage) {
-    await window.VellumStorage.saveItem(location.hostname, location.pathname, payload);
-  }
-
-  // Push to the central undo stack so Ctrl+Z can remove this highlight.
-  const capturedId = _id;
-  const capturedColor = window.VellumState.color;
-  const capturedRange = payload._clonedRange || null;
-  const capturedFallback = payload.isFallback || false;
-  window.VellumUndo.push({
-    undo: async () => {
-      if (capturedFallback) {
-        const fallbackEl = document.querySelector(`.vellum-highlight-fallback[data-highlight-id="${capturedId}"]`);
-        if (fallbackEl) fallbackEl.remove();
-      } else if (capturedRange) {
-        highlightRegistries[capturedColor]?.delete(capturedRange);
-      }
-      if (window.VellumStorage) {
-        await window.VellumStorage.deleteItem(location.hostname, '_id', capturedId);
-      }
-    }
-  });
 });
 
 window.VellumHighlighter = {
+  createHighlightFromRange,
+
   renderFallback: function (anchorElement, payload) {
     if (!payload.fallbackRects) return;
     const themeColors = {

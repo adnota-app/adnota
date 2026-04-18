@@ -1,0 +1,82 @@
+/* Contextual highlight popup — frosted glass aesthetic matches the Vellum
+   HUD family (eraser / highlighter / sticky toolbars). */
+
+#vellum-quick-highlight {
+  position: absolute;
+  z-index: 2147483646;
+  display: none;
+  align-items: center;
+  gap: 0;
+  padding: 6px 10px;
+  background: rgba(15, 15, 15, 0.92);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border-radius: 10px;
+  border: 1px solid rgba(124, 58, 237, 0.45);
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.5);
+  color: #e4e4e7;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  opacity: 0;
+  transform: translateY(2px);
+  transition: opacity 120ms ease-out, transform 120ms ease-out;
+  pointer-events: auto;
+  user-select: none;
+  white-space: nowrap;
+}
+
+#vellum-quick-highlight.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* Vellum brand chip — same look as the HUD toolbar logos so users immediately
+   recognize the popup as part of the extension, not the host site. */
+.vellum-qh-logo {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: rgba(124, 58, 237, 0.35);
+  color: #c084fc;
+  font-weight: 700;
+  font-size: 10px;
+  margin-right: 8px;
+  flex-shrink: 0;
+}
+
+.vellum-qh-swatch {
+  position: relative;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  cursor: pointer;
+  border: 2px solid transparent;
+  margin: 0 2px;
+  flex-shrink: 0;
+  transition: transform 0.12s, box-shadow 0.12s, border-color 0.12s;
+}
+
+.vellum-qh-swatch:hover {
+  transform: scale(1.15);
+  border-color: rgba(255, 255, 255, 0.7);
+  box-shadow: 0 0 0 2px rgba(124, 58, 237, 0.6);
+}
+
+.vellum-qh-swatch[title]:hover::after {
+  content: attr(title);
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(15, 15, 15, 0.95);
+  color: #e4e4e7;
+  font-size: 11px;
+  font-weight: 500;
+  padding: 3px 8px;
+  border-radius: 4px;
+  white-space: nowrap;
+  pointer-events: none;
+  border: 1px solid rgba(124, 58, 237, 0.3);
+}

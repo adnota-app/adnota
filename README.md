@@ -160,6 +160,16 @@ Also exposes `generateCSSSelector(el)` as a shared utility (used by the resizer)
 - **Five colors**: same palette as highlighter (yellow, green, blue, pink, black)
 - A tap with fewer than 3 points (pencil) or too-small drag (shapes) cancels the action
 
+#### `content/quickHighlight.js`
+- Medium-style contextual popup that appears above any non-empty text selection after a ~400 ms dwell — independent of the Alt+H highlight mode
+- Single-purpose: a Vellum "V" brand chip on the left (so it's visually distinct from the host site's own toolbar) followed by the five color swatches; clicking one applies the highlight and dismisses the popup
+- Each new selection re-prompts — colors are not "sticky" between highlights; the user picks per-action
+- Dismisses on: selection collapse, `Escape`, scroll, resize, click-away, or `Ctrl/Cmd+C` (copy is never intercepted — the popup just gets out of the way)
+- Skips editable contexts (`input`, `textarea`, `contenteditable`) and any selection inside a Vellum UI element
+- Suppressed while `VellumState.mode === 'highlight'` so it doesn't double up with the classic auto-apply mouseup
+- Reuses `VellumHighlighter.createHighlightFromRange()` — no duplicate save/undo logic
+- Feature-gated by `chrome.storage.local.vellumQuickHighlightEnabled` (default `true`); a future toggle UI can flip this without touching the content script
+
 #### `content/restorer.js`
 - Runs at `document_idle` and on `DOMContentLoaded`
 - **MutationObserver** with 1s debounce watches for SPA/lazy-loaded content and re-runs restoration — handles React, Vue, and infinite-scroll sites
