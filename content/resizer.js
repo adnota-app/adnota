@@ -577,13 +577,4 @@ window.addEventListener('scroll', () => {
   if (selectedEl && !dragAxis) refreshHandles();
 }, { passive: true });
 
-// ─── Escape to deselect ─────────────────────────────────────────────────────
-document.addEventListener('keydown', (e) => {
-  if (window.VellumState.mode !== 'resizer') return;
-  if (e.key === 'Escape' && selectedEl) {
-    deselectElement();
-    e.preventDefault();
-  }
-});
-
 })();

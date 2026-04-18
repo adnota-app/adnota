@@ -165,6 +165,25 @@ function detectAdSignals(el) {
   return [...new Set(signals)]; // dedupe
 }
 
+// ─── Visual-root auto-bubble ────────────────────────────────────────────────
+// Modern web pages stack visually-redundant wrapper divs. Bubbling past them to
+// the outermost same-sized parent picks a better anchor and spares users the
+// scroll-wheel walk. Manual scroll still walks further from this baseline.
+const VISUAL_ROOT_MAX_HOPS = 8;
+const VISUAL_ROOT_EDGE_TOLERANCE_PX = 4;
+const VISUAL_ROOT_SIZE_TOLERANCE_RATIO = 0.05;
+// Guard against auto-selecting (or nudging up to) page-level containers.
+const VIEWPORT_DOMINANCE_THRESHOLD = 0.85;
+
+function dominatesViewport(rect) {
+  const vw = window.innerWidth, vh = window.innerHeight;
+  if (vw <= 0 || vh <= 0) return false;
+  const w = Math.min(rect.right, vw) - Math.max(rect.left, 0);
+  const h = Math.min(rect.bottom, vh) - Math.max(rect.top, 0);
+  const visible = Math.max(0, w) * Math.max(0, h);
+  return visible / (vw * vh) >= VIEWPORT_DOMINANCE_THRESHOLD;
+}
+
 // ─── Erase target quality scoring ───────────────────────────────────────────
 // Combines anchorability (how reliably FuzzyAnchor re-finds it) with erase
 // safety (is this scoped to unwanted content, or will it nuke real stuff?).
@@ -290,6 +309,9 @@ function findBetterTarget(el) {
   while (cur && cur !== document.body && cur !== document.documentElement && stepsUp < 6) {
     stepsUp++;
     if (isVellumElement(cur)) { cur = cur.parentElement; continue; }
+
+    // Page-level containers are never the target — kill the nudge here.
+    if (dominatesViewport(cur.getBoundingClientRect())) break;
 
     const parentStrength = getAnchorStrength(cur);
 
@@ -458,9 +480,35 @@ window.rebuildEraseStyleTag = rebuildEraseStyleTag;
 const isVellumElement = window.VellumUI.isVellumElement;
 
 // ─── DOM traversal: walk up N parents, skip Vellum elements ─────────────────
+// At depth=0, bubble past visually-identical parent wrappers so clicking the
+// inner element hits the outer container users almost always actually want.
+// Scroll-wheel traversal walks further up from that bubbled baseline.
+function bubbleToVisualRoot(el) {
+  let current = el;
+  let rect = current.getBoundingClientRect();
+  for (let i = 0; i < VISUAL_ROOT_MAX_HOPS; i++) {
+    const parent = current.parentElement;
+    if (!parent || parent === document.body || parent === document.documentElement) break;
+    if (isVellumElement(parent)) break;
+    const pRect = parent.getBoundingClientRect();
+    if (dominatesViewport(pRect)) break;
+    if (Math.abs(pRect.top - rect.top) > VISUAL_ROOT_EDGE_TOLERANCE_PX) break;
+    if (Math.abs(pRect.left - rect.left) > VISUAL_ROOT_EDGE_TOLERANCE_PX) break;
+    if (Math.abs(pRect.right - rect.right) > VISUAL_ROOT_EDGE_TOLERANCE_PX) break;
+    if (Math.abs(pRect.bottom - rect.bottom) > VISUAL_ROOT_EDGE_TOLERANCE_PX) break;
+    const wDiff = rect.width > 0 ? Math.abs(pRect.width - rect.width) / rect.width : 0;
+    const hDiff = rect.height > 0 ? Math.abs(pRect.height - rect.height) / rect.height : 0;
+    if (wDiff > VISUAL_ROOT_SIZE_TOLERANCE_RATIO || hDiff > VISUAL_ROOT_SIZE_TOLERANCE_RATIO) break;
+    current = parent;
+    rect = pRect;
+  }
+  return current;
+}
+
 function getEraserTarget(raw, depth) {
   if (!raw || isVellumElement(raw)) return null;
-  let current = raw;
+  let current = bubbleToVisualRoot(raw);
+  if (isVellumElement(current)) return null;
   let walked = 0;
   while (walked < depth && current.parentElement &&
     current.parentElement !== document.body &&
@@ -565,12 +613,25 @@ window.VellumState.subscribe(state => {
   }
 });
 
-// ─── Escape to exit eraser ───────────────────────────────────────────────────
-document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape' && window.VellumState.mode === 'eraser') {
-    window.VellumState.set({ mode: null });
-  }
-});
+// ─── Block page interactions in eraser mode ─────────────────────────────────
+// Ads commonly open new tabs from mousedown/pointerdown (before `click` fires),
+// which both bypasses our click-capture handler and steals keyboard focus so
+// Escape stops working. Intercept the earliest pointer events on window-capture
+// and kill them for non-Vellum targets. Right-click is left alone so users can
+// still Inspect. Vellum UI (HUD, drag handle, buttons) passes through normally.
+function blockPageInteraction(e) {
+  if (window.VellumState.mode !== 'eraser') return;
+  if (isVellumElement(e.target)) return;
+  if (e.button === 2) return;
+  e.preventDefault();
+  e.stopPropagation();
+  // preventDefault blocks the implicit focus transfer, so nothing would bring
+  // focus back into our document — pull it home via the shared anchor.
+  window.VellumState.anchorFocus?.();
+}
+window.addEventListener('mousedown', blockPageInteraction, true);
+window.addEventListener('pointerdown', blockPageInteraction, true);
+window.addEventListener('auxclick', blockPageInteraction, true);
 
 // ─── Hover: track raw element and update overlay ─────────────────────────────
 document.addEventListener('mousemove', (e) => {
@@ -627,10 +688,14 @@ document.addEventListener('wheel', (e) => {
 document.addEventListener('click', async (e) => {
   if (window.VellumState.mode !== 'eraser') return;
   if (isVellumElement(e.target)) return;
-  if (!hoveredElement) return;
 
+  // Always suppress the page's click — no erase target is better than letting
+  // an ad navigate. A click without a hovered target (e.g. raced the mousemove)
+  // becomes a no-op instead of a page navigation.
   e.preventDefault();
   e.stopPropagation();
+
+  if (!hoveredElement) return;
 
   const target = hoveredElement;
   const rect = target.getBoundingClientRect();
