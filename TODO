@@ -130,6 +130,7 @@ https://superuser.com/questions/608296/how-to-disable-iframes-in-browsers
 ~~if you click to do a post it note and the eye ball is off, turn it on!~~
 ~~fix show/hide global persistance~~
 ~~Apply add deletes to exact page OR domain OR just path etc.~~
+~~did the delete dialogue stop showing up inside popup.js?~~
 
 "Remove things like this" (#11, the "killer feature") — This is the most interesting idea in the whole list. After erasing one element, find        
 structurally similar siblings and offer bulk removal. This plays to FuzzyAnchor's strengths — you could score all siblings of the erased element's
@@ -159,6 +160,26 @@ Consider making tags like in GMAIL. Each color of sticky note/highlighter/etc co
 
 eventually wire up to google drive storage? (paid feature?)
 
+wire up right click for sticky notes
+
+wire up whenever a user highlights something, make a little popup near their cursor that allows them to choose which highlighter color, a quick shortcut (rather than having to load the tool, the point is to make highlighting as easy and as natural as possible without getting in the way too much)
+
+
+HMMMM...:
+
+  Why HN showed a broken link: Not a Sites-page bug — it's baked into storage.  
+  lib/storage.js:59 keys every item by parsed.pathname only, dropping the query 
+  string. HN uses ?id= as the true page identity (each item is a distinct page  
+  that shares /item as the pathname), so every HN item you annotate gets lumped 
+  under the same /item key, and the Sites-page link (which only knows the
+  pathname) goes to https://news.ycombinator.com/item — no id → "No such item."
+
+  This tradeoff is fine for sites where the query is a filter (?sort=new) and   
+  breaks for sites where the query is the page (HN, YouTube ?v=, Google search
+  ?q=). The cleanest low-risk fix is to keep matching on pathname (preserves    
+  anchor-restoration for sticky params) but also store a lastHref on each item
+  so the Sites page can link to a URL it has actually seen. Want me to do that
+  in a follow-up?
 
 
   7. Oversized functions worth splitting
