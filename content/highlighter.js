@@ -250,10 +250,19 @@ window.VellumState.subscribe(state => {
     highlightToolbar.style.transform = 'translateX(-50%)';
   }
 
-  // Central cursor management for every mode.
+  // Central cursor management for every mode. Select uses a white SVG arrow so
+  // it reads as "tool active" against any page background; hovering a marker
+  // upgrades to `grab` via CSS (see marker.css).
+  const WHITE_ARROW_CURSOR =
+    "url('data:image/svg+xml;utf8," +
+    "<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%2218%22 height=%2218%22 viewBox=%220 0 18 18%22>" +
+    "<path d=%22M2 1 L2 14 L5 11 L7 15 L9 14 L7 10 L12 10 Z%22 " +
+    "fill=%22white%22 stroke=%22black%22 stroke-width=%221.2%22 stroke-linejoin=%22round%22/>" +
+    "</svg>') 2 1, default";
+
   switch (state.mode) {
     case 'highlight': document.body.style.cursor = 'text'; break;
-    case 'select': document.body.style.cursor = 'default'; break;
+    case 'select': document.body.style.cursor = WHITE_ARROW_CURSOR; break;
     case 'text': document.body.style.cursor = 'text'; break;
     case 'pen':
     case 'arrow':
@@ -264,6 +273,8 @@ window.VellumState.subscribe(state => {
       document.body.style.cursor = 'crosshair'; break;
     default: document.body.style.cursor = ''; break;
   }
+  // Drive the `grab` cursor on marker hover + any other select-mode-only CSS.
+  document.documentElement.classList.toggle('vellum-select-mode', state.mode === 'select');
 
   // Update tool button active states
   for (const [mode, btn] of Object.entries(toolBtns)) {
