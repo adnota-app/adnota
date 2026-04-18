@@ -167,6 +167,42 @@ html.vellum-hidden .vellum-highlight-fallback {
   box-shadow: 0 0 0 2px rgba(124, 58, 237, 0.6);
 }
 
+/* ── Eyedropper swatch — background always mirrors the current paint color. ── */
+.vellum-eyedropper-swatch {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+}
+
+.vellum-eyedropper-swatch svg {
+  width: 12px;
+  height: 12px;
+  fill: currentColor;
+  stroke: none;
+  /* Difference blend keeps the icon readable against any fill color. */
+  mix-blend-mode: difference;
+}
+
+/* ── Fill group (outline / solid radio pair) ─────────────────────────────── */
+/* Red diagonal slash on the outline variant — disambiguates it from the
+   rectangle tool icon. Direct class selector beats stroke inheritance. */
+.vellum-outline-slash {
+  stroke: #f87171;
+}
+
+/* Solid-fill button uses fill, not stroke. Higher specificity defeats the
+   global `.vellum-tool-btn svg { fill: none; stroke: #94a3b8 }` rule. */
+.vellum-fill-solid-btn svg .vellum-fill-solid-rect {
+  fill: #94a3b8;
+  stroke: none;
+}
+
+.vellum-fill-solid-btn:hover svg .vellum-fill-solid-rect,
+.vellum-fill-solid-btn.active svg .vellum-fill-solid-rect {
+  fill: #c084fc;
+}
+
 /* ── Stroke width buttons ────────────────────────────────────────────────── */
 .vellum-stroke-btn {
   display: inline-flex;

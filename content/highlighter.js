@@ -24,6 +24,13 @@ const toolIcons = {
   rect:      '<rect x="4" y="5" width="12" height="10" rx="1"/>',
   ellipse:   '<ellipse cx="10" cy="10" rx="7" ry="5"/>',
   text:      '<text x="4" y="15" font-size="14" font-weight="700" font-family="serif" fill="currentColor" stroke="none">T</text>',
+  // Outline variant: hollow square + red diagonal slash to visually distinguish
+  // "no fill" from the rectangle tool icon itself.
+  fillOutline: '<rect x="4" y="5" width="12" height="10" rx="1"/><line class="vellum-outline-slash" x1="4" y1="15" x2="16" y2="5"/>',
+  // Solid variant: filled square (fill painted via dedicated CSS to defeat the
+  // global .vellum-tool-btn svg { fill: none } rule).
+  fillSolid: '<rect class="vellum-fill-solid-rect" x="4" y="5" width="12" height="10" rx="1"/>',
+  eyedropper:'<path d="M13 2l5 5-2 2-1-1-6 6-3 1 1-3 6-6-1-1z" fill="currentColor" stroke="none"/>',
 };
 
 // ── Toolbar helpers ─────────────────────────────────────────────────────────
@@ -89,6 +96,35 @@ for (const mode of ['select', 'pen', 'highlight', 'arrow', 'rect', 'ellipse', 't
 // Divider
 highlightToolbar.appendChild(Object.assign(document.createElement('div'), { className: 'vellum-toolbar-divider' }));
 
+// ── Fill group — outline / solid radio pair, shown only in rect/ellipse modes.
+// Placed right after the shape tool buttons so the option surfaces next to
+// the tool that triggered it.
+function makeFillBtn({ iconKey, cls, title, filled }) {
+  const btn = document.createElement('div');
+  btn.className = `vellum-tool-btn ${cls}`;
+  btn.title = title;
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('viewBox', '0 0 20 20');
+  svg.innerHTML = toolIcons[iconKey];
+  btn.appendChild(svg);
+  btn.onclick = (e) => {
+    e.stopPropagation();
+    window.VellumState.set({ filled });
+  };
+  return btn;
+}
+const fillOutlineBtn = makeFillBtn({
+  iconKey: 'fillOutline', cls: 'vellum-fill-outline-btn', title: 'Outline', filled: false,
+});
+const fillSolidBtn = makeFillBtn({
+  iconKey: 'fillSolid', cls: 'vellum-fill-solid-btn', title: 'Solid fill', filled: true,
+});
+const fillGroupDivider = Object.assign(document.createElement('div'), { className: 'vellum-toolbar-divider' });
+const fillGroupEls = [fillOutlineBtn, fillSolidBtn, fillGroupDivider];
+highlightToolbar.appendChild(fillOutlineBtn);
+highlightToolbar.appendChild(fillSolidBtn);
+highlightToolbar.appendChild(fillGroupDivider);
+
 // Color swatches
 const themes = {
   'vellum-theme-yellow': 'rgb(255, 235, 59)',
@@ -97,6 +133,45 @@ const themes = {
   'vellum-theme-pink': 'rgb(233, 30, 99)',
   'vellum-theme-black': '#111'
 };
+
+function resolvePaintColor(c) {
+  if (typeof c === 'string' && (c.startsWith('#') || c.startsWith('rgb'))) return c;
+  return themes[c] || themes['vellum-theme-yellow'];
+}
+
+// ── Eyedropper swatch — doubles as current-color indicator and picker. Its
+// background always mirrors the current paint color; clicking opens the native
+// EyeDropper API (Chrome 95+) to pick a new one. Sits to the LEFT of the
+// palette with dividers on both sides so it reads as its own control, not a
+// sixth swatch. For highlights, custom hex routes through the fallback overlay
+// renderer since CSS Custom Highlights need pre-registered theme names.
+const eyedropperSwatch = document.createElement('div');
+eyedropperSwatch.className = 'vellum-color-swatch vellum-eyedropper-swatch';
+eyedropperSwatch.title = 'Current color — click to pick any color from the page';
+const eyeSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+eyeSvg.setAttribute('viewBox', '0 0 20 20');
+eyeSvg.innerHTML = toolIcons.eyedropper;
+eyedropperSwatch.appendChild(eyeSvg);
+eyedropperSwatch.onclick = async (e) => {
+  e.stopPropagation();
+  if (typeof window.EyeDropper !== 'function') {
+    window.VellumUI.showToast('Eyedropper requires Chrome 95+');
+    return;
+  }
+  try {
+    const dropper = new window.EyeDropper();
+    const result = await dropper.open();
+    if (result?.sRGBHex) {
+      window.VellumState.set({ color: result.sRGBHex });
+    }
+  } catch (err) {
+    // User cancelled picker — no-op.
+  }
+};
+highlightToolbar.appendChild(eyedropperSwatch);
+
+// Divider between eyedropper (current-color control) and the palette.
+highlightToolbar.appendChild(Object.assign(document.createElement('div'), { className: 'vellum-toolbar-divider' }));
 
 const swatches = {};
 for (const [themeClass, colorHex] of Object.entries(themes)) {
@@ -197,12 +272,28 @@ window.VellumState.subscribe(state => {
 
   // Update swatch active states
   Object.values(swatches).forEach(s => s.classList.remove('active'));
-  if (swatches[state.color]) swatches[state.color].classList.add('active');
+  const isCustomColor = typeof state.color === 'string' &&
+                        (state.color.startsWith('#') || state.color.startsWith('rgb'));
+  if (!isCustomColor && swatches[state.color]) {
+    swatches[state.color].classList.add('active');
+  }
+
+  // Eyedropper swatch always mirrors the current paint color (theme or custom).
+  // Its icon uses mix-blend-mode: difference so it stays readable on any fill.
+  eyedropperSwatch.classList.toggle('active', isCustomColor);
+  eyedropperSwatch.style.backgroundColor = resolvePaintColor(state.color);
 
   // Update stroke width active states
   for (const [w, btn] of Object.entries(strokeBtns)) {
     btn.classList.toggle('active', state.strokeWidth === Number(w));
   }
+
+  // Fill group: visible only when a fillable shape is active. Outline/Solid
+  // act as a radio pair — exactly one is always active.
+  const isFillableShape = state.mode === 'rect' || state.mode === 'ellipse';
+  fillGroupEls.forEach(el => { el.style.display = isFillableShape ? '' : 'none'; });
+  fillOutlineBtn.classList.toggle('active', !state.filled);
+  fillSolidBtn.classList.toggle('active', !!state.filled);
 });
 
 // Keyboard shortcut / popup toggle — switches to highlight mode, or off if already active.
@@ -261,7 +352,22 @@ async function createHighlightFromRange(range, color) {
     attachedNoteId: null
   };
 
-  if (typeof CSS !== 'undefined' && 'highlights' in CSS) {
+  // Custom hex (eyedropper) colors aren't registered in CSS.highlights — route
+  // them through the fallback overlay renderer instead.
+  const isCustomColor = typeof color === 'string' &&
+                        (color.startsWith('#') || color.startsWith('rgb'));
+
+  if (isCustomColor) {
+    payload.isFallback = true;
+    const box = blockElement.getBoundingClientRect();
+    payload.fallbackRects = Array.from(range.getClientRects()).map(r => ({
+      left: ((r.left - box.left) / box.width) * 100,
+      top: ((r.top - box.top) / box.height) * 100,
+      width: (r.width / box.width) * 100,
+      height: (r.height / box.height) * 100
+    }));
+    window.VellumHighlighter?.renderFallback?.(blockElement, payload);
+  } else if (typeof CSS !== 'undefined' && 'highlights' in CSS) {
     const registry = highlightRegistries[color];
     if (registry) {
       try {
@@ -345,7 +451,11 @@ window.VellumHighlighter = {
       // Redaction: fully opaque, no blend mode — must completely cover the text.
       'vellum-theme-black': '#000'
     };
-    const isSolidRedaction = payload.color === 'vellum-theme-black';
+    // Custom eyedropper colors are painted opaquely (cover-up intent) — no blend mode.
+    const isCustomColor = typeof payload.color === 'string' &&
+                          (payload.color.startsWith('#') || payload.color.startsWith('rgb'));
+    const isSolidRedaction = payload.color === 'vellum-theme-black' || isCustomColor;
+    const paintColor = themeColors[payload.color] || payload.color;
 
     const wrapper = document.createElement('div');
     wrapper.className = 'vellum-highlight-fallback';
@@ -358,8 +468,8 @@ window.VellumHighlighter = {
     payload.fallbackRects.forEach(rect => {
       const div = document.createElement('div');
       div.style.position = 'absolute';
-      div.style.backgroundColor = themeColors[payload.color] || themeColors['vellum-theme-yellow'];
-      // Redaction must be fully opaque — mix-blend-mode: multiply lets the text bleed through.
+      div.style.backgroundColor = paintColor || themeColors['vellum-theme-yellow'];
+      // Redaction + custom colors must be fully opaque — multiply lets text bleed through.
       if (!isSolidRedaction) div.style.mixBlendMode = 'multiply';
       wrapper.appendChild(div);
     });
