@@ -125,6 +125,7 @@ The sidebar-swapping use case you described ("I want my news feed on the left") 
 
 this site has bugs with sticky note styles:
 https://superuser.com/questions/608296/how-to-disable-iframes-in-browsers
+PINTEREST DOESN'T WORK AT ALL!!!
 
 DONE: 
 ~~Add mouse scroll to ERASE elements!~~
@@ -132,18 +133,16 @@ DONE:
 ~~fix show/hide global persistance~~
 ~~Apply add deletes to exact page OR domain OR just path etc.~~
 ~~did the delete dialogue stop showing up inside popup.js?~~
-wire up whenever a user highlights something, make a little popup near their cursor that allows them to choose which highlighter color, a quick shortcut (rather than having to load the tool, the point is to make highlighting as easy and as natural as possible without getting in the way too much)
-Make clicking on the V logo from a HUD take you to the HOME PAGE??
+- wire up whenever a user highlights something, make a little popup near their cursor that allows them to choose which highlighter color, a quick shortcut (rather than having to load the tool, the point is to make highlighting as easy and as natural as possible without getting in the way too much)
+~~Make clicking on the V logo from a HUD take you to the HOME PAGE??~~
 if you're in draw rectangle mode, you can't drag a sticky note (even if you hover over the header, it doesn't work).
-
-
+- Add total storage size to HOME page (flag when user is getting over 80% of local storage limit?)
+Add ability to delete all storage for entire domain from HOME page (you can already delete per page during navigation using the trash icon, etc, but no way to clear an entire site, not sure you'd ever want too, but...)
+- make solid circles and squares with a fill (for covering up stuff you can't erase! e.g., can't erase that ad, COVER IT UP!!!)
+- If in ERASE mode, and you hover over radial menu, TURN OFF THE SELECTION BORDER!
+- Update SELECTION tool to be able to move objects around the page (e.g. select text box and move it somewhere else).
 
 TODO:
-
-"Remove things like this" (#11, the "killer feature") — This is the most interesting idea in the whole list. After erasing one element, find        
-structurally similar siblings and offer bulk removal. This plays to FuzzyAnchor's strengths — you could score all siblings of the erased element's
-parent against the erased element's anchor and surface high-confidence matches. Worth prototyping.
-
 
 thin=16px, medium=24px, thick=36px - this works well for lines, but might be too big for text size?
 
@@ -151,30 +150,35 @@ make all huds consistent look and feel!
 
 fix the resize tool, does it need a HUD? (it's the oldest tool at this point...) Should it have same element fill as eraser tool? It also doesn't set "ACTIVE" when you use the tool in popup.js.
 
-make solid circles and squares with a fill (for covering up stuff you can't erase! e.g., can't erase that ad, COVER IT UP!!!)
+FIX HUD MENU DRAG BAR ICONS... (they're way too small!)
 
-If in ERASE mode, and you hover over radial menu, TURN OFF THE SELECTION BORDER!
+wire up right click for sticky notes (also, if you right click and a sticky note is selected, should it give options like: delete, change color, etc? Or is that just gimmicky?)
+What if you could right click ANY vellum item?? (e.g. for deletion, would that be the most natural way to select/delete something you don't want anymore??)
 
-FIX HUD MENU DRAG BAR ICONS...
+Fix mouse cursors when using tools (make it obvious you are in TOOL mode!!! e.g. you put down a text field or two and then try and click on a link and you just place another text field!!!)
 
-Add total storage size to HOME page (flag when user is getting over 80% of local storage limit?)
-Add ability to delete all storage for entire domain from HOME page (you can already delete per page during navigation using the trash icon, etc, but no way to clear an entire site, not sure you'd ever want too, but...)
-
-
+TOOLS NEED TO HAVE CUSTOM CURSORS
 
 Consider making tags like in GMAIL. Each color of sticky note/highlighter/etc could be a tag defined by the user. Then they could filter all their saved highlights, notes, etc. by tag. Maybe you don't even need text tags at all, maybe color would be sufficient. If people understood they could filter their sites by color, then they'd get the idea that each color represented whatever they wanted? 
 
-eventually wire up to google drive storage? (paid feature?)
-
-wire up right click for sticky notes
-
-Update SELECTION tool to be able to move objects around the page (e.g. select text box and move it somewhere else).
+I already have sticky notes for writing text, should I focus on replacing the text tool with a TAGGING system instead? (e.g. you could tag and categorize highlights, sticky's, element selections etc to organize data across the web for a specific theme and then be able to search by all data in that category on the HOME page to quickly see all that data from multiple location in one single location!) Is that a good idea? Does that exist already anywhere?
 
 Settings menu:
-- set keybind shortcuts for tools
+Should we add a gear icon to popup.js (near the show/hide eye) or have it be on the home page?
+Basically, just a list of boolean checkbox values for most settings (enabled/disabled)
 - disable radial menu
-- 
+- consider making advanced paint tools an option (do paint tools detract from the focus/mission of this app?) (meh, not sure about this, most highlights will probably be done with the quick highlight too, people will probably never use the paint HUD for highlighting to be honest, perhaps we should just remove it from the tool menu.... meh, idk.)
+- allow setting keybind shortcuts for tools (in an extension, is it possible to do things like, if you press 'h' on the page, it turns on the highlight tool?)
 
+Optional: Make size of toolbars and radial menus adjustable? (be able to increase the size to make easier to see??) (global setting in settings menu?)
+
+
+
+
+
+PAID OPTIONS:
+- eventually wire up to google drive storage? (paid feature?)
+- "Remove things like this" (#11, the "killer feature") — This is the most interesting idea in the whole list. After erasing one element, find structurally similar siblings and offer bulk removal. This plays to FuzzyAnchor's strengths — you could score all siblings of the erased element's parent against the erased element's anchor and surface high-confidence matches. Worth prototyping.
 
 
 HMMMM...:
