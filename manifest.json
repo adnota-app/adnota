@@ -75,7 +75,8 @@
         "content/marker.js",
         "content/resizer.js",
         "content/restorer.js",
-        "content/radialMenu.js"
+        "content/radialMenu.js",
+        "content/quickHighlight.js"
       ],
       "css": [
         "lib/vellumUI.css",
@@ -83,7 +84,8 @@
         "content/marker.css",
         "content/highlighter.css",
         "content/resizer.css",
-        "content/radialMenu.css"
+        "content/radialMenu.css",
+        "content/quickHighlight.css"
       ],
       "run_at": "document_idle"
     }
