@@ -36,7 +36,8 @@ function simplifyPathRDP(points, epsilon) {
   }
 }
 
-// Converts theme class to physical color code for SVG painting
+// Resolves the active color to a CSS color string. Accepts either a theme class
+// or a raw hex (from the eyedropper swatch).
 function getStrokeColor() {
   const themes = {
     'vellum-theme-yellow': '#fbc02d',
@@ -45,7 +46,9 @@ function getStrokeColor() {
     'vellum-theme-pink': '#c2185b',
     'vellum-theme-black': '#111'
   };
-  return themes[window.VellumState.color] || '#fbc02d';
+  const c = window.VellumState.color;
+  if (typeof c === 'string' && (c.startsWith('#') || c.startsWith('rgb'))) return c;
+  return themes[c] || '#fbc02d';
 }
 
 // ── Mode sets ───────────────────────────────────────────────────────────────
@@ -277,10 +280,16 @@ function handleRectDown(e) {
   captureShape.setAttribute('width', '0');
   captureShape.setAttribute('height', '0');
   captureShape.setAttribute('rx', '2');
-  captureShape.setAttribute('stroke', getStrokeColor());
-  captureShape.setAttribute('stroke-width', String(window.VellumState.strokeWidth));
-  captureShape.setAttribute('fill', 'none');
-  captureShape.setAttribute('stroke-linejoin', 'round');
+  const color = getStrokeColor();
+  if (window.VellumState.filled) {
+    captureShape.setAttribute('fill', color);
+    captureShape.setAttribute('stroke', 'none');
+  } else {
+    captureShape.setAttribute('stroke', color);
+    captureShape.setAttribute('stroke-width', String(window.VellumState.strokeWidth));
+    captureShape.setAttribute('fill', 'none');
+    captureShape.setAttribute('stroke-linejoin', 'round');
+  }
   captureSvg.appendChild(captureShape);
 }
 
@@ -328,7 +337,8 @@ async function handleRectUp(e) {
       h:  parseFloat((h / box.height * 100).toFixed(2)),
     },
     color: getStrokeColor(),
-    strokeWidth: window.VellumState.strokeWidth
+    strokeWidth: window.VellumState.strokeWidth,
+    filled: !!window.VellumState.filled
   };
 
   captureShape.remove();
@@ -349,9 +359,15 @@ function handleEllipseDown(e) {
   captureShape.setAttribute('cy', e.clientY);
   captureShape.setAttribute('rx', '0');
   captureShape.setAttribute('ry', '0');
-  captureShape.setAttribute('stroke', getStrokeColor());
-  captureShape.setAttribute('stroke-width', String(window.VellumState.strokeWidth));
-  captureShape.setAttribute('fill', 'none');
+  const color = getStrokeColor();
+  if (window.VellumState.filled) {
+    captureShape.setAttribute('fill', color);
+    captureShape.setAttribute('stroke', 'none');
+  } else {
+    captureShape.setAttribute('stroke', color);
+    captureShape.setAttribute('stroke-width', String(window.VellumState.strokeWidth));
+    captureShape.setAttribute('fill', 'none');
+  }
   captureSvg.appendChild(captureShape);
 }
 
@@ -400,7 +416,8 @@ async function handleEllipseUp(e) {
       ry: parseFloat((ry / box.height * 100).toFixed(2)),
     },
     color: getStrokeColor(),
-    strokeWidth: window.VellumState.strokeWidth
+    strokeWidth: window.VellumState.strokeWidth,
+    filled: !!window.VellumState.filled
   };
 
   captureShape.remove();
@@ -790,15 +807,25 @@ window.VellumMarker = {
     if (shapeType === 'rect') {
       shapeEl = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
       shapeEl.setAttribute('rx', '2');
-      shapeEl.setAttribute('stroke', color);
-      shapeEl.setAttribute('stroke-width', sw);
-      shapeEl.setAttribute('fill', 'none');
-      shapeEl.setAttribute('stroke-linejoin', 'round');
+      if (payload.filled) {
+        shapeEl.setAttribute('fill', color);
+        shapeEl.setAttribute('stroke', 'none');
+      } else {
+        shapeEl.setAttribute('stroke', color);
+        shapeEl.setAttribute('stroke-width', sw);
+        shapeEl.setAttribute('fill', 'none');
+        shapeEl.setAttribute('stroke-linejoin', 'round');
+      }
     } else if (shapeType === 'ellipse') {
       shapeEl = document.createElementNS('http://www.w3.org/2000/svg', 'ellipse');
-      shapeEl.setAttribute('stroke', color);
-      shapeEl.setAttribute('stroke-width', sw);
-      shapeEl.setAttribute('fill', 'none');
+      if (payload.filled) {
+        shapeEl.setAttribute('fill', color);
+        shapeEl.setAttribute('stroke', 'none');
+      } else {
+        shapeEl.setAttribute('stroke', color);
+        shapeEl.setAttribute('stroke-width', sw);
+        shapeEl.setAttribute('fill', 'none');
+      }
     } else {
       // freehand or arrow — use a <path>
       shapeEl = document.createElementNS('http://www.w3.org/2000/svg', 'path');

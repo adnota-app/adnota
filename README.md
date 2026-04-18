@@ -37,7 +37,7 @@ Wrapper around `chrome.storage.local`. All data is keyed by `hostname`, and each
 Methods: `saveItem`, `saveNote` (generic upsert-by-uuid — caller passes full payload), `deleteItem`, `getAnchorsForUrl`, `clearPage`.
 
 #### `lib/annotationState.js` — `window.VellumState`, `window.VellumUndo`, `window.VellumVisibility`
-**`VellumState`**: Single source of truth for active tool mode (`null` | `'eraser'` | `'sticky'` | `'highlight'` | `'pen'` | `'arrow'` | `'rect'` | `'ellipse'` | `'text'` | `'select'`), active highlight color, and stroke width. Persists `vellumActiveMode`, `vellumHighlightColor`, and `vellumStrokeWidth` to storage for cross-component sync (popup reads these live). Subscriber pattern — all tools react to state changes without polling.
+**`VellumState`**: Single source of truth for active tool mode (`null` | `'eraser'` | `'sticky'` | `'highlight'` | `'pen'` | `'arrow'` | `'rect'` | `'ellipse'` | `'text'` | `'select'`), active color, stroke width, and shape fill modifier. `color` holds either a theme class (`vellum-theme-*`) or a raw hex string from the eyedropper — consumers must handle both. `filled` is a boolean modifier that only affects rect/ellipse. Persists `vellumActiveMode`, `vellumHighlightColor`, `vellumStrokeWidth`, and `vellumShapeFilled` to storage for cross-component sync (popup reads these live). Subscriber pattern — all tools react to state changes without polling.
 
 **`VellumUndo`**: Central undo stack shared by all tools. Pressing `Ctrl+Z` / `Cmd+Z` anywhere on the page pops and executes the most recent `{ undo: async fn }` entry, regardless of which tool created it.
 
@@ -120,7 +120,9 @@ Also exposes `generateCSSSelector(el)` as a shared utility (used by the resizer)
   - **Circle** — click-drag to draw outlined ellipses
   - **Text** — click to place editable text; Enter to commit, Shift+Enter for newline, Escape to cancel
 - **Five color swatches**: yellow, green, blue, pink, and **black (redaction)** — active swatch shows white border + purple ring
+- **Eyedropper / current-color control**: sits to the left of the palette, separated by dividers on both sides to read as its own control rather than a sixth swatch. Background always mirrors the current paint color (theme or custom); icon uses `mix-blend-mode: difference` so it stays readable on any fill. Clicking opens the native `EyeDropper` API (Chrome 95+) to pick any pixel color from the page. Works across all drawing tools (pen, shapes, text, highlight). Ideal for background-matching a solid shape to cover an ad cleanly on any site (light, dark, off-white, gradient). Custom-color highlights route through the fallback overlay renderer (opaque cover, no blend mode) since the CSS Custom Highlights API requires pre-registered theme names.
 - **Three stroke width presets**: thin (2px), medium (4px), thick (8px) — shown as graduated dots; also controls text font size (16px, 24px, 36px)
+- **Fill group** (outline / solid radio pair): placed right after the shape tool buttons so the option surfaces next to the tool that triggered it. Visible only when Rectangle or Circle is the active tool (the buttons and their trailing divider hide together, leaving no empty gap). Outline variant carries a red diagonal slash to disambiguate it from the rectangle tool icon. Exactly one is active at any time; clicking either sets `VellumState.filled` (persisted as `vellumShapeFilled`). Payload stores `filled: bool` on `MARKER` items with `shapeType: 'rect' | 'ellipse'`. Solid shapes are the primary redaction mechanism for non-text content (ads, images, iframes) that can't be erased without breaking layout.
 - **Undo button**: triggers `VellumUndo.undo()` directly from the toolbar
 - **Draggable**: pointer-capture drag via handle (same pattern as eraser HUD); position resets when toolbar hides
 - **Highlight mode**: text selection applies color via the **CSS Custom Highlights API** (`CSS.highlights`, Chrome 105+) — zero DOM mutation, React/Vue safe
@@ -156,12 +158,12 @@ Also exposes `generateCSSSelector(el)` as a shared utility (used by the resizer)
 - Toolbar-area clicks are explicitly guarded (both by DOM check and bounding box) to prevent strokes firing through the toolbar
 - **Pencil tool**: freehand drawing with **Ramer-Douglas-Peucker** path simplification (ε = 2.0) to reduce point density before storage
 - **Arrow tool**: click-drag creates a straight line with SVG `<marker>` arrowhead; minimum distance threshold prevents accidental tiny arrows
-- **Rectangle tool**: click-drag creates an outlined `<rect>` with rounded corners; handles any drag direction (origin can be any corner)
-- **Ellipse tool**: click-drag creates an outlined `<ellipse>`; center is midpoint of drag, radii from extent
+- **Rectangle tool**: click-drag creates a `<rect>` with rounded corners; handles any drag direction (origin can be any corner). Honors the toolbar Fill toggle — outlined by default, solid fill when enabled
+- **Ellipse tool**: click-drag creates an `<ellipse>`; center is midpoint of drag, radii from extent. Honors the toolbar Fill toggle (outline or solid fill)
 - **Text tool**: click to place a `contentEditable` text box; Enter commits, Shift+Enter for newline, Escape cancels; font size derived from stroke width preset (thin=16px, medium=24px, thick=8=36px); rendered as HTML (not SVG `<text>`) for natural multi-line editing; double-click to re-edit existing text
 - **Select tool**: click near any marker/shape/text to select it (proper SVG `getBBox()` hit testing picks the smallest overlapping shape); dashed purple selection box with red ✕ delete button; Delete/Backspace key support; all deletes are undoable via `VellumUndo`
 - **Stroke width**: all tools read `VellumState.strokeWidth` (2, 4, or 8) for line thickness; persisted per stroke in storage
-- **Unified persistence**: all shapes stored as `MARKER` action with a `shapeType` field (`freehand`, `arrow`, `rect`, `ellipse`, `text`) — same anchor/restore pipeline via `renderMarker()`
+- **Unified persistence**: all shapes stored as `MARKER` action with a `shapeType` field (`freehand`, `arrow`, `rect`, `ellipse`, `text`) — same anchor/restore pipeline via `renderMarker()`. Rect/ellipse payloads also carry `filled: bool`; solid payloads render with `fill=color, stroke=none`
 - Rendered markers re-anchor to their block element via `ResizeObserver` + scroll listener — no drift on long pages
 - **Five colors**: same palette as highlighter (yellow, green, blue, pink, black)
 - A tap with fewer than 3 points (pencil) or too-small drag (shapes) cancels the action
