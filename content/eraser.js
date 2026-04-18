@@ -476,6 +476,26 @@ function rebuildEraseStyleTag() {
 }
 window.rebuildEraseStyleTag = rebuildEraseStyleTag;
 
+// ─── Iframe pointer shield ──────────────────────────────────────────────────
+// Cross-origin iframes swallow wheel events — the parent document never sees
+// them — so scroll-to-traverse fails and the browser scroll-chains the wheel
+// back into the parent page. Disabling pointer-events on every iframe while
+// eraser is active routes wheel/click through to the iframe's container in the
+// parent doc, which is usually what the user wants to erase anyway.
+let iframeShieldStyleTag = null;
+function setIframeShield(active) {
+  if (active && !iframeShieldStyleTag) {
+    iframeShieldStyleTag = document.createElement('style');
+    iframeShieldStyleTag.id = 'vellum-iframe-shield';
+    iframeShieldStyleTag.setAttribute('data-vellum-ui', '1');
+    iframeShieldStyleTag.textContent = 'iframe { pointer-events: none !important; }';
+    document.head.appendChild(iframeShieldStyleTag);
+  } else if (!active && iframeShieldStyleTag) {
+    iframeShieldStyleTag.remove();
+    iframeShieldStyleTag = null;
+  }
+}
+
 // ─── Guard: Vellum-owned elements are invisible to the eraser ─────────────────
 const isVellumElement = window.VellumUI.isVellumElement;
 
@@ -597,7 +617,9 @@ chrome.runtime.onMessage.addListener((request) => {
 
 // ─── React to mode changes ────────────────────────────────────────────────────
 window.VellumState.subscribe(state => {
-  if (state.mode === 'eraser') {
+  const isEraser = state.mode === 'eraser';
+  setIframeShield(isEraser);
+  if (isEraser) {
     // Show HUD as soon as the tool is active — trash/undo are always reachable.
     setHudVisible(true);
     updateHUD(null);
