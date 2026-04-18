@@ -126,11 +126,16 @@ The sidebar-swapping use case you described ("I want my news feed on the left") 
 this site has bugs with sticky note styles:
 https://superuser.com/questions/608296/how-to-disable-iframes-in-browsers
 
+DONE: 
 ~~Add mouse scroll to ERASE elements!~~
 ~~if you click to do a post it note and the eye ball is off, turn it on!~~
 ~~fix show/hide global persistance~~
 ~~Apply add deletes to exact page OR domain OR just path etc.~~
 ~~did the delete dialogue stop showing up inside popup.js?~~
+wire up whenever a user highlights something, make a little popup near their cursor that allows them to choose which highlighter color, a quick shortcut (rather than having to load the tool, the point is to make highlighting as easy and as natural as possible without getting in the way too much)
+
+
+TODO:
 
 "Remove things like this" (#11, the "killer feature") — This is the most interesting idea in the whole list. After erasing one element, find        
 structurally similar siblings and offer bulk removal. This plays to FuzzyAnchor's strengths — you could score all siblings of the erased element's
@@ -162,7 +167,7 @@ eventually wire up to google drive storage? (paid feature?)
 
 wire up right click for sticky notes
 
-wire up whenever a user highlights something, make a little popup near their cursor that allows them to choose which highlighter color, a quick shortcut (rather than having to load the tool, the point is to make highlighting as easy and as natural as possible without getting in the way too much)
+
 
 
 HMMMM...:
