@@ -193,6 +193,14 @@ function dominatesViewport(rect) {
   return visible / (vw * vh) >= VIEWPORT_DOMINANCE_THRESHOLD;
 }
 
+// Ad signals used for both HUD display and click-scope decisions. Page-level
+// containers are exempt — their subtrees always happen to contain an iframe
+// or two, which doesn't make the whole page an ad.
+function getEffectiveAdSignals(target) {
+  const rect = target.getBoundingClientRect();
+  return dominatesViewport(rect) ? [] : detectAdSignals(target);
+}
+
 // ─── Erase target quality scoring ───────────────────────────────────────────
 // Combines anchorability (how reliably FuzzyAnchor re-finds it) with erase
 // safety (is this scoped to unwanted content, or will it nuke real stuff?).
@@ -387,11 +395,8 @@ function updateHUD(target) {
   dimensionBadge.textContent = `${Math.round(rect.width)}\u00d7${Math.round(rect.height)}`;
 
   // ── HUD info section ──
-  // Subtree ad-detection is meaningless on page-level containers (of course a
-  // huge wrapper contains an iframe somewhere) — suppress ad signals so we
-  // don't slap "likely ad" on the article body.
   const anchor = getAnchorStrength(target);
-  const adSignals = dominatesViewport(rect) ? [] : detectAdSignals(target);
+  const adSignals = getEffectiveAdSignals(target);
   const betterTarget = findBetterTarget(target);
 
   // Confidence label + color
@@ -753,7 +758,12 @@ document.addEventListener('click', async (e) => {
   // Capture anchor before any DOM mutation.
   const anchor = window.FuzzyAnchor.generate(target);
   const cssSelector = window.FuzzyAnchor.generateCSSSelector(target);
-  const pathScope = e.shiftKey ? '*' : location.pathname;
+  // Shift is the user's explicit "entire domain" override — unchanged behavior.
+  // If the target looks like an ad we silently promote the scope to domain-wide
+  // too, since nobody wants to erase the same ad on every article. No chip, no
+  // messaging; it just works. Non-ad targets still scope to the current page.
+  const useDomain = e.shiftKey || getEffectiveAdSignals(target).length > 0;
+  const pathScope = useDomain ? '*' : location.pathname;
   const domain = location.hostname;
   const id = Date.now() + Math.random().toString();
 

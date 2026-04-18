@@ -85,7 +85,8 @@ Also exposes `generateCSSSelector(el)` as a shared utility (used by the resizer)
 - **Visual-root auto-bubble**: on hover, the outline automatically climbs past any parent wrapper whose bounding box matches the child (edges within 4px, size within 5%) so a single click hits the outermost visually-identical container. Stops the moment a parent meaningfully grows or would dominate ≥85% of the viewport, so page-level containers are never auto-selected. Small elements stay erasable — padding/margins break edge-match and keep inner targets distinct
 - **Scroll-wheel DOM traversal**: while hovering, scroll up to walk to the parent element, scroll down to walk back toward the auto-bubbled baseline — no minimum size filter (unlike resizer), so small elements like links and icons can be erased too
 - Click to erase: fires a 3-stage animation sequence (ripples → bounding-box flash → dissolve) then hard-hides the element with `display: none !important`
-- `Shift+Click` for domain-wide erasure (stored with `path: '*'`)
+- `Shift+Click` for domain-wide erasure (stored with `path: '*'`) — explicit user override, unchanged semantic
+- **Silent ad-scope promotion**: a plain click on a target with ad fingerprints (`getEffectiveAdSignals` non-empty — same detection the HUD "likely ad" label uses) is silently promoted to domain-wide storage, because nobody wants to re-erase the same ad on every article. No HUD chip, no messaging — it just works. Non-ad targets stay page-scoped. Page-level viewport-dominating containers are always treated as non-ad regardless of subtree iframes
 - Undo: shared `VellumUndo` stack + 5s toast button, both cancel mid-flight animations
 - Show/Hide (`Alt+V`): erased elements are tracked in the shared `VellumErasedElements` Set (populated by both eraser clicks and restorer); `VellumVisibility` iterates this set to toggle inline `display:none` on each node
 - Storage write is non-blocking (does not delay animation)
