@@ -174,6 +174,15 @@ const VISUAL_ROOT_EDGE_TOLERANCE_PX = 4;
 const VISUAL_ROOT_SIZE_TOLERANCE_RATIO = 0.05;
 // Guard against auto-selecting (or nudging up to) page-level containers.
 const VIEWPORT_DOMINANCE_THRESHOLD = 0.85;
+// Scroll-up nudge won't suggest a parent that's this many times larger than
+// the element the user is actually hovering — at that point we've walked past
+// the ad and into real content regardless of what the ad-density heuristic says.
+const BETTER_TARGET_MAX_AREA_RATIO = 2.0;
+// Per-hop growth cap — a single step-up that grows this much usually means
+// we've crossed a layout boundary (ad slot → sidebar column, card → grid row).
+// The visual-root auto-bubble already nails the starting element most of the
+// time, so big jumps between recommended levels are almost always wrong.
+const BETTER_TARGET_MAX_HOP_RATIO = 1.5;
 
 function dominatesViewport(rect) {
   const vw = window.innerWidth, vh = window.innerHeight;
@@ -301,17 +310,31 @@ function getAnchorStrength(el) {
 // has a stronger anchor. Stops when a parent has too much non-ad content
 // (erasing it would be collateral damage).
 function findBetterTarget(el) {
+  const selfRect = el.getBoundingClientRect();
+  // Already on a viewport-dominating element — any parent is necessarily
+  // even larger, so there's no meaningful "better target" to suggest.
+  if (dominatesViewport(selfRect)) return null;
+
+  const selfArea = Math.max(1, selfRect.width * selfRect.height);
   let cur = el.parentElement;
   const self = getAnchorStrength(el);
   let stepsUp = 0;
   let bestCandidate = null;
+  let prevArea = selfArea;
 
   while (cur && cur !== document.body && cur !== document.documentElement && stepsUp < 6) {
     stepsUp++;
     if (isVellumElement(cur)) { cur = cur.parentElement; continue; }
 
+    const curRect = cur.getBoundingClientRect();
+    const curArea = curRect.width * curRect.height;
     // Page-level containers are never the target — kill the nudge here.
-    if (dominatesViewport(cur.getBoundingClientRect())) break;
+    if (dominatesViewport(curRect)) break;
+    // Single-hop grew too much — we crossed out of the ad into layout.
+    if (curArea > prevArea * BETTER_TARGET_MAX_HOP_RATIO) break;
+    // Total growth from the hovered element is too much even if per-hop was
+    // gradual. Absolute ceiling; visual-root bubble means we rarely need many hops.
+    if (curArea > selfArea * BETTER_TARGET_MAX_AREA_RATIO) break;
 
     const parentStrength = getAnchorStrength(cur);
 
@@ -333,6 +356,7 @@ function findBetterTarget(el) {
         break;
       }
     }
+    prevArea = curArea;
     cur = cur.parentElement;
   }
   return bestCandidate;
@@ -363,8 +387,11 @@ function updateHUD(target) {
   dimensionBadge.textContent = `${Math.round(rect.width)}\u00d7${Math.round(rect.height)}`;
 
   // ── HUD info section ──
+  // Subtree ad-detection is meaningless on page-level containers (of course a
+  // huge wrapper contains an iframe somewhere) — suppress ad signals so we
+  // don't slap "likely ad" on the article body.
   const anchor = getAnchorStrength(target);
-  const adSignals = detectAdSignals(target);
+  const adSignals = dominatesViewport(rect) ? [] : detectAdSignals(target);
   const betterTarget = findBetterTarget(target);
 
   // Confidence label + color
