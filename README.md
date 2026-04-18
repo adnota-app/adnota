@@ -90,6 +90,7 @@ Also exposes `generateCSSSelector(el)` as a shared utility (used by the resizer)
 - Show/Hide (`Alt+V`): erased elements are tracked in the shared `VellumErasedElements` Set (populated by both eraser clicks and restorer); `VellumVisibility` iterates this set to toggle inline `display:none` on each node
 - Storage write is non-blocking (does not delay animation)
 - **Ad-popup defense**: while eraser is active, `mousedown` / `pointerdown` / `auxclick` on any non-Vellum target are intercepted on `window`-capture and `preventDefault`-ed. Stops ads that hijack the earliest pointer event to call `window.open()` before our click handler fires. Right-click (`button === 2`) is left alone so Inspect still works. Every blocked interaction calls `VellumState.anchorFocus()` to re-anchor keyboard focus, since `preventDefault` on mousedown suppresses the browser's implicit focus transfer
+- **Iframe pointer shield**: cross-origin iframes swallow wheel events (parent doc never sees them, so scroll-to-traverse fails and the browser chain-scrolls the page instead) and their internal clicks never reach our handlers. While eraser is active, a scoped `<style id="vellum-iframe-shield">` sets `iframe { pointer-events: none !important }` on every iframe, routing wheel and click through to the iframe's container in the parent doc — which is usually the full ad wrapper the user actually means to erase. Removed on mode exit
 
 #### `content/sticky.js` — `window.StickyEngine`
 - Activated via popup or `Alt+S`
@@ -259,6 +260,13 @@ Dedicated extension page (opened as a new tab via `chrome.runtime.getURL`). Aggr
 ---
 
 ## What's Next — Possible Directions
+NOTE: CLAUDE PLEASE IGNORE THIS SECTION!!! It's not relevent to any current work!
+------------------------------------------
+
+
+
+
+
 
 The core engine is solid. Here are the most natural next directions, ranked by alignment to the core vision:
 
