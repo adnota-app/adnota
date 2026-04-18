@@ -214,13 +214,6 @@ chrome.runtime.onMessage.addListener((request) => {
   }
 });
 
-// Escape always fully deactivates whichever tool is running.
-document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape' && window.VellumState.isVisible) {
-    window.VellumState.set({ mode: null });
-  }
-});
-
 function getOccurrenceIndex(range, anchorElement) {
   const preSelectionRange = range.cloneRange();
   try {

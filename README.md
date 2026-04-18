@@ -41,6 +41,8 @@ Methods: `saveItem`, `saveNote` (generic upsert-by-uuid — caller passes full p
 
 **`VellumUndo`**: Central undo stack shared by all tools. Pressing `Ctrl+Z` / `Cmd+Z` anywhere on the page pops and executes the most recent `{ undo: async fn }` entry, regardless of which tool created it.
 
+**Universal Escape + focus anchor**: a single `window`-capture keydown handler clears `VellumState.mode` on Escape — no matter which tool is active, Escape always exits. To keep Escape reachable even when cross-origin iframe ads try to trap keyboard focus, a hidden focusable `<div id="vellum-focus-anchor">` (zero-size, `tabindex="-1"`, `data-vellum-ui`) is focused on mode entry. A `focusin` capture listener yanks focus back whenever anything outside Vellum UI grabs it; `visibilitychange` re-anchors on tab round-trips. `VellumState.anchorFocus()` is exposed for tools that `preventDefault` pointer events (eraser page-click blocker) to explicitly reclaim focus after suppressing the implicit transfer.
+
 **`VellumVisibility`**: Ephemeral show/hide-all controller. `toggle()` flips a `vellum-hidden` class on `<html>` (which component CSS rules target), iterates `VellumErasedElements` to flip inline `display:none`, disables/re-enables the `vellum-erase-overrides` + `vellum-style-overrides` style tags, and injects/removes a transient stylesheet that zeroes out CSS Custom Highlights backgrounds. State is NOT persisted — every page load starts visible. `show()` idempotently reveals; called from sticky/highlight/marker handlers so hide mode can't block or obscure new work. The central `toggle-view` / `get-view` message handler and a `visibility-changed` broadcast (for popup icon sync) also live here.
 
 #### `lib/vellumUI.js` — `window.VellumUI`                                                                           
@@ -80,12 +82,14 @@ Also exposes `generateCSSSelector(el)` as a shared utility (used by the resizer)
   - **Trash button** — deletes every erasure on the current page after a confirm (same action as the popup's "Erased" stat card)
   - **Undo button** — fires the shared `VellumUndo.undo()` stack
   - **Draggable** — grab handle + pointer capture drag; position resets on mode exit
-- **Scroll-wheel DOM traversal**: while hovering, scroll up to walk to the parent element, scroll down to walk back toward children — no minimum size filter (unlike resizer), so small elements like links and icons can be erased too
+- **Visual-root auto-bubble**: on hover, the outline automatically climbs past any parent wrapper whose bounding box matches the child (edges within 4px, size within 5%) so a single click hits the outermost visually-identical container. Stops the moment a parent meaningfully grows or would dominate ≥85% of the viewport, so page-level containers are never auto-selected. Small elements stay erasable — padding/margins break edge-match and keep inner targets distinct
+- **Scroll-wheel DOM traversal**: while hovering, scroll up to walk to the parent element, scroll down to walk back toward the auto-bubbled baseline — no minimum size filter (unlike resizer), so small elements like links and icons can be erased too
 - Click to erase: fires a 3-stage animation sequence (ripples → bounding-box flash → dissolve) then hard-hides the element with `display: none !important`
 - `Shift+Click` for domain-wide erasure (stored with `path: '*'`)
 - Undo: shared `VellumUndo` stack + 5s toast button, both cancel mid-flight animations
 - Show/Hide (`Alt+V`): erased elements are tracked in the shared `VellumErasedElements` Set (populated by both eraser clicks and restorer); `VellumVisibility` iterates this set to toggle inline `display:none` on each node
 - Storage write is non-blocking (does not delay animation)
+- **Ad-popup defense**: while eraser is active, `mousedown` / `pointerdown` / `auxclick` on any non-Vellum target are intercepted on `window`-capture and `preventDefault`-ed. Stops ads that hijack the earliest pointer event to call `window.open()` before our click handler fires. Right-click (`button === 2`) is left alone so Inspect still works. Every blocked interaction calls `VellumState.anchorFocus()` to re-anchor keyboard focus, since `preventDefault` on mousedown suppresses the browser's implicit focus transfer
 
 #### `content/sticky.js` — `window.StickyEngine`
 - Activated via popup or `Alt+S`
@@ -244,7 +248,7 @@ Dedicated extension page (opened as a new tab via `chrome.runtime.getURL`). Aggr
 | `Alt+H` | Toggle Drawing Palette toolbar |
 | `Alt+V` | Show / Hide all annotations |
 | `Ctrl+Z` / `Cmd+Z` | Undo last action (any tool) |
-| `Escape` | Deactivate active tool / deselect resizer element / cancel text input |
+| `Escape` | Deactivate active tool (universal — works from any tool, any state) / cancel text input |
 | `Shift+Click` | (Eraser only) Domain-wide deletion |
 | `Enter` | (Text tool) Commit text |
 | `Shift+Enter` | (Text tool) Insert newline |

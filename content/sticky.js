@@ -153,13 +153,6 @@ chrome.runtime.onMessage.addListener((request) => {
   }
 });
 
-// Escape to exit sticky mode
-document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape' && window.VellumState.mode === 'sticky') {
-    window.VellumState.set({ mode: null });
-  }
-});
-
 // React to VellumState changes — show/hide toolbar, update cursor.
 window.VellumState.subscribe(state => {
   document.body.classList.toggle('vellum-sticky-active', state.mode === 'sticky');
