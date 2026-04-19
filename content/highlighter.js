@@ -19,18 +19,18 @@ if (typeof CSS !== 'undefined' && 'highlights' in CSS) {
 const toolIcons = {
   select:    '<path d="M6 2l0 13 3.5-3.5 3 5 2-1-3-5 4.5-.5z" fill="currentColor" stroke="none"/>',
   pencil:    '<path d="M3 15l0 2 2 0L14 8l-2-2L3 15z"/><path d="M12 6l2-2 2 2-2 2z"/>',
-  highlight: '<path d="M4 16h10"/><path d="M6 3l-3 9h3l1 4h4l1-4h3L12 3z" fill="currentColor" opacity="0.25" stroke="none"/><path d="M6 3l-3 9h3l1 4h4l1-4h3L12 3H6z"/>',
+  highlight: '<path d="M14.5 2.5a2.12 2.12 0 0 1 3 3L13 10l-3-3 4.5-4.5zM9 8l3 3-5 5H4v-3l5-5z" fill="currentColor" stroke="none"/>',
   arrow:     '<path d="M5 15L15 5"/><path d="M15 5H9M15 5v6"/>',
-  rect:      '<rect x="4" y="5" width="12" height="10" rx="1"/>',
-  ellipse:   '<ellipse cx="10" cy="10" rx="7" ry="5"/>',
-  text:      '<text x="4" y="15" font-size="14" font-weight="700" font-family="serif" fill="currentColor" stroke="none">T</text>',
+  rect:      '<rect x="4" y="4" width="12" height="12" rx="1"/>',
+  ellipse:   '<circle cx="10" cy="10" r="6"/>',
+  text:      '<path d="M6 5h8M6 5v2M14 5v2M10 5v10M8 15h4"/>',
   // Outline variant: hollow square + red diagonal slash to visually distinguish
   // "no fill" from the rectangle tool icon itself.
-  fillOutline: '<rect x="4" y="5" width="12" height="10" rx="1"/><line class="vellum-outline-slash" x1="4" y1="15" x2="16" y2="5"/>',
+  fillOutline: '<rect x="4" y="4" width="12" height="12" rx="1"/><line class="vellum-outline-slash" x1="4" y1="16" x2="16" y2="4"/>',
   // Solid variant: filled square (fill painted via dedicated CSS to defeat the
   // global .vellum-tool-btn svg { fill: none } rule).
-  fillSolid: '<rect class="vellum-fill-solid-rect" x="4" y="5" width="12" height="10" rx="1"/>',
-  eyedropper:'<path d="M13 2l5 5-2 2-1-1-6 6-3 1 1-3 6-6-1-1z" fill="currentColor" stroke="none"/>',
+  fillSolid: '<rect class="vellum-fill-solid-rect" x="4" y="4" width="12" height="12" rx="1"/>',
+  eyedropper: '<path d="M12 6l1-1a1.5 1.5 0 012 2l-1 1Z" fill="currentColor"/><path d="M11 5l4 4M12 6L6 12l-2 3 1 1 3-2L14 8"/>',
 };
 
 // ── Toolbar helpers ─────────────────────────────────────────────────────────
@@ -45,7 +45,7 @@ function makeToolBtn(name, title, mode) {
   const btn = document.createElement('div');
   btn.className = 'vellum-tool-btn';
   btn.dataset.tool = mode;
-  btn.setAttribute('title', title);
+  btn.setAttribute('data-tooltip', title);
   btn.appendChild(svgIcon(name));
   btn.onclick = (e) => {
     e.stopPropagation();
@@ -59,7 +59,7 @@ const highlightToolbar = document.createElement('div');
 highlightToolbar.id = 'vellum-highlighter-widget';
 highlightToolbar.setAttribute('data-vellum-ui', '1');
 highlightToolbar.style.display = 'none';
-highlightToolbar.style.bottom = '20px';
+highlightToolbar.style.bottom = '32px';
 highlightToolbar.style.left = '50%';
 highlightToolbar.style.transform = 'translateX(-50%)';
 document.documentElement.appendChild(highlightToolbar);
@@ -68,7 +68,7 @@ document.documentElement.appendChild(highlightToolbar);
 const dragHandle = document.createElement('span');
 dragHandle.className = 'vellum-toolbar-drag';
 dragHandle.textContent = '\u2847';
-dragHandle.title = 'Drag to reposition';
+dragHandle.setAttribute('data-tooltip', 'Drag to reposition');
 highlightToolbar.appendChild(dragHandle);
 
 // Logo chip
@@ -102,7 +102,7 @@ highlightToolbar.appendChild(Object.assign(document.createElement('div'), { clas
 function makeFillBtn({ iconKey, cls, title, filled }) {
   const btn = document.createElement('div');
   btn.className = `vellum-tool-btn ${cls}`;
-  btn.title = title;
+  btn.setAttribute('data-tooltip', title);
   const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
   svg.setAttribute('viewBox', '0 0 20 20');
   svg.innerHTML = toolIcons[iconKey];
@@ -147,7 +147,7 @@ function resolvePaintColor(c) {
 // renderer since CSS Custom Highlights need pre-registered theme names.
 const eyedropperSwatch = document.createElement('div');
 eyedropperSwatch.className = 'vellum-color-swatch vellum-eyedropper-swatch';
-eyedropperSwatch.title = 'Current color — click to pick any color from the page';
+eyedropperSwatch.setAttribute('data-tooltip', 'Current color — click to pick any color from the page');
 const eyeSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
 eyeSvg.setAttribute('viewBox', '0 0 20 20');
 eyeSvg.innerHTML = toolIcons.eyedropper;
@@ -179,7 +179,11 @@ for (const [themeClass, colorHex] of Object.entries(themes)) {
   swatch.className = 'vellum-color-swatch';
   swatch.style.backgroundColor = colorHex;
   if (themeClass === 'vellum-theme-black') {
-    swatch.title = 'Redact';
+    swatch.setAttribute('data-tooltip', 'Redact');
+  } else {
+    let tooltipName = themeClass.replace('vellum-theme-', '');
+    tooltipName = tooltipName.charAt(0).toUpperCase() + tooltipName.slice(1);
+    swatch.setAttribute('data-tooltip', tooltipName);
   }
   swatch.onclick = (e) => {
     e.stopPropagation();
@@ -194,15 +198,15 @@ highlightToolbar.appendChild(Object.assign(document.createElement('div'), { clas
 
 // Stroke width presets
 const strokePresets = [
-  { width: 2, dotSize: 4, label: 'Thin' },
+  { width: 2, dotSize: 4, label: 'Small' },
   { width: 4, dotSize: 6, label: 'Medium' },
-  { width: 8, dotSize: 9, label: 'Thick' },
+  { width: 8, dotSize: 9, label: 'Large' },
 ];
 const strokeBtns = {};
 for (const preset of strokePresets) {
   const btn = document.createElement('div');
   btn.className = 'vellum-stroke-btn';
-  btn.title = preset.label;
+  btn.setAttribute('data-tooltip', preset.label);
   const dot = document.createElement('div');
   dot.className = 'vellum-stroke-dot';
   dot.style.width = preset.dotSize + 'px';
@@ -254,15 +258,7 @@ const CURSORS = {
     `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 18 18">
        <path d="M2 1 L2 14 L5 11 L7 15 L9 14 L7 10 L12 10 Z"
              fill="white" stroke="black" stroke-width="1.2" stroke-linejoin="round"/>
-     </svg>`, 2, 1, 'default'),
-  // Eraser — pink rubber tipped tool tilted at -30°; hotspot at the tip (bottom-left).
-  eraser: svgCursor(
-    `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
-       <g transform="rotate(-35 12 13)">
-         <rect x="2" y="9" width="20" height="8" rx="1.5" fill="#fca5a5" stroke="black" stroke-width="1.5"/>
-         <line x1="9" y1="9" x2="9" y2="17" stroke="black" stroke-width="1.5"/>
-       </g>
-     </svg>`, 3, 20, 'crosshair'),
+     </svg>`, 2, 1, 'default')
 };
 
 // Inject/update a stylesheet that forces the tool cursor on every non-Vellum
@@ -313,7 +309,7 @@ window.VellumState.subscribe(state => {
   if (!showToolbar) {
     highlightToolbar.style.left = '50%';
     highlightToolbar.style.top = '';
-    highlightToolbar.style.bottom = '20px';
+    highlightToolbar.style.bottom = '32px';
     highlightToolbar.style.transform = 'translateX(-50%)';
   }
 
@@ -329,14 +325,13 @@ window.VellumState.subscribe(state => {
     case 'highlight': setCursorLock(CURSORS.text);   break;
     case 'select':    setCursorLock(CURSORS.select); break;
     case 'text':      setCursorLock(CURSORS.text);   break;
-    case 'eraser':    setCursorLock(CURSORS.eraser); break;
     // Sticky owns its cursor so the icon can recolor when the user picks a
     // swatch in the HUD — see window.VellumSticky.applyCursor in sticky.js.
     case 'sticky':    window.VellumSticky?.applyCursor(); break;
-    // Resizer — lock to a plain default arrow so it stays stable over links
-    // and buttons that would otherwise flip it to `pointer`. The handles set
-    // their own ew-resize/ns-resize/nwse-resize cursors inline.
-    case 'resizer':   setCursorLock('default'); break;
+    // Resizer — crosshair keeps mode intent clear; resize handles set their
+    // own ew-resize/ns-resize/nwse-resize cursors inline, overriding this.
+    case 'resizer':
+    case 'eraser':
     case 'pen':
     case 'arrow':
     case 'rect':
