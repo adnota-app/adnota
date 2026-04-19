@@ -157,7 +157,7 @@ Also exposes `generateCSSSelector(el)` as a shared utility (used by the resizer)
   - **Corner handle** — drag to resize both width and height simultaneously
   - **Blue reset button** (top-right, circular reset arrow icon) — resets ALL resize overrides for this element, removing injected CSS from both the `<style>` tag and storage. Deliberately blue (not a red ✕) so it doesn't collide semantically with the marker select tool's red ✕ delete affordance
 - **Cursor lock**: while resizer mode is active, the central `VellumCursor.set` stylesheet forces a stable `default` arrow on every non-Vellum element with `!important`, so hovering links or buttons can't flip the cursor to `pointer`. Handles keep their own inline `ew-resize` / `ns-resize` / `nwse-resize` cursors via higher specificity on the handle elements
-- All resizes persist as CSS rules injected into a `<style id="vellum-style-overrides">` tag — survives React/Vue re-renders
+- All resizes persist as CSS rules in a `<style id="vellum-style-overrides">` tag — survives React/Vue re-renders. The tag's contents are driven by a `window.VellumResizeRules` Map (keyed by storage `_id`, valued `{ selector, cssText }`), with `window.rebuildResizeStyleTag()` rewriting the tag from the Map after every mutation. Mirrors the eraser's `VellumEraseRules` pattern — every path (drag persist, Ctrl+Z, trash button, blue ↺ reset, restorer) goes through the same map + rebuild so there's no string surgery on the tag's `textContent` and no way for a zombie rule to survive undo/delete
 - CSS selector generation uses the shared `FuzzyAnchor.generateCSSSelector()` utility
 - CSS rule format: `width: Xpx !important; max-width: none !important` (plus `margin-left` for left-handle resizes, `margin-top` for top-handle resizes, `height`/`max-height` for vertical resizes)
 - Handles are viewport-clamped so they remain visible even on elements taller/wider than the screen
@@ -195,7 +195,7 @@ Also exposes `generateCSSSelector(el)` as a shared utility (used by the resizer)
 - Runs at `document_idle` and on `DOMContentLoaded`
 - **MutationObserver** with 1s debounce watches for SPA/lazy-loaded content and re-runs restoration — handles React, Vue, and infinite-scroll sites
 - Dispatches to the correct engine by `action` type:
-  - `RESIZE` → injects stored CSS rule into `<style id="vellum-style-overrides">` — **bypasses FuzzyAnchor entirely** since the CSS selector is self-contained
+  - `RESIZE` → `VellumResizeRules.set(id, { selector, cssText })` + `rebuildResizeStyleTag()` — **bypasses FuzzyAnchor entirely** since the CSS selector is self-contained. Idempotent: re-processing an item already in the Map is a no-op (prevents the duplicate-rule class of bug where undo/delete would leave a stale copy behind)
   - `ERASE` → `element.style.setProperty('display', 'none', 'important')` + adds element to `VellumErasedElements` for show/hide toggling
   - `NOTE` → `StickyEngine.renderNote()` with stored `anchor`, `anchorOffset`, `placement`, `theme`, and `dimensions` — tries FuzzyAnchor resolution first, falls back to percentage placement
   - `HIGHLIGHT` → `VellumHighlighter.applyStoredHighlight()`
