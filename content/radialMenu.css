@@ -12,8 +12,8 @@
 /* ── Center "V" button ───────────────────────────────────────────────────── */
 #vellum-radial-center {
   position: relative;
-  width: 34px;
-  height: 34px;
+  width: 36px;
+  height: 36px;
   border-radius: 50%;
   background: rgba(15, 15, 15, 0.94);
   backdrop-filter: blur(8px);
