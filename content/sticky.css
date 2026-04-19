@@ -167,12 +167,12 @@ html.vellum-hidden .vellum-sticky-container {
 
 .vellum-sticky-swatch:hover {
   transform: scale(1.15);
-  background: rgba(245, 158, 11, 0.12);
+  background: rgba(245, 158, 11, 0.15);
 }
 
 .vellum-sticky-swatch.active {
   background: rgba(245, 158, 11, 0.25);
-  box-shadow: 0 0 0 1.5px rgba(245, 158, 11, 0.6);
+  box-shadow: 0 0 0 1px rgba(245, 158, 11, 0.5);
 }
 
 /* ─── Sticky Notes HUD Toolbar ─── */

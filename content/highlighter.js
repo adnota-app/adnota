@@ -19,18 +19,18 @@ if (typeof CSS !== 'undefined' && 'highlights' in CSS) {
 const toolIcons = {
   select:    '<path d="M6 2l0 13 3.5-3.5 3 5 2-1-3-5 4.5-.5z" fill="currentColor" stroke="none"/>',
   pencil:    '<path d="M3 15l0 2 2 0L14 8l-2-2L3 15z"/><path d="M12 6l2-2 2 2-2 2z"/>',
-  highlight: '<path d="M4 16h10"/><path d="M6 3l-3 9h3l1 4h4l1-4h3L12 3z" fill="currentColor" opacity="0.25" stroke="none"/><path d="M6 3l-3 9h3l1 4h4l1-4h3L12 3H6z"/>',
+  highlight: '<path d="M14.5 2.5a2.12 2.12 0 0 1 3 3L13 10l-3-3 4.5-4.5zM9 8l3 3-5 5H4v-3l5-5z" fill="currentColor" stroke="none"/>',
   arrow:     '<path d="M5 15L15 5"/><path d="M15 5H9M15 5v6"/>',
-  rect:      '<rect x="4" y="5" width="12" height="10" rx="1"/>',
-  ellipse:   '<ellipse cx="10" cy="10" rx="7" ry="5"/>',
-  text:      '<text x="4" y="15" font-size="14" font-weight="700" font-family="serif" fill="currentColor" stroke="none">T</text>',
+  rect:      '<rect x="4" y="4" width="12" height="12" rx="1"/>',
+  ellipse:   '<circle cx="10" cy="10" r="6"/>',
+  text:      '<path d="M6 5h8M6 5v2M14 5v2M10 5v10M8 15h4"/>',
   // Outline variant: hollow square + red diagonal slash to visually distinguish
   // "no fill" from the rectangle tool icon itself.
-  fillOutline: '<rect x="4" y="5" width="12" height="10" rx="1"/><line class="vellum-outline-slash" x1="4" y1="15" x2="16" y2="5"/>',
+  fillOutline: '<rect x="4" y="4" width="12" height="12" rx="1"/><line class="vellum-outline-slash" x1="4" y1="16" x2="16" y2="4"/>',
   // Solid variant: filled square (fill painted via dedicated CSS to defeat the
   // global .vellum-tool-btn svg { fill: none } rule).
-  fillSolid: '<rect class="vellum-fill-solid-rect" x="4" y="5" width="12" height="10" rx="1"/>',
-  eyedropper:'<path d="M13 2l5 5-2 2-1-1-6 6-3 1 1-3 6-6-1-1z" fill="currentColor" stroke="none"/>',
+  fillSolid: '<rect class="vellum-fill-solid-rect" x="4" y="4" width="12" height="12" rx="1"/>',
+  eyedropper: '<path d="M12 6l1-1a1.5 1.5 0 012 2l-1 1Z" fill="currentColor"/><path d="M11 5l4 4M12 6L6 12l-2 3 1 1 3-2L14 8"/>',
 };
 
 // ── Toolbar helpers ─────────────────────────────────────────────────────────
