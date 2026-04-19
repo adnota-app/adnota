@@ -45,7 +45,7 @@ function makeToolBtn(name, title, mode) {
   const btn = document.createElement('div');
   btn.className = 'vellum-tool-btn';
   btn.dataset.tool = mode;
-  btn.setAttribute('title', title);
+  btn.setAttribute('data-tooltip', title);
   btn.appendChild(svgIcon(name));
   btn.onclick = (e) => {
     e.stopPropagation();
@@ -68,7 +68,7 @@ document.documentElement.appendChild(highlightToolbar);
 const dragHandle = document.createElement('span');
 dragHandle.className = 'vellum-toolbar-drag';
 dragHandle.textContent = '\u2847';
-dragHandle.title = 'Drag to reposition';
+dragHandle.setAttribute('data-tooltip', 'Drag to reposition');
 highlightToolbar.appendChild(dragHandle);
 
 // Logo chip
@@ -102,7 +102,7 @@ highlightToolbar.appendChild(Object.assign(document.createElement('div'), { clas
 function makeFillBtn({ iconKey, cls, title, filled }) {
   const btn = document.createElement('div');
   btn.className = `vellum-tool-btn ${cls}`;
-  btn.title = title;
+  btn.setAttribute('data-tooltip', title);
   const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
   svg.setAttribute('viewBox', '0 0 20 20');
   svg.innerHTML = toolIcons[iconKey];
@@ -147,7 +147,7 @@ function resolvePaintColor(c) {
 // renderer since CSS Custom Highlights need pre-registered theme names.
 const eyedropperSwatch = document.createElement('div');
 eyedropperSwatch.className = 'vellum-color-swatch vellum-eyedropper-swatch';
-eyedropperSwatch.title = 'Current color — click to pick any color from the page';
+eyedropperSwatch.setAttribute('data-tooltip', 'Current color — click to pick any color from the page');
 const eyeSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
 eyeSvg.setAttribute('viewBox', '0 0 20 20');
 eyeSvg.innerHTML = toolIcons.eyedropper;
@@ -179,7 +179,11 @@ for (const [themeClass, colorHex] of Object.entries(themes)) {
   swatch.className = 'vellum-color-swatch';
   swatch.style.backgroundColor = colorHex;
   if (themeClass === 'vellum-theme-black') {
-    swatch.title = 'Redact';
+    swatch.setAttribute('data-tooltip', 'Redact');
+  } else {
+    let tooltipName = themeClass.replace('vellum-theme-', '');
+    tooltipName = tooltipName.charAt(0).toUpperCase() + tooltipName.slice(1);
+    swatch.setAttribute('data-tooltip', tooltipName);
   }
   swatch.onclick = (e) => {
     e.stopPropagation();
@@ -194,15 +198,15 @@ highlightToolbar.appendChild(Object.assign(document.createElement('div'), { clas
 
 // Stroke width presets
 const strokePresets = [
-  { width: 2, dotSize: 4, label: 'Thin' },
+  { width: 2, dotSize: 4, label: 'Small' },
   { width: 4, dotSize: 6, label: 'Medium' },
-  { width: 8, dotSize: 9, label: 'Thick' },
+  { width: 8, dotSize: 9, label: 'Large' },
 ];
 const strokeBtns = {};
 for (const preset of strokePresets) {
   const btn = document.createElement('div');
   btn.className = 'vellum-stroke-btn';
-  btn.title = preset.label;
+  btn.setAttribute('data-tooltip', preset.label);
   const dot = document.createElement('div');
   dot.className = 'vellum-stroke-dot';
   dot.style.width = preset.dotSize + 'px';

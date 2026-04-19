@@ -167,12 +167,12 @@ html.vellum-hidden .vellum-sticky-container {
 
 .vellum-sticky-swatch:hover {
   transform: scale(1.15);
-  background: rgba(124, 58, 237, 0.12);
+  background: rgba(245, 158, 11, 0.12);
 }
 
 .vellum-sticky-swatch.active {
-  background: rgba(124, 58, 237, 0.25);
-  box-shadow: 0 0 0 1.5px rgba(124, 58, 237, 0.6);
+  background: rgba(245, 158, 11, 0.25);
+  box-shadow: 0 0 0 1.5px rgba(245, 158, 11, 0.6);
 }
 
 /* ─── Sticky Notes HUD Toolbar ─── */
@@ -182,7 +182,7 @@ html.vellum-hidden .vellum-sticky-container {
   background: rgba(15, 15, 15, 0.92);
   backdrop-filter: blur(8px);
   border-radius: 10px;
-  border: 1px solid rgba(124, 58, 237, 0.45);
+  border: 1px solid rgba(245, 158, 11, 0.45);
   box-shadow: 0 4px 24px rgba(0, 0, 0, 0.5);
   display: flex;
   align-items: center;
