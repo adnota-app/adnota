@@ -141,14 +141,15 @@ Add ability to delete all storage for entire domain from HOME page (you can alre
 - make solid circles and squares with a fill (for covering up stuff you can't erase! e.g., can't erase that ad, COVER IT UP!!!)
 - If in ERASE mode, and you hover over radial menu, TURN OFF THE SELECTION BORDER!
 - Update SELECTION tool to be able to move objects around the page (e.g. select text box and move it somewhere else).
+- get rid of eraser cursor! (it's ugly... just have a pointer? can we have a white pointer?)
+- fix the resize tool, does it need a HUD? (it's the oldest tool at this point...) Should it have same element fill as eraser tool? It also doesn't set "ACTIVE" when you use the tool in popup.js.
+
 
 TODO:
 
 thin=16px, medium=24px, thick=36px - this works well for lines, but might be too big for text size?
 
 make all huds consistent look and feel!
-
-fix the resize tool, does it need a HUD? (it's the oldest tool at this point...) Should it have same element fill as eraser tool? It also doesn't set "ACTIVE" when you use the tool in popup.js.
 
 FIX HUD MENU DRAG BAR ICONS... (they're way too small!)
 
@@ -171,8 +172,6 @@ Basically, just a list of boolean checkbox values for most settings (enabled/dis
 - allow setting keybind shortcuts for tools (in an extension, is it possible to do things like, if you press 'h' on the page, it turns on the highlight tool?)
 
 Optional: Make size of toolbars and radial menus adjustable? (be able to increase the size to make easier to see??) (global setting in settings menu?)
-
-get rid of eraser cursor! (it's ugly... just have a pointer? can we have a white pointer?)
 
 Should clicking hide all exit any active tool? (similar to clicking escape?) Or not, perhaps you'd want to hide noise to focus on something else?? not sure.
 
