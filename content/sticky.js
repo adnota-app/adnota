@@ -98,7 +98,7 @@ const stickyToolbar = document.createElement('div');
 stickyToolbar.id = 'vellum-sticky-toolbar';
 stickyToolbar.setAttribute('data-vellum-ui', '1');
 stickyToolbar.style.display = 'none';
-stickyToolbar.style.bottom = '20px';
+stickyToolbar.style.bottom = '32px';
 stickyToolbar.style.left = '50%';
 stickyToolbar.style.transform = 'translateX(-50%)';
 document.documentElement.appendChild(stickyToolbar);
@@ -107,23 +107,26 @@ document.documentElement.appendChild(stickyToolbar);
 const stickyDragHandle = document.createElement('span');
 stickyDragHandle.className = 'vellum-toolbar-drag';
 stickyDragHandle.textContent = '\u2847';
-stickyDragHandle.title = 'Drag to reposition';
+stickyDragHandle.setAttribute('data-tooltip', 'Drag to reposition');
 stickyToolbar.appendChild(stickyDragHandle);
 
 // Logo chip
 const stickyLogoChip = document.createElement('span');
-stickyLogoChip.className = 'vellum-toolbar-logo';
+stickyLogoChip.className = 'vellum-toolbar-logo vellum-toolbar-logo-orange';
 stickyLogoChip.textContent = 'V';
 stickyToolbar.appendChild(stickyLogoChip);
 
 // Divider
-stickyToolbar.appendChild(Object.assign(document.createElement('div'), { className: 'vellum-toolbar-divider' }));
+stickyToolbar.appendChild(Object.assign(document.createElement('div'), { className: 'vellum-toolbar-divider vellum-toolbar-divider-orange' }));
 
 // Color swatches — mini sticky note icons instead of plain circles
 const stickySwatches = {};
 for (const [themeClass, info] of Object.entries(STICKY_THEMES)) {
   const swatch = document.createElement('div');
   swatch.className = 'vellum-sticky-swatch';
+  let tooltipName = themeClass.replace('vellum-theme-', '');
+  tooltipName = tooltipName.charAt(0).toUpperCase() + tooltipName.slice(1);
+  swatch.setAttribute('data-tooltip', tooltipName);
   swatch.innerHTML = stickyNoteSVG(info.swatch);
   swatch.dataset.theme = themeClass;
   swatch.onclick = (e) => {
@@ -145,17 +148,21 @@ function updateStickySwatches() {
 updateStickySwatches();
 
 // Divider
-stickyToolbar.appendChild(Object.assign(document.createElement('div'), { className: 'vellum-toolbar-divider' }));
+stickyToolbar.appendChild(Object.assign(document.createElement('div'), { className: 'vellum-toolbar-divider vellum-toolbar-divider-orange' }));
 
 // Trash — clears all sticky notes on this page
-stickyToolbar.appendChild(window.VellumUI.createTrashButton({
+const stickyTrashBtn = window.VellumUI.createTrashButton({
   singular: 'sticky note',
   plural: 'sticky notes',
   actionTypes: ['NOTE'],
-}));
+});
+stickyTrashBtn.classList.add('vellum-undo-btn-orange');
+stickyToolbar.appendChild(stickyTrashBtn);
 
 // Undo
-stickyToolbar.appendChild(window.VellumUI.createUndoButton());
+const stickyUndoBtn = window.VellumUI.createUndoButton();
+stickyUndoBtn.classList.add('vellum-undo-btn-orange');
+stickyToolbar.appendChild(stickyUndoBtn);
 
 // Make toolbar draggable
 window.VellumUI.makeDraggable(stickyToolbar, stickyDragHandle);
@@ -181,7 +188,7 @@ window.VellumState.subscribe(state => {
   if (!showToolbar) {
     stickyToolbar.style.left = '50%';
     stickyToolbar.style.top = '';
-    stickyToolbar.style.bottom = '20px';
+    stickyToolbar.style.bottom = '32px';
     stickyToolbar.style.transform = 'translateX(-50%)';
   }
 });
@@ -349,7 +356,7 @@ window.StickyEngine = {
       <div class="vellum-sticky-card">
         <div class="vellum-sticky-header">
           <span class="vellum-timestamp">${ts}</span>
-          <button class="vellum-trash-btn" title="Delete note" aria-label="Delete note">
+          <button class="vellum-trash-btn" data-tooltip="Delete note" aria-label="Delete note">
             <svg width="9" height="9" viewBox="0 0 9 9" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
               <line x1="1" y1="1" x2="8" y2="8"/><line x1="8" y1="1" x2="1" y2="8"/>
             </svg>

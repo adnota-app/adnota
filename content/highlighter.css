@@ -47,20 +47,6 @@ html.vellum-hidden .vellum-highlight-fallback {
   color: #e4e4e7;
 }
 
-/* ── Drag handle ─────────────────────────────────────────────────────────── */
-.vellum-toolbar-drag {
-  color: #525264;
-  font-size: 10px;
-  letter-spacing: 1px;
-  cursor: grab;
-  margin-right: 6px;
-  user-select: none;
-}
-
-.vellum-toolbar-drag:active {
-  cursor: grabbing;
-}
-
 /* ── Logo chip ───────────────────────────────────────────────────────────── */
 .vellum-toolbar-logo {
   display: inline-flex;
@@ -99,34 +85,29 @@ html.vellum-hidden .vellum-highlight-fallback {
   user-select: none;
   flex-shrink: 0;
   position: relative;
+  color: #94a3b8;
 }
 
 .vellum-tool-btn svg {
   width: 16px;
   height: 16px;
   fill: none;
-  stroke: #94a3b8;
+  stroke: currentColor;
   stroke-width: 1.8;
   stroke-linecap: round;
   stroke-linejoin: round;
-  transition: stroke 0.15s;
+  transition: all 0.15s;
 }
 
 .vellum-tool-btn:hover {
   background: rgba(124, 58, 237, 0.15);
-}
-
-.vellum-tool-btn:hover svg {
-  stroke: #c084fc;
+  color: #c084fc;
 }
 
 .vellum-tool-btn.active {
   background: rgba(124, 58, 237, 0.25);
   box-shadow: 0 0 0 1px rgba(124, 58, 237, 0.5);
-}
-
-.vellum-tool-btn.active svg {
-  stroke: #c084fc;
+  color: #c084fc;
 }
 
 .vellum-tool-btn[title]:hover::after {
@@ -176,10 +157,13 @@ html.vellum-hidden .vellum-highlight-fallback {
 }
 
 .vellum-eyedropper-swatch svg {
-  width: 12px;
-  height: 12px;
-  fill: currentColor;
-  stroke: none;
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
   /* Difference blend keeps the icon readable against any fill color. */
   mix-blend-mode: difference;
 }
@@ -222,6 +206,7 @@ html.vellum-hidden .vellum-highlight-fallback {
 
 .vellum-stroke-btn.active {
   background: rgba(124, 58, 237, 0.25);
+  box-shadow: 0 0 0 1px rgba(124, 58, 237, 0.5);
 }
 
 .vellum-stroke-dot {

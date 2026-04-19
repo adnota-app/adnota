@@ -127,3 +127,60 @@
   background: linear-gradient(135deg, rgba(239, 68, 68, 1) 0%, rgba(220, 38, 38, 1) 100%);
   border-color: rgba(239, 68, 68, 0.9);
 }
+
+/* ─── HUD Global Styles & Custom Tooltips ────────────────────────────────── */
+
+[data-tooltip] {
+  position: relative;
+}
+
+[data-tooltip]:not(.vellum-radial-satellite):hover::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(15, 15, 15, 0.95);
+  color: #e4e4e7;
+  font-size: 11px;
+  font-weight: 500;
+  padding: 3px 8px;
+  border-radius: 4px;
+  white-space: nowrap;
+  pointer-events: none;
+  border: 1px solid var(--vellum-tooltip-border, rgba(124, 58, 237, 0.3));
+  z-index: 2147483647;
+}
+
+/* Per-HUD tooltip accent colors */
+#vellum-eraser-hud   { --vellum-tooltip-border: rgba(239, 68, 68, 0.35); }
+#vellum-sticky-toolbar { --vellum-tooltip-border: rgba(245, 158, 11, 0.35); }
+#vellum-resizer-hud  { --vellum-tooltip-border: rgba(59, 130, 246, 0.3); }
+
+/* Base drag handle */
+.vellum-toolbar-drag {
+  color: #525264;
+  font-size: 18px;
+  letter-spacing: -1.5px;
+  font-weight: bold;
+  cursor: grab;
+  margin-right: 8px;
+  user-select: none;
+  padding: 0 4px;
+}
+
+.vellum-toolbar-drag:active {
+  cursor: grabbing;
+}
+
+/* HUD Eraser (Red variants) */
+.vellum-toolbar-logo.vellum-toolbar-logo-red { background: rgba(239, 68, 68, 0.35); color: #fca5a5; }
+.vellum-toolbar-divider.vellum-toolbar-divider-red { background: rgba(239, 68, 68, 0.25); }
+.vellum-undo-btn.vellum-undo-btn-red:hover { background: rgba(239, 68, 68, 0.15); }
+.vellum-undo-btn.vellum-undo-btn-red:hover svg { stroke: #fca5a5; }
+
+/* HUD Sticky (Orange/Yellow variants) */
+.vellum-toolbar-logo.vellum-toolbar-logo-orange { background: rgba(245, 158, 11, 0.35); color: #fcd34d; }
+.vellum-toolbar-divider.vellum-toolbar-divider-orange { background: rgba(245, 158, 11, 0.25); }
+.vellum-undo-btn.vellum-undo-btn-orange:hover { background: rgba(245, 158, 11, 0.15); }
+.vellum-undo-btn.vellum-undo-btn-orange:hover svg { stroke: #fcd34d; }
