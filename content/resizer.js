@@ -12,7 +12,183 @@ const MIN_WIDTH = 120;
 const MIN_HEIGHT = 60;
 
 // ─── Hover overlay (blue) ────────────────────────────────────────────────────
-const hoverOverlay = window.VellumUI.createHoverOverlay('vellum-resizer-overlay', '#3b82f6', 'rgba(59, 130, 246, 0.07)');
+// Matched to the eraser's outline+fill visual weight so both tools feel the same
+// — just recolored to the resizer's blue accent.
+const hoverOverlay = window.VellumUI.createHoverOverlay('vellum-resizer-overlay', '#3b82f6', 'rgba(59, 130, 246, 0.09)');
+
+// ─── Dimension badge (top-right corner of hover outline) ─────────────────────
+// Same idea as the eraser's dimension chip — shows current W×H in pixels so
+// users can gauge element size before picking it up.
+const dimensionBadge = document.createElement('div');
+dimensionBadge.id = 'vellum-resizer-dimension-badge';
+dimensionBadge.setAttribute('data-vellum-ui', '1');
+Object.assign(dimensionBadge.style, {
+  position: 'absolute',
+  top: '-1px',
+  right: '-1px',
+  transform: 'translateY(-100%)',
+  background: 'rgba(15, 15, 15, 0.85)',
+  color: '#93c5fd',
+  fontSize: '10px',
+  fontFamily: 'ui-monospace, "SF Mono", Menlo, Consolas, monospace',
+  lineHeight: '1',
+  padding: '2px 6px',
+  borderRadius: '3px 3px 0 3px',
+  whiteSpace: 'nowrap',
+});
+hoverOverlay.appendChild(dimensionBadge);
+
+// ─── HUD strip (fixed bottom bar, draggable) ────────────────────────────────
+// Mirrors the eraser HUD but tinted with the resizer's blue accent. Persistent
+// chrome (drag handle + logo + info + trash + undo) so trash/undo stay reachable
+// even when nothing is hovered or selected.
+const resizerHud = document.createElement('div');
+resizerHud.id = 'vellum-resizer-hud';
+resizerHud.setAttribute('data-vellum-ui', '1');
+Object.assign(resizerHud.style, {
+  position: 'fixed',
+  bottom: '20px',
+  left: '50%',
+  transform: 'translateX(-50%)',
+  background: 'rgba(15, 15, 15, 0.92)',
+  backdropFilter: 'blur(8px)',
+  color: '#e4e4e7',
+  fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+  fontSize: '12.5px',
+  lineHeight: '1',
+  padding: '6px 10px',
+  borderRadius: '10px',
+  border: '1px solid rgba(59, 130, 246, 0.45)',
+  boxShadow: '0 4px 24px rgba(0,0,0,0.5)',
+  zIndex: '2147483646',
+  pointerEvents: 'auto',
+  display: 'none',
+  alignItems: 'center',
+  whiteSpace: 'nowrap',
+  opacity: '0',
+  transition: 'opacity 0.15s ease',
+});
+document.documentElement.appendChild(resizerHud);
+
+// Drag handle
+const resizerDragHandle = document.createElement('span');
+resizerDragHandle.className = 'vellum-toolbar-drag';
+resizerDragHandle.textContent = '\u2847';
+resizerDragHandle.title = 'Drag to reposition';
+resizerHud.appendChild(resizerDragHandle);
+
+// Logo chip — tinted blue to match the tool's accent.
+const resizerLogo = document.createElement('span');
+resizerLogo.className = 'vellum-toolbar-logo vellum-toolbar-logo-blue';
+resizerLogo.textContent = 'V';
+resizerHud.appendChild(resizerLogo);
+
+// Info section (dynamic — updated on hover / selection)
+const resizerHudInfo = document.createElement('span');
+resizerHudInfo.id = 'vellum-resizer-hud-info';
+resizerHudInfo.style.display = 'inline-flex';
+resizerHudInfo.style.alignItems = 'center';
+resizerHudInfo.style.minWidth = '220px';
+resizerHud.appendChild(resizerHudInfo);
+
+// Divider
+resizerHud.appendChild(Object.assign(document.createElement('div'), { className: 'vellum-toolbar-divider vellum-toolbar-divider-blue' }));
+
+// Trash — clears all resize rules on this page
+resizerHud.appendChild(window.VellumUI.createTrashButton({
+  singular: 'resize',
+  plural: 'resizes',
+  actionTypes: ['RESIZE'],
+}));
+
+// Undo
+resizerHud.appendChild(window.VellumUI.createUndoButton());
+
+window.VellumUI.makeDraggable(resizerHud, resizerDragHandle);
+
+// ─── Rotating help tips (idle state) ───────────────────────────────────────
+const hudTips = [
+  '<span style="color:#94a3b8">Click to <span style="color:#e4e4e7;font-weight:600">select</span> an element for resizing</span>',
+  '<span style="color:#94a3b8">Scroll \u2191\u2193 to <span style="color:#e4e4e7;font-weight:600">traverse DOM</span> (select parents/children)</span>',
+  '<span style="color:#94a3b8">Drag any <span style="color:#93c5fd;font-weight:600">blue handle</span> to resize from that edge</span>',
+  '<span style="color:#94a3b8">Click the <span style="color:#93c5fd;font-weight:600">blue \u21BA</span> to reset this element\u2019s resizes</span>',
+  '<span style="color:#94a3b8">Press <span style="background:rgba(59,130,246,0.25);color:#93c5fd;padding:1px 4px;border-radius:3px;font-size:11px;font-weight:600;margin-right:2px">Esc</span> to exit resizer</span>',
+];
+let hudTipIndex = 0;
+let hudTipInterval = null;
+
+function stopHudTips() {
+  if (hudTipInterval) { clearInterval(hudTipInterval); hudTipInterval = null; }
+}
+
+function ensureTipRotation() {
+  if (hudTipInterval) return;
+  hudTipInterval = setInterval(() => {
+    hudTipIndex = (hudTipIndex + 1) % hudTips.length;
+    const tipEl = document.getElementById('vellum-resizer-hud-tip');
+    if (tipEl) {
+      tipEl.style.opacity = '0';
+      tipEl.style.transition = 'opacity 0.2s ease';
+      setTimeout(() => {
+        tipEl.innerHTML = hudTips[hudTipIndex];
+        tipEl.style.opacity = '1';
+      }, 200);
+    }
+  }, 4000);
+}
+
+function resetHudPosition() {
+  resizerHud.style.left = '50%';
+  resizerHud.style.top = '';
+  resizerHud.style.bottom = '20px';
+  resizerHud.style.transform = 'translateX(-50%)';
+}
+
+function setHudVisible(visible) {
+  if (visible) {
+    resizerHud.style.display = 'flex';
+    resizerHud.offsetHeight; // force reflow
+    resizerHud.style.opacity = '1';
+  } else {
+    resizerHud.style.display = 'none';
+    resizerHud.style.opacity = '0';
+  }
+}
+
+// Render the info section based on current hover/selection.
+function updateHUD() {
+  const dot = '<span style="color:#525264;margin:0 8px">\u00b7</span>';
+  let html = '';
+
+  if (selectedEl) {
+    // Selected state: show current dimensions of the locked target.
+    const r = selectedEl.getBoundingClientRect();
+    html += `<span style="color:#93c5fd;font-weight:600">${Math.round(r.width)}\u00d7${Math.round(r.height)}</span>`;
+    html += `<span style="color:#6ee7b7;margin-left:4px">selected</span>`;
+    html += dot;
+    html += `<span style="color:#94a3b8">Drag a handle to resize \u00b7 <span style="color:#93c5fd">\u21BA</span> to reset</span>`;
+    resizerHudInfo.innerHTML = html;
+    stopHudTips();
+    return;
+  }
+
+  if (hoveredEl) {
+    const r = hoveredEl.getBoundingClientRect();
+    html += `<span style="color:#93c5fd;font-weight:600">${Math.round(r.width)}\u00d7${Math.round(r.height)}</span>`;
+    html += `<span style="color:#93c5fd;margin-left:4px">target</span>`;
+    // Scroll hint — always available on hover since parents may be larger.
+    html += dot;
+    html += `<span style="color:#94a3b8">Scroll \u2191\u2193 to walk the DOM</span>`;
+    resizerHudInfo.innerHTML = html;
+    stopHudTips();
+    return;
+  }
+
+  // Idle — rotating help tips.
+  resizerHudInfo.innerHTML =
+    `<span id="vellum-resizer-hud-tip" style="display:inline-block;min-width:180px">${hudTips[hudTipIndex]}</span>`;
+  ensureTipRotation();
+}
 
 let hoveredEl = null;
 let selectedEl = null;
@@ -22,39 +198,65 @@ let traverseDepth = 0;     // 0 = natural bubble-up target, >0 = walked up N par
 // ─── Handle elements ─────────────────────────────────────────────────────────
 let handleLeft = null;
 let handleRight = null;
+let handleTop = null;
 let handleBottom = null;
 let handleCorner = null;
 let selectionBox = null;
 let dismissBtn = null;
 
 // ─── Drag state ──────────────────────────────────────────────────────────────
-let dragAxis = null;       // 'x' | 'x-left' | 'y' | 'xy'
+let dragAxis = null;       // 'x' | 'x-left' | 'y' | 'y-top' | 'xy'
 let dragStartX = 0;
 let dragStartY = 0;
 let startWidth = 0;
 let startHeight = 0;
 let startMarginLeft = 0;
+let startMarginTop = 0;
 
 // ─── Guard: Vellum-owned elements ────────────────────────────────────────────
 const isVellumElement = window.VellumUI.isVellumElement;
 
-// ─── Smart element targeting: bubble up to layout-significant elements ───────
-// extraLevels: walk up N additional qualifying parents past the natural target
-function findLayoutTarget(el, extraLevels = 0) {
-  let current = el;
-  let skipped = 0;
+// ─── Smart element targeting ─────────────────────────────────────────────────
+// Borrows the eraser's playbook in three steps:
+//   1. Bubble past visually-identical wrappers (shared with eraser).
+//   2. Walk up until we land on a layout-significant block element — resizer
+//      can only sensibly drive <div>-sized containers.
+//   3. Scroll-wheel walk further up, counting only more block elements so each
+//      scroll tick hops to the next meaningful parent instead of a wrapper.
+function isLayoutSignificant(el) {
+  if (INLINE_TAGS.has(el.tagName)) return false;
+  const rect = el.getBoundingClientRect();
+  return rect.width >= MIN_WIDTH && rect.height >= MIN_HEIGHT;
+}
+
+function findLayoutTarget(raw, extraLevels = 0) {
+  if (!raw || isVellumElement(raw)) return null;
+
+  // Step 1: auto-bubble past wrappers with the same bounding box.
+  let current = window.VellumUI.bubbleToVisualRoot(raw);
+  if (isVellumElement(current)) return null;
+
+  // Step 2: climb to the nearest layout-significant block-level ancestor.
   while (current && current !== document.body && current !== document.documentElement) {
     if (isVellumElement(current)) return null;
-    const rect = current.getBoundingClientRect();
-    const isInline = INLINE_TAGS.has(current.tagName);
-    const isBigEnough = rect.width >= MIN_WIDTH && rect.height >= MIN_HEIGHT;
-    if (!isInline && isBigEnough) {
-      if (skipped >= extraLevels) return current;
-      skipped++;
-    }
+    if (isLayoutSignificant(current)) break;
     current = current.parentElement;
   }
-  return null;
+  if (!current || current === document.body || current === document.documentElement) return null;
+
+  // Step 3: scroll-wheel walk — each level up must also be layout-significant.
+  let walked = 0;
+  while (walked < extraLevels && current.parentElement &&
+         current.parentElement !== document.body &&
+         current.parentElement !== document.documentElement) {
+    const parent = current.parentElement;
+    if (isVellumElement(parent)) return null;
+    current = parent;
+    // Stop before reaching a page-dominating container.
+    if (window.VellumUI.dominatesViewport(current.getBoundingClientRect())) return current;
+    if (isLayoutSignificant(current)) walked++;
+  }
+  return current;
 }
 
 // ─── CSS selector generation (shared from FuzzyAnchor) ──────────────────────
@@ -114,6 +316,12 @@ function selectElement(el) {
   handleRight.addEventListener('mousedown', (e) => startDrag(e, 'x'));
   document.documentElement.appendChild(handleRight);
 
+  // Top-edge handle (height from the top — bottom stays pinned via margin-top)
+  handleTop = createHandle('vellum-resizer-handle-top', 'ns-resize');
+  positionHandleTop(handleTop, rect, scrollX, scrollY);
+  handleTop.addEventListener('mousedown', (e) => startDrag(e, 'y-top'));
+  document.documentElement.appendChild(handleTop);
+
   // Bottom-edge handle (height)
   handleBottom = createHandle('vellum-resizer-handle-bottom', 'ns-resize');
   positionHandleBottom(handleBottom, rect, scrollX, scrollY);
@@ -126,11 +334,17 @@ function selectElement(el) {
   handleCorner.addEventListener('mousedown', (e) => startDrag(e, 'xy'));
   document.documentElement.appendChild(handleCorner);
 
-  // Dismiss / reset button (top-right corner)
+  // Reset button (top-right corner) — blue so it doesn't collide with the red
+  // ✕ delete affordance used when you select something you've drawn. Icon is a
+  // circular reset arrow to read as "revert" rather than "delete".
   dismissBtn = document.createElement('button');
   dismissBtn.className = 'vellum-resizer-dismiss';
   dismissBtn.setAttribute('data-vellum-ui', '1');
-  dismissBtn.innerHTML = '✕';
+  dismissBtn.innerHTML =
+    '<svg viewBox="0 0 16 16" aria-hidden="true">' +
+    '<path d="M3 3v4h4"/>' +
+    '<path d="M3 7a5.5 5.5 0 1 1 1.6 3.9"/>' +
+    '</svg>';
   dismissBtn.title = 'Reset all resizes on this element';
   positionDismiss(dismissBtn, rect, scrollX, scrollY);
   dismissBtn.addEventListener('mousedown', (e) => {
@@ -143,16 +357,21 @@ function selectElement(el) {
     resetElement(el);
   });
   document.documentElement.appendChild(dismissBtn);
+
+  updateHUD();
 }
 
 function deselectElement() {
+  const hadSelection = !!selectedEl;
   selectedEl = null;
   if (selectionBox) { selectionBox.remove(); selectionBox = null; }
   if (handleLeft)   { handleLeft.remove();   handleLeft = null; }
   if (handleRight)  { handleRight.remove();  handleRight = null; }
-  if (handleBottom) { handleBottom.remove();  handleBottom = null; }
-  if (handleCorner) { handleCorner.remove();  handleCorner = null; }
+  if (handleTop)    { handleTop.remove();    handleTop = null; }
+  if (handleBottom) { handleBottom.remove(); handleBottom = null; }
+  if (handleCorner) { handleCorner.remove(); handleCorner = null; }
   if (dismissBtn)   { dismissBtn.remove();   dismissBtn = null; }
+  if (hadSelection && window.VellumState.mode === 'resizer') updateHUD();
 }
 
 function createHandle(className, cursor) {
@@ -204,6 +423,16 @@ function positionHandleRight(h, rect, sx, sy) {
   });
 }
 
+function positionHandleTop(h, rect, sx, sy) {
+  const idealTop  = rect.top + sy - 4;
+  const idealLeft = rect.left + sx + rect.width / 2 - 14;
+  const clamped = clampToViewport(idealTop, idealLeft, 28, 8, sx, sy);
+  Object.assign(h.style, {
+    top:  `${clamped.top}px`,
+    left: `${clamped.left}px`,
+  });
+}
+
 function positionHandleBottom(h, rect, sx, sy) {
   const idealTop  = rect.bottom + sy - 4;
   const idealLeft = rect.left + sx + rect.width / 2 - 14;
@@ -242,9 +471,12 @@ function refreshHandles() {
   if (selectionBox) positionBox(selectionBox, rect, scrollX, scrollY);
   if (handleLeft)   positionHandleLeft(handleLeft, rect, scrollX, scrollY);
   if (handleRight)  positionHandleRight(handleRight, rect, scrollX, scrollY);
+  if (handleTop)    positionHandleTop(handleTop, rect, scrollX, scrollY);
   if (handleBottom) positionHandleBottom(handleBottom, rect, scrollX, scrollY);
   if (handleCorner) positionHandleCorner(handleCorner, rect, scrollX, scrollY);
   if (dismissBtn)   positionDismiss(dismissBtn, rect, scrollX, scrollY);
+  // HUD dimensions track the element live during drag.
+  updateHUD();
 }
 
 // ─── Reset: remove ALL resize rules for a given element ─────────────────────
@@ -266,6 +498,7 @@ async function resetElement(el) {
   el.style.removeProperty('height');
   el.style.removeProperty('max-height');
   el.style.removeProperty('margin-left');
+  el.style.removeProperty('margin-top');
   void el.offsetHeight; // force reflow
 
   // Remove from storage
@@ -303,9 +536,11 @@ function startDrag(e, axis) {
   dragStartY = e.clientY;
 
   const rect = selectedEl.getBoundingClientRect();
+  const cs = getComputedStyle(selectedEl);
   startWidth = rect.width;
   startHeight = rect.height;
-  startMarginLeft = parseFloat(getComputedStyle(selectedEl).marginLeft) || 0;
+  startMarginLeft = parseFloat(cs.marginLeft) || 0;
+  startMarginTop = parseFloat(cs.marginTop) || 0;
 
   // Add a full-viewport overlay to capture all mouse events during drag
   const dragOverlay = document.createElement('div');
@@ -314,7 +549,9 @@ function startDrag(e, axis) {
   Object.assign(dragOverlay.style, {
     position: 'fixed', top: '0', left: '0', width: '100vw', height: '100vh',
     zIndex: '2147483647',
-    cursor: (axis === 'x' || axis === 'x-left') ? 'ew-resize' : axis === 'y' ? 'ns-resize' : 'nwse-resize',
+    cursor: (axis === 'x' || axis === 'x-left') ? 'ew-resize'
+          : (axis === 'y' || axis === 'y-top') ? 'ns-resize'
+          : 'nwse-resize',
   });
   document.documentElement.appendChild(dragOverlay);
 
@@ -341,6 +578,15 @@ function startDrag(e, axis) {
       selectedEl.style.setProperty('height', newH + 'px', 'important');
       selectedEl.style.setProperty('max-height', 'none', 'important');
     }
+    if (axis === 'y-top') {
+      // Top handle: grow/shrink from the top edge, bottom edge stays pinned via
+      // margin-top compensation — mirrors the left-handle math.
+      const newH = Math.max(40, startHeight - dy);
+      const heightDelta = newH - startHeight;
+      selectedEl.style.setProperty('height', newH + 'px', 'important');
+      selectedEl.style.setProperty('max-height', 'none', 'important');
+      selectedEl.style.setProperty('margin-top', (startMarginTop - heightDelta) + 'px', 'important');
+    }
 
     refreshHandles();
   }
@@ -365,6 +611,7 @@ function startDrag(e, axis) {
     selectedEl.style.removeProperty('height');
     selectedEl.style.removeProperty('max-height');
     selectedEl.style.removeProperty('margin-left');
+    selectedEl.style.removeProperty('margin-top');
 
     // Build CSS rule from final dimensions
     const cssParts = [];
@@ -385,6 +632,13 @@ function startDrag(e, axis) {
       const newH = Math.max(40, startHeight + dy);
       cssParts.push(`height: ${newH}px !important`);
       cssParts.push(`max-height: none !important`);
+    }
+    if (axis === 'y-top') {
+      const newH = Math.max(40, startHeight - dy);
+      const heightDelta = newH - startHeight;
+      cssParts.push(`height: ${newH}px !important`);
+      cssParts.push(`max-height: none !important`);
+      cssParts.push(`margin-top: ${startMarginTop - heightDelta}px !important`);
     }
 
     const cssText = cssParts.join('; ');
@@ -447,6 +701,7 @@ async function persistResize(el, cssText, originalWidth, originalHeight) {
         target.style.removeProperty('max-width');
         target.style.removeProperty('max-height');
         target.style.removeProperty('margin-left');
+        target.style.removeProperty('margin-top');
       }
 
       if (window.VellumStorage) {
@@ -480,12 +735,19 @@ chrome.runtime.onMessage.addListener((request) => {
 
 // ─── React to mode changes ──────────────────────────────────────────────────
 window.VellumState.subscribe((state) => {
-  if (state.mode !== 'resizer') {
+  if (state.mode === 'resizer') {
+    setHudVisible(true);
+    updateHUD();
+  } else {
     hoverOverlay.style.display = 'none';
     hoveredEl = null;
     rawHoveredEl = null;
     traverseDepth = 0;
     deselectElement();
+    setHudVisible(false);
+    stopHudTips();
+    resetHudPosition();
+    hudTipIndex = 0;
   }
 });
 
@@ -499,7 +761,10 @@ document.addEventListener('mousemove', (e) => {
   if (!raw || isVellumElement(raw)) {
     hoveredEl = null;
     rawHoveredEl = null;
+    traverseDepth = 0;
     hoverOverlay.style.display = 'none';
+    dimensionBadge.textContent = '';
+    updateHUD();
     return;
   }
 
@@ -528,10 +793,13 @@ function updateHoverTarget() {
       width:  `${rect.width}px`,
       height: `${rect.height}px`,
     });
+    dimensionBadge.textContent = `${Math.round(rect.width)}\u00d7${Math.round(rect.height)}`;
   } else {
     hoveredEl = null;
     hoverOverlay.style.display = 'none';
+    dimensionBadge.textContent = '';
   }
+  updateHUD();
 }
 
 // ─── Scroll wheel: walk up/down the DOM tree while hovering ─────────────────

@@ -212,6 +212,11 @@ body {
   border-color: rgba(124, 58, 237, 0.22);
 }
 
+#btn-resizer.active {
+  background: rgba(59, 130, 246, 0.05);
+  border-color: rgba(59, 130, 246, 0.22);
+}
+
 #btn-eraser.active .active-badge {
   background: #ef4444;
 }
@@ -222,6 +227,10 @@ body {
 
 #btn-highlighter.active .active-badge {
   background: #7c3aed;
+}
+
+#btn-resizer.active .active-badge {
+  background: #3b82f6;
 }
 
 /* Left accent bar */

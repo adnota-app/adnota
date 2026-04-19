@@ -10,6 +10,8 @@ Mark it up. Block it out. Make it yours.
 
 NOTE: WE ARE NOT IN PRODUCTION YET, SO MAKE AN EFFORT TO CLEAN UP CODE AND REDUCE DUPLICATE AS WE GO!
 
+Annotate your web, your way.
+
 ---
 
 ## Shipped: Current Architecture
@@ -51,6 +53,8 @@ Shared UI utilities that prevent duplication across content scripts.
 **`data-vellum-ui` convention**: Every Vellum UI element (overlays, toolbars, toasts, sticky notes, marker wrappers, etc.) must be tagged with `data-vellum-ui="1"`. This is how the eraser, resizer, and marker know to ignore Vellum's own elements — `isVellumElement(el)` is a single `.closest('[data-vellum-ui]')` check. When adding new UI elements, always set this attribute or they will be erasable/selectable by the user's own tools.
 
 **Shared HUD button helpers**: `createToolbarIconButton`, `createUndoButton`, and `createTrashButton` produce the dark-frosted `vellum-undo-btn`-styled controls used across every HUD. `softDeleteItems({singular, plural, actionTypes})` is the single implementation behind every bulk trash action (popup stat cards, popup "Clear All," and HUD trash buttons): it snapshots matching items by ID, removes them from storage, hides them from the DOM, and shows a 5-second toast with Undo. Undo re-writes storage and re-renders in place; Ctrl+Z also pops the batch off `VellumUndo`.
+
+**Shared DOM-walk helpers**: `bubbleToVisualRoot(el, opts)` walks up parents whose bounding box matches `el` within a small tolerance — the "visually-identical wrapper" climb used by both the eraser and resizer so a hover/click on an inner element lands on the outer container users almost always actually mean. `dominatesViewport(rect, threshold)` guards the walk (and the eraser's better-target nudge) against ever promoting to a page-level container.
 
 ---
 
@@ -136,17 +140,26 @@ Also exposes `generateCSSSelector(el)` as a shared utility (used by the resizer)
 
 #### `content/resizer.js` — Element Resizer
 - Activated via popup tool card (no keyboard shortcut — Chrome limits extensions to 4)
-- **Smart element targeting**: hover highlights large layout-significant elements only (≥120×60px), automatically bubbling up past inline tags (`<span>`, `<a>`, etc.) to the nearest block-level container
-- **Scroll-wheel DOM traversal**: while hovering, scroll up to walk to the parent element, scroll down to walk back toward children — solves the problem of targeting a specific nesting level on complex pages
-- Click to select: dashed blue outline with **5 interactive controls** appears:
-  - **Left handle** — drag to resize width from the left edge (right edge stays pinned via margin compensation)
+- **Smart element targeting**: hover highlights layout-significant elements only (≥120×60px). Uses the shared `VellumUI.bubbleToVisualRoot` helper (same as the eraser) to climb past visually-identical wrapper divs, then walks further up to the nearest block-level container past inline tags (`<span>`, `<a>`, etc.)
+- **Dimension badge**: small `W×H` pixel label in the top-right corner of the blue hover outline
+- **Scroll-wheel DOM traversal**: while hovering, scroll up to walk to the next layout-significant parent, scroll down to walk back toward children. Stops before reaching a viewport-dominating container
+- **HUD strip**: fixed bottom-center bar (draggable) that stays visible whenever the resizer is active. Layout: drag handle → V logo chip (blue) → info section → trash → undo. Matches the eraser HUD aesthetic, tinted with the resizer's blue accent. Info section updates live:
+  - **Idle** — rotating help tips (click to select, scroll to traverse, drag handles, ✕ to reset, Esc to exit)
+  - **Hovering** — current target dimensions in `W×H` + scroll-to-walk hint
+  - **Selected** — locked target dimensions (live-updated during drag) + reset hint
+  - **Trash button** — deletes every resize on the current page (same code path as the popup's Resized stat card)
+  - **Undo button** — fires the shared `VellumUndo.undo()` stack
+- Click to select: dashed blue outline with **6 interactive controls** appears:
+  - **Left handle** — drag to resize width from the left edge (right edge stays pinned via `margin-left` compensation)
   - **Right handle** — drag to resize width from the right edge
+  - **Top handle** — drag to resize height from the top edge (bottom edge stays pinned via `margin-top` compensation)
   - **Bottom handle** — drag to resize height
   - **Corner handle** — drag to resize both width and height simultaneously
-  - **Red ✕ button** (top-right) — resets ALL resize overrides for this element, removing injected CSS from both the `<style>` tag and storage
+  - **Blue reset button** (top-right, circular reset arrow icon) — resets ALL resize overrides for this element, removing injected CSS from both the `<style>` tag and storage. Deliberately blue (not a red ✕) so it doesn't collide semantically with the marker select tool's red ✕ delete affordance
+- **Cursor lock**: while resizer mode is active, the central `VellumCursor.set` stylesheet forces a stable `default` arrow on every non-Vellum element with `!important`, so hovering links or buttons can't flip the cursor to `pointer`. Handles keep their own inline `ew-resize` / `ns-resize` / `nwse-resize` cursors via higher specificity on the handle elements
 - All resizes persist as CSS rules injected into a `<style id="vellum-style-overrides">` tag — survives React/Vue re-renders
 - CSS selector generation uses the shared `FuzzyAnchor.generateCSSSelector()` utility
-- CSS rule format: `width: Xpx !important; max-width: none !important` (and `margin-left` for left-handle resizes)
+- CSS rule format: `width: Xpx !important; max-width: none !important` (plus `margin-left` for left-handle resizes, `margin-top` for top-handle resizes, `height`/`max-height` for vertical resizes)
 - Handles are viewport-clamped so they remain visible even on elements taller/wider than the screen
 - Handles reposition on scroll
 - Undo via shared `VellumUndo` stack + 5s toast button
