@@ -259,14 +259,9 @@ const CURSORS = {
        <path d="M2 1 L2 14 L5 11 L7 15 L9 14 L7 10 L12 10 Z"
              fill="white" stroke="black" stroke-width="1.2" stroke-linejoin="round"/>
      </svg>`, 2, 1, 'default'),
-  // Eraser — pink rubber tipped tool tilted at -30°; hotspot at the tip (bottom-left).
-  eraser: svgCursor(
-    `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
-       <g transform="rotate(-35 12 13)">
-         <rect x="2" y="9" width="20" height="8" rx="1.5" fill="#fca5a5" stroke="black" stroke-width="1.5"/>
-         <line x1="9" y1="9" x2="9" y2="17" stroke="black" stroke-width="1.5"/>
-       </g>
-     </svg>`, 3, 20, 'crosshair'),
+  // Eraser — default pointer is the most precise for structural edits,
+  // relying entirely on the red bounding box overlay for visual feedback.
+  eraser: 'default',
 };
 
 // Inject/update a stylesheet that forces the tool cursor on every non-Vellum
