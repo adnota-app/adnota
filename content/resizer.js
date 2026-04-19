@@ -678,7 +678,15 @@ async function persistResize(el, cssText) {
   rebuildResizeStyleTag();
 
   const domain = location.hostname;
-  const path = location.pathname;
+  // Resizes default to domain-wide (`path: '*'`). Unlike the eraser — where
+  // domain-wide is an explicit user override (Shift+Click) or silent ad-scope
+  // promotion — resize targets are almost always structural containers (nav,
+  // sidebar, header, article wrapper) that recur across a site with the same
+  // selector. Scoping to just the current page would force the user to redo
+  // the same resize on every sibling page. If the selector falls back to a
+  // structural `nth-child` path and matches something unintended on another
+  // page, the rule silently no-ops (worst case: reset from that page).
+  const path = '*';
 
   const entry = {
     action: 'RESIZE',
