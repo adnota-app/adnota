@@ -369,7 +369,7 @@ function stopHudTips() {
 function resetHudPosition() {
   eraserHud.style.left = '50%';
   eraserHud.style.top = '';
-  eraserHud.style.bottom = '20px';
+  eraserHud.style.bottom = '32px';
   eraserHud.style.transform = 'translateX(-50%)';
 }
 

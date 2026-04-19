@@ -140,7 +140,7 @@ function ensureTipRotation() {
 function resetHudPosition() {
   resizerHud.style.left = '50%';
   resizerHud.style.top = '';
-  resizerHud.style.bottom = '20px';
+  resizerHud.style.bottom = '32px';
   resizerHud.style.transform = 'translateX(-50%)';
 }
 

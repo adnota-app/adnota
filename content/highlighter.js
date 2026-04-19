@@ -59,7 +59,7 @@ const highlightToolbar = document.createElement('div');
 highlightToolbar.id = 'vellum-highlighter-widget';
 highlightToolbar.setAttribute('data-vellum-ui', '1');
 highlightToolbar.style.display = 'none';
-highlightToolbar.style.bottom = '20px';
+highlightToolbar.style.bottom = '32px';
 highlightToolbar.style.left = '50%';
 highlightToolbar.style.transform = 'translateX(-50%)';
 document.documentElement.appendChild(highlightToolbar);
@@ -317,7 +317,7 @@ window.VellumState.subscribe(state => {
   if (!showToolbar) {
     highlightToolbar.style.left = '50%';
     highlightToolbar.style.top = '';
-    highlightToolbar.style.bottom = '20px';
+    highlightToolbar.style.bottom = '32px';
     highlightToolbar.style.transform = 'translateX(-50%)';
   }
 

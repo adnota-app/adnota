@@ -98,7 +98,7 @@ const stickyToolbar = document.createElement('div');
 stickyToolbar.id = 'vellum-sticky-toolbar';
 stickyToolbar.setAttribute('data-vellum-ui', '1');
 stickyToolbar.style.display = 'none';
-stickyToolbar.style.bottom = '20px';
+stickyToolbar.style.bottom = '32px';
 stickyToolbar.style.left = '50%';
 stickyToolbar.style.transform = 'translateX(-50%)';
 document.documentElement.appendChild(stickyToolbar);
@@ -188,7 +188,7 @@ window.VellumState.subscribe(state => {
   if (!showToolbar) {
     stickyToolbar.style.left = '50%';
     stickyToolbar.style.top = '';
-    stickyToolbar.style.bottom = '20px';
+    stickyToolbar.style.bottom = '32px';
     stickyToolbar.style.transform = 'translateX(-50%)';
   }
 });
