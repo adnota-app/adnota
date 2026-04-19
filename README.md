@@ -140,7 +140,7 @@ Also exposes `generateCSSSelector(el)` as a shared utility (used by the resizer)
 
 #### `content/resizer.js` — Element Resizer
 - Activated via popup tool card (no keyboard shortcut — Chrome limits extensions to 4)
-- **Smart element targeting**: hover highlights layout-significant elements only (≥120×60px). Uses the shared `VellumUI.bubbleToVisualRoot` helper (same as the eraser) to climb past visually-identical wrapper divs, then walks further up to the nearest block-level container past inline tags (`<span>`, `<a>`, etc.)
+- **Smart element targeting** (two-stage, order matters): (1) climb to the nearest layout-significant block-level ancestor (≥120×60px, non-inline) — escapes tiny hovers like a menu link before any bubbling happens; (2) *then* use the shared `VellumUI.bubbleToVisualRoot` helper, seeded from that ancestor, to promote past visually-identical outer wrappers. This ordering is important: the eraser bubbles from the raw hover because any size element is a legitimate erase target, but the resizer almost always wants a meaningful block, so seeding the IoU comparison from a real layout element (not a 220×36 link) lets it correctly reach a 220×356 `nav` two hops above
 - **Dimension badge**: small `W×H` pixel label in the top-right corner of the blue hover outline
 - **Scroll-wheel DOM traversal**: while hovering, scroll up to walk to the next layout-significant parent, scroll down to walk back toward children. Stops before reaching a viewport-dominating container
 - **HUD strip**: fixed bottom-center bar (draggable) that stays visible whenever the resizer is active. Layout: drag handle → V logo chip (blue) → info section → trash → undo. Matches the eraser HUD aesthetic, tinted with the resizer's blue accent. Info section updates live:
