@@ -220,6 +220,7 @@ html.vellum-hidden .vellum-highlight-fallback {
 
 .vellum-stroke-btn.active {
   background: rgba(124, 58, 237, 0.25);
+  box-shadow: 0 0 0 1px rgba(124, 58, 237, 0.5);
 }
 
 .vellum-stroke-dot {
