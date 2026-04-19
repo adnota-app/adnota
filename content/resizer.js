@@ -217,12 +217,23 @@ let startMarginTop = 0;
 const isVellumElement = window.VellumUI.isVellumElement;
 
 // ─── Smart element targeting ─────────────────────────────────────────────────
-// Borrows the eraser's playbook in three steps:
-//   1. Bubble past visually-identical wrappers (shared with eraser).
-//   2. Walk up until we land on a layout-significant block element — resizer
-//      can only sensibly drive <div>-sized containers.
-//   3. Scroll-wheel walk further up, counting only more block elements so each
-//      scroll tick hops to the next meaningful parent instead of a wrapper.
+// Three steps, in a specific order that matters:
+//   1. Escape tiny elements FIRST — climb to the nearest layout-significant
+//      block-level ancestor. Resizing a 220×36 menu link is rarely useful;
+//      the user almost always wants to reshape a bigger container. This also
+//      gives step 2 a meaningful seed rect.
+//   2. THEN bubble past visually-identical wrappers. With a layout-sig seed
+//      (e.g., 220×356 UL) the IoU comparison is against a real block, so a
+//      same-sized outer NAV correctly promotes. Before the reorder, the
+//      bubble was seeded with the 220×36 link and could never match the nav
+//      (IoU = 220×36 / 220×356 ≈ 0.10 — a link occupies ~10% of the nav, not
+//      "visually identical").
+//   3. Scroll-wheel walk further up, counting only more block elements so
+//      each scroll tick hops to the next meaningful parent, not a wrapper.
+//
+// Eraser keeps bubble-first on purpose: a user may legitimately want to erase
+// a tiny link, so the bubble there runs on the raw hover. The resizer's
+// tiny-element-is-not-a-resize-target rule doesn't apply to erase.
 function isLayoutSignificant(el) {
   if (INLINE_TAGS.has(el.tagName)) return false;
   const rect = el.getBoundingClientRect();
@@ -232,17 +243,20 @@ function isLayoutSignificant(el) {
 function findLayoutTarget(raw, extraLevels = 0) {
   if (!raw || isVellumElement(raw)) return null;
 
-  // Step 1: auto-bubble past wrappers with the same bounding box.
-  let current = window.VellumUI.bubbleToVisualRoot(raw);
-  if (isVellumElement(current)) return null;
-
-  // Step 2: climb to the nearest layout-significant block-level ancestor.
+  // Step 1: climb to the nearest layout-significant block-level ancestor.
+  let current = raw;
   while (current && current !== document.body && current !== document.documentElement) {
     if (isVellumElement(current)) return null;
     if (isLayoutSignificant(current)) break;
     current = current.parentElement;
   }
   if (!current || current === document.body || current === document.documentElement) return null;
+
+  // Step 2: bubble past visually-identical wrappers, seeded from the layout-
+  // significant ancestor (not the raw hover). This is the key fix for the
+  // "hovering a menu link returns the UL instead of the NAV" case.
+  current = window.VellumUI.bubbleToVisualRoot(current);
+  if (isVellumElement(current)) return null;
 
   // Step 3: scroll-wheel walk — each level up must also be layout-significant.
   let walked = 0;
