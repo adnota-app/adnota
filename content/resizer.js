@@ -836,6 +836,16 @@ document.addEventListener('wheel', (e) => {
 }, { passive: false });
 
 // ─── Click: select element or deselect ──────────────────────────────────────
+// The resizer has two modes:
+//   1. Target-select — solid blue hover overlay. Click commits, scroll
+//      traverses, Escape exits the tool.
+//   2. Edit — dashed outline with handles. Drag handles to resize (repeatable);
+//      click the blue ↺ to reset; click anywhere off-selection to leave edit
+//      mode and drop back to (1). Escape still exits the tool entirely.
+//
+// Click-away never chain-selects a new target — it just exits edit mode. The
+// next explicit click is what picks the new target, matching the two-phase
+// mental model the tool already signals with its two visual states.
 document.addEventListener('click', (e) => {
   if (window.VellumState.mode !== 'resizer') return;
   if (isVellumElement(e.target)) return;
@@ -843,12 +853,20 @@ document.addEventListener('click', (e) => {
   e.preventDefault();
   e.stopPropagation();
 
-  // If we have a selection and clicked somewhere else, deselect first
   if (selectedEl) {
+    // Any click off the selection exits edit mode back to target-select.
+    // Handles and the reset button are data-vellum-ui, so they're excluded
+    // by the guard above and don't trigger this.
     deselectElement();
+    // Refresh hover from the click point so the solid blue overlay reappears
+    // immediately under the cursor instead of waiting for a mouse wiggle.
+    rawHoveredEl = e.target;
+    traverseDepth = 0;
+    updateHoverTarget();
+    return;
   }
 
-  // Select new element if one is hovered
+  // Target-select mode — use hoveredEl so scroll-wheel traversal is honored.
   if (hoveredEl) {
     selectElement(hoveredEl);
   }
