@@ -13,6 +13,7 @@
 
 .vellum-resizer-handle-left,
 .vellum-resizer-handle-right,
+.vellum-resizer-handle-top,
 .vellum-resizer-handle-bottom,
 .vellum-resizer-handle-corner {
   position: absolute;
@@ -25,6 +26,7 @@
 
 .vellum-resizer-handle-left:hover,
 .vellum-resizer-handle-right:hover,
+.vellum-resizer-handle-top:hover,
 .vellum-resizer-handle-bottom:hover,
 .vellum-resizer-handle-corner:hover {
   transform: scale(1.25);
@@ -45,6 +47,13 @@
   border-radius: 4px;
 }
 
+/* Top edge: wide short bar */
+.vellum-resizer-handle-top {
+  width: 28px;
+  height: 8px;
+  border-radius: 4px;
+}
+
 /* Bottom edge: wide short bar */
 .vellum-resizer-handle-bottom {
   width: 28px;
@@ -59,7 +68,10 @@
   border-radius: 2px;
 }
 
-/* ─── Dismiss / reset button ─────────────────────────────────────────────── */
+/* ─── Reset button ────────────────────────────────────────────────────────
+   Blue so it reads as "revert this element's resizes" rather than the red ✕
+   used by the marker select tool for destructive delete. Circular reset-arrow
+   icon reinforces the "undo/reset" meaning. */
 
 .vellum-resizer-dismiss {
   position: absolute;
@@ -68,11 +80,8 @@
   height: 20px;
   border-radius: 50%;
   border: 2px solid #fff;
-  background: #ef4444;
+  background: #3b82f6;
   color: #fff;
-  font-size: 11px;
-  font-weight: 700;
-  line-height: 1;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -80,16 +89,48 @@
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
   transition: transform 0.1s ease, background 0.1s ease;
   padding: 0;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+.vellum-resizer-dismiss svg {
+  width: 12px;
+  height: 12px;
+  fill: none;
+  stroke: #fff;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .vellum-resizer-dismiss:hover {
   transform: scale(1.3);
-  background: #dc2626;
+  background: #2563eb;
 }
 
 /* ─── Drag overlay (captures mouse during drag) ──────────────────────────── */
 
 #vellum-resizer-drag-overlay {
   background: transparent;
+}
+
+/* ─── HUD blue accents ────────────────────────────────────────────────────── */
+/* The shared .vellum-toolbar-logo and .vellum-toolbar-divider ship with a
+   purple tint (matched to the drawing palette). These modifiers recolor them
+   for the resizer's blue accent so the HUD reads as its own tool. */
+
+.vellum-toolbar-logo-blue {
+  background: rgba(59, 130, 246, 0.35);
+  color: #93c5fd;
+}
+
+.vellum-toolbar-divider-blue {
+  background: rgba(59, 130, 246, 0.25);
+}
+
+/* Scope the hover tint of the shared .vellum-undo-btn (trash + undo) to the
+   resizer's blue so they match the rest of the HUD chrome. */
+#vellum-resizer-hud .vellum-undo-btn:hover {
+  background: rgba(59, 130, 246, 0.15);
+}
+#vellum-resizer-hud .vellum-undo-btn:hover svg {
+  stroke: #93c5fd;
 }

@@ -333,6 +333,10 @@ window.VellumState.subscribe(state => {
     // Sticky owns its cursor so the icon can recolor when the user picks a
     // swatch in the HUD — see window.VellumSticky.applyCursor in sticky.js.
     case 'sticky':    window.VellumSticky?.applyCursor(); break;
+    // Resizer — lock to a plain default arrow so it stays stable over links
+    // and buttons that would otherwise flip it to `pointer`. The handles set
+    // their own ew-resize/ns-resize/nwse-resize cursors inline.
+    case 'resizer':   setCursorLock('default'); break;
     case 'pen':
     case 'arrow':
     case 'rect':

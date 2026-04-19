@@ -169,11 +169,8 @@ function detectAdSignals(el) {
 // Modern web pages stack visually-redundant wrapper divs. Bubbling past them to
 // the outermost same-sized parent picks a better anchor and spares users the
 // scroll-wheel walk. Manual scroll still walks further from this baseline.
-const VISUAL_ROOT_MAX_HOPS = 8;
-const VISUAL_ROOT_EDGE_TOLERANCE_PX = 4;
-const VISUAL_ROOT_SIZE_TOLERANCE_RATIO = 0.05;
-// Guard against auto-selecting (or nudging up to) page-level containers.
-const VIEWPORT_DOMINANCE_THRESHOLD = 0.85;
+// Actual bubble/viewport logic lives in VellumUI — shared with the resizer.
+const dominatesViewport = window.VellumUI.dominatesViewport;
 // Scroll-up nudge won't suggest a parent that's this many times larger than
 // the element the user is actually hovering — at that point we've walked past
 // the ad and into real content regardless of what the ad-density heuristic says.
@@ -183,15 +180,6 @@ const BETTER_TARGET_MAX_AREA_RATIO = 2.0;
 // The visual-root auto-bubble already nails the starting element most of the
 // time, so big jumps between recommended levels are almost always wrong.
 const BETTER_TARGET_MAX_HOP_RATIO = 1.5;
-
-function dominatesViewport(rect) {
-  const vw = window.innerWidth, vh = window.innerHeight;
-  if (vw <= 0 || vh <= 0) return false;
-  const w = Math.min(rect.right, vw) - Math.max(rect.left, 0);
-  const h = Math.min(rect.bottom, vh) - Math.max(rect.top, 0);
-  const visible = Math.max(0, w) * Math.max(0, h);
-  return visible / (vw * vh) >= VIEWPORT_DOMINANCE_THRESHOLD;
-}
 
 // Ad signals used for both HUD display and click-scope decisions. Page-level
 // containers are exempt — their subtrees always happen to contain an iframe
@@ -535,31 +523,9 @@ const isVellumElement = window.VellumUI.isVellumElement;
 // At depth=0, bubble past visually-identical parent wrappers so clicking the
 // inner element hits the outer container users almost always actually want.
 // Scroll-wheel traversal walks further up from that bubbled baseline.
-function bubbleToVisualRoot(el) {
-  let current = el;
-  let rect = current.getBoundingClientRect();
-  for (let i = 0; i < VISUAL_ROOT_MAX_HOPS; i++) {
-    const parent = current.parentElement;
-    if (!parent || parent === document.body || parent === document.documentElement) break;
-    if (isVellumElement(parent)) break;
-    const pRect = parent.getBoundingClientRect();
-    if (dominatesViewport(pRect)) break;
-    if (Math.abs(pRect.top - rect.top) > VISUAL_ROOT_EDGE_TOLERANCE_PX) break;
-    if (Math.abs(pRect.left - rect.left) > VISUAL_ROOT_EDGE_TOLERANCE_PX) break;
-    if (Math.abs(pRect.right - rect.right) > VISUAL_ROOT_EDGE_TOLERANCE_PX) break;
-    if (Math.abs(pRect.bottom - rect.bottom) > VISUAL_ROOT_EDGE_TOLERANCE_PX) break;
-    const wDiff = rect.width > 0 ? Math.abs(pRect.width - rect.width) / rect.width : 0;
-    const hDiff = rect.height > 0 ? Math.abs(pRect.height - rect.height) / rect.height : 0;
-    if (wDiff > VISUAL_ROOT_SIZE_TOLERANCE_RATIO || hDiff > VISUAL_ROOT_SIZE_TOLERANCE_RATIO) break;
-    current = parent;
-    rect = pRect;
-  }
-  return current;
-}
-
 function getEraserTarget(raw, depth) {
   if (!raw || isVellumElement(raw)) return null;
-  let current = bubbleToVisualRoot(raw);
+  let current = window.VellumUI.bubbleToVisualRoot(raw);
   if (isVellumElement(current)) return null;
   let walked = 0;
   while (walked < depth && current.parentElement &&
