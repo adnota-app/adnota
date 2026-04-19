@@ -246,6 +246,8 @@ function svgCursor(svg, hx, hy, fallback = 'crosshair') {
 
 const CURSORS = {
   crosshair: 'crosshair',
+  // I-beam for highlight + text. Plain native cursor gives the crispest
+  // selection feedback — a custom SVG on a slant confused the hotspot.
   text: 'text',
   // White arrow for select mode — reads as "tool active" on any page background.
   select: svgCursor(
@@ -253,21 +255,6 @@ const CURSORS = {
        <path d="M2 1 L2 14 L5 11 L7 15 L9 14 L7 10 L12 10 Z"
              fill="white" stroke="black" stroke-width="1.2" stroke-linejoin="round"/>
      </svg>`, 2, 1, 'default'),
-  // Highlight marker — chisel tip + yellow shaft, hotspot at the tip.
-  highlight: svgCursor(
-    `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
-       <path d="M3 20 L6 17 L9 20 L6 23 Z" fill="#fde047" stroke="black" stroke-width="1"/>
-       <path d="M6 17 L17 6 L20 9 L9 20 Z" fill="#facc15" stroke="black" stroke-width="1"/>
-       <path d="M17 6 L19 4 L21 6 L20 9 Z" fill="#64748b" stroke="black" stroke-width="1"/>
-     </svg>`, 3, 20, 'text'),
-  // Sticky-note icon — folded-corner yellow square; hotspot at the top-left
-  // where the note's anchor point will land.
-  sticky: svgCursor(
-    `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
-       <path d="M3 3 H17 L21 7 V21 H3 Z" fill="#fde68a" stroke="black" stroke-width="1.5" stroke-linejoin="round"/>
-       <path d="M17 3 V7 H21" fill="#fcd34d" stroke="black" stroke-width="1.5" stroke-linejoin="round"/>
-       <path d="M6 11 H15 M6 14 H13 M6 17 H11" stroke="#92400e" stroke-width="1" stroke-linecap="round"/>
-     </svg>`, 3, 3, 'crosshair'),
   // Eraser — pink rubber tipped tool tilted at -30°; hotspot at the tip (bottom-left).
   eraser: svgCursor(
     `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
@@ -311,6 +298,10 @@ function setCursorLock(cursor) {
     `html.vellum-dragging .vellum-marker-wrapper * { cursor: grabbing !important; }`;
 }
 
+// Expose for other content scripts (sticky.js re-applies the cursor when its
+// color swatch changes so the sticky-note cursor tracks the active color).
+window.VellumCursor = { set: setCursorLock, svgCursor };
+
 // Global VellumState Subscription — single place that owns cursor and toolbar state
 // for ALL modes. Eraser and sticky manage their own overlays but delegate cursor here.
 window.VellumState.subscribe(state => {
@@ -335,11 +326,13 @@ window.VellumState.subscribe(state => {
   // Without this lock, hovering any link flips the cursor back to pointer and
   // the user thinks they're about to click — instead they drop a text field.
   switch (state.mode) {
-    case 'highlight': setCursorLock(CURSORS.highlight); break;
-    case 'select':    setCursorLock(CURSORS.select);    break;
-    case 'text':      setCursorLock(CURSORS.text);      break;
-    case 'sticky':    setCursorLock(CURSORS.sticky);    break;
-    case 'eraser':    setCursorLock(CURSORS.eraser);    break;
+    case 'highlight': setCursorLock(CURSORS.text);   break;
+    case 'select':    setCursorLock(CURSORS.select); break;
+    case 'text':      setCursorLock(CURSORS.text);   break;
+    case 'eraser':    setCursorLock(CURSORS.eraser); break;
+    // Sticky owns its cursor so the icon can recolor when the user picks a
+    // swatch in the HUD — see window.VellumSticky.applyCursor in sticky.js.
+    case 'sticky':    window.VellumSticky?.applyCursor(); break;
     case 'pen':
     case 'arrow':
     case 'rect':

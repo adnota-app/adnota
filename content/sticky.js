@@ -63,16 +63,32 @@ chrome.storage.local.get(['vellumStickyColor'], (result) => {
   if (result.vellumStickyColor && STICKY_THEMES[result.vellumStickyColor]) {
     activeStickyColor = result.vellumStickyColor;
     updateStickySwatches();
+    if (window.VellumState.mode === 'sticky') applyStickyCursor();
   }
 });
 
-// Mini sticky note SVG icon — a filled note shape with a folded corner
+// Mini sticky note SVG icon — a filled note shape with a folded corner.
+// Reused for both HUD swatches and the cursor so the tool's identity is
+// visually consistent.
 function stickyNoteSVG(fillColor) {
   return `<svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
     <path d="M3 2h12a1 1 0 011 1v9l-4 4H3a1 1 0 01-1-1V3a1 1 0 011-1z" fill="${fillColor}" stroke="rgba(0,0,0,0.15)" stroke-width="0.75"/>
     <path d="M12 12v4l4-4h-4z" fill="rgba(0,0,0,0.1)"/>
   </svg>`;
 }
+
+// Re-apply the sticky cursor using whatever color is currently active. Called
+// from highlighter.js on mode entry and from swatch clicks below so the cursor
+// re-paints when the user picks a new color.
+function applyStickyCursor() {
+  const fill = STICKY_THEMES[activeStickyColor]?.bg || '#FBE6A1';
+  const svg = stickyNoteSVG(fill).replace(/\n/g, '').replace(/\s+/g, ' ');
+  // Hotspot (1, 1) — top-left of the note aligns with the click point, since
+  // that's the anchor for placement.
+  const cursor = window.VellumCursor.svgCursor(svg, 1, 1, 'crosshair');
+  window.VellumCursor.set(cursor);
+}
+window.VellumSticky = { applyCursor: applyStickyCursor };
 
 // ---------------------------------------------------------------------------
 // Sticky HUD Toolbar — frosted glass bar, matches marker/eraser aesthetic
@@ -115,6 +131,7 @@ for (const [themeClass, info] of Object.entries(STICKY_THEMES)) {
     activeStickyColor = themeClass;
     chrome.storage.local.set({ vellumStickyColor: themeClass });
     updateStickySwatches();
+    if (window.VellumState.mode === 'sticky') applyStickyCursor();
   };
   stickySwatches[themeClass] = swatch;
   stickyToolbar.appendChild(swatch);
