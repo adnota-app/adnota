@@ -182,6 +182,7 @@ PAID OPTIONS:
 - eventually wire up to google drive storage? (paid feature?)
 - "Remove things like this" (#11, the "killer feature") — This is the most interesting idea in the whole list. After erasing one element, find structurally similar siblings and offer bulk removal. This plays to FuzzyAnchor's strengths — you could score all siblings of the erased element's parent against the erased element's anchor and surface high-confidence matches. Worth prototyping.
 
+Disable V menu when printing the website page?? (ctrl+p printing)
 
 HMMMM...:
 
