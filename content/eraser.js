@@ -1,7 +1,7 @@
 // content/eraser.js
 
 // ─── Hover overlay ────────────────────────────────────────────────────────────
-const highlightOverlay = window.VellumUI.createHoverOverlay('vellum-highlight-overlay', 'red', 'rgba(255, 0, 0, 0.07)');
+const highlightOverlay = window.VellumUI.createHoverOverlay('vellum-highlight-overlay', '#ef4444', 'rgba(239, 68, 68, 0.15)');
 
 // ─── Dimension badge (top-right corner of hover outline) ─────────────────────
 const dimensionBadge = document.createElement('div');
@@ -43,7 +43,7 @@ Object.assign(eraserHud.style, {
   lineHeight: '1',
   padding: '6px 10px',
   borderRadius: '10px',
-  border: '1px solid rgba(124, 58, 237, 0.45)',
+  border: '1px solid rgba(239, 68, 68, 0.45)',
   boxShadow: '0 4px 24px rgba(0,0,0,0.5)',
   zIndex: '2147483646',
   pointerEvents: 'auto',
@@ -59,12 +59,12 @@ document.documentElement.appendChild(eraserHud);
 const eraserDragHandle = document.createElement('span');
 eraserDragHandle.className = 'vellum-toolbar-drag';
 eraserDragHandle.textContent = '\u2847';
-eraserDragHandle.title = 'Drag to reposition';
+eraserDragHandle.setAttribute('data-tooltip', 'Drag to reposition');
 eraserHud.appendChild(eraserDragHandle);
 
 // Logo chip
 const eraserLogo = document.createElement('span');
-eraserLogo.className = 'vellum-toolbar-logo';
+eraserLogo.className = 'vellum-toolbar-logo vellum-toolbar-logo-red';
 eraserLogo.textContent = 'V';
 eraserHud.appendChild(eraserLogo);
 
@@ -77,17 +77,21 @@ eraserHudInfo.style.minWidth = '220px';
 eraserHud.appendChild(eraserHudInfo);
 
 // Divider
-eraserHud.appendChild(Object.assign(document.createElement('div'), { className: 'vellum-toolbar-divider' }));
+eraserHud.appendChild(Object.assign(document.createElement('div'), { className: 'vellum-toolbar-divider vellum-toolbar-divider-red' }));
 
 // Trash — clears all erasures on this page
-eraserHud.appendChild(window.VellumUI.createTrashButton({
+const eraserTrashBtn = window.VellumUI.createTrashButton({
   singular: 'erasure',
   plural: 'erasures',
   actionTypes: ['ERASE'],
-}));
+});
+eraserTrashBtn.classList.add('vellum-undo-btn-red');
+eraserHud.appendChild(eraserTrashBtn);
 
 // Undo
-eraserHud.appendChild(window.VellumUI.createUndoButton());
+const eraserUndoBtn = window.VellumUI.createUndoButton();
+eraserUndoBtn.classList.add('vellum-undo-btn-red');
+eraserHud.appendChild(eraserUndoBtn);
 
 // ─── HUD drag logic ─────────────────────────────────────────────────────────
 window.VellumUI.makeDraggable(eraserHud, eraserDragHandle);

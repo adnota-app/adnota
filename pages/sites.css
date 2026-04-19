@@ -21,7 +21,7 @@
   --radius: 14px;
   --radius-sm: 9px;
   --radius-xs: 6px;
-  --header-dark: #0d0d14;
+  --header-dark: linear-gradient(135deg, #151515 0%, #2a1658 100%);
 
   /* Tool accent colors */
   --c-erase:     #ef4444;

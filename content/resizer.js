@@ -74,7 +74,7 @@ document.documentElement.appendChild(resizerHud);
 const resizerDragHandle = document.createElement('span');
 resizerDragHandle.className = 'vellum-toolbar-drag';
 resizerDragHandle.textContent = '\u2847';
-resizerDragHandle.title = 'Drag to reposition';
+resizerDragHandle.setAttribute('data-tooltip', 'Drag to reposition');
 resizerHud.appendChild(resizerDragHandle);
 
 // Logo chip — tinted blue to match the tool's accent.
@@ -345,7 +345,7 @@ function selectElement(el) {
     '<path d="M3 3v4h4"/>' +
     '<path d="M3 7a5.5 5.5 0 1 1 1.6 3.9"/>' +
     '</svg>';
-  dismissBtn.title = 'Reset all resizes on this element';
+  dismissBtn.setAttribute('data-tooltip', 'Reset all resizes on this element');
   positionDismiss(dismissBtn, rect, scrollX, scrollY);
   dismissBtn.addEventListener('mousedown', (e) => {
     e.preventDefault();
