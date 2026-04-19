@@ -175,6 +175,8 @@ Optional: Make size of toolbars and radial menus adjustable? (be able to increas
 
 Should clicking hide all exit any active tool? (similar to clicking escape?) Or not, perhaps you'd want to hide noise to focus on something else?? not sure.
 
+Would it be hard to make it so you could ALWAYS select any Vellum object? Why do we need the SELECT tool? Can't we recognize all of our elements instantly? Shouldn't we be able to automatically move or adjust any Vellum object just by clicking on it??
+
 
 PAID OPTIONS:
 - eventually wire up to google drive storage? (paid feature?)
