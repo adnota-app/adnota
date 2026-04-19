@@ -172,8 +172,9 @@ Basically, just a list of boolean checkbox values for most settings (enabled/dis
 
 Optional: Make size of toolbars and radial menus adjustable? (be able to increase the size to make easier to see??) (global setting in settings menu?)
 
+get rid of eraser cursor! (it's ugly... just have a pointer? can we have a white pointer?)
 
-
+Should clicking hide all exit any active tool? (similar to clicking escape?) Or not, perhaps you'd want to hide noise to focus on something else?? not sure.
 
 
 PAID OPTIONS:
