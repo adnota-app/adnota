@@ -148,11 +148,16 @@
   border-radius: 4px;
   white-space: nowrap;
   pointer-events: none;
-  border: 1px solid rgba(124, 58, 237, 0.3);
-  z-index: 2147483647; /* Ensure tooltips are above everything */
+  border: 1px solid var(--vellum-tooltip-border, rgba(124, 58, 237, 0.3));
+  z-index: 2147483647;
 }
 
-/* Base drag handle - enlarged for better accessibility */
+/* Per-HUD tooltip accent colors */
+#vellum-eraser-hud   { --vellum-tooltip-border: rgba(239, 68, 68, 0.35); }
+#vellum-sticky-toolbar { --vellum-tooltip-border: rgba(245, 158, 11, 0.35); }
+#vellum-resizer-hud  { --vellum-tooltip-border: rgba(59, 130, 246, 0.3); }
+
+/* Base drag handle */
 .vellum-toolbar-drag {
   color: #525264;
   font-size: 18px;
@@ -161,19 +166,21 @@
   cursor: grab;
   margin-right: 8px;
   user-select: none;
-  padding: 0 4px; /* easier to grab */
+  padding: 0 4px;
+}
+
+.vellum-toolbar-drag:active {
+  cursor: grabbing;
 }
 
 /* HUD Eraser (Red variants) */
 .vellum-toolbar-logo.vellum-toolbar-logo-red { background: rgba(239, 68, 68, 0.35); color: #fca5a5; }
 .vellum-toolbar-divider.vellum-toolbar-divider-red { background: rgba(239, 68, 68, 0.25); }
 .vellum-undo-btn.vellum-undo-btn-red:hover { background: rgba(239, 68, 68, 0.15); }
-.vellum-undo-btn.vellum-undo-btn-red:hover svg, .vellum-tool-btn.vellum-tool-btn-red:hover svg { stroke: #fca5a5; }
-.vellum-trash-btn.vellum-trash-btn-red:hover { background: rgba(239, 68, 68, 0.15); color: #fca5a5; }
+.vellum-undo-btn.vellum-undo-btn-red:hover svg { stroke: #fca5a5; }
 
 /* HUD Sticky (Orange/Yellow variants) */
 .vellum-toolbar-logo.vellum-toolbar-logo-orange { background: rgba(245, 158, 11, 0.35); color: #fcd34d; }
 .vellum-toolbar-divider.vellum-toolbar-divider-orange { background: rgba(245, 158, 11, 0.25); }
 .vellum-undo-btn.vellum-undo-btn-orange:hover { background: rgba(245, 158, 11, 0.15); }
 .vellum-undo-btn.vellum-undo-btn-orange:hover svg { stroke: #fcd34d; }
-.vellum-trash-btn.vellum-trash-btn-orange:hover { background: rgba(245, 158, 11, 0.15); color: #fcd34d; }

@@ -258,10 +258,7 @@ const CURSORS = {
     `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 18 18">
        <path d="M2 1 L2 14 L5 11 L7 15 L9 14 L7 10 L12 10 Z"
              fill="white" stroke="black" stroke-width="1.2" stroke-linejoin="round"/>
-     </svg>`, 2, 1, 'default'),
-  // Eraser — default pointer is the most precise for structural edits,
-  // relying entirely on the red bounding box overlay for visual feedback.
-  eraser: 'default',
+     </svg>`, 2, 1, 'default')
 };
 
 // Inject/update a stylesheet that forces the tool cursor on every non-Vellum
@@ -328,14 +325,13 @@ window.VellumState.subscribe(state => {
     case 'highlight': setCursorLock(CURSORS.text);   break;
     case 'select':    setCursorLock(CURSORS.select); break;
     case 'text':      setCursorLock(CURSORS.text);   break;
-    case 'eraser':    setCursorLock(CURSORS.eraser); break;
     // Sticky owns its cursor so the icon can recolor when the user picks a
     // swatch in the HUD — see window.VellumSticky.applyCursor in sticky.js.
     case 'sticky':    window.VellumSticky?.applyCursor(); break;
-    // Resizer — lock to a plain default arrow so it stays stable over links
-    // and buttons that would otherwise flip it to `pointer`. The handles set
-    // their own ew-resize/ns-resize/nwse-resize cursors inline.
-    case 'resizer':   setCursorLock('default'); break;
+    // Resizer — crosshair keeps mode intent clear; resize handles set their
+    // own ew-resize/ns-resize/nwse-resize cursors inline, overriding this.
+    case 'resizer':
+    case 'eraser':
     case 'pen':
     case 'arrow':
     case 'rect':

@@ -47,20 +47,6 @@ html.vellum-hidden .vellum-highlight-fallback {
   color: #e4e4e7;
 }
 
-/* ── Drag handle ─────────────────────────────────────────────────────────── */
-.vellum-toolbar-drag {
-  color: #525264;
-  font-size: 10px;
-  letter-spacing: 1px;
-  cursor: grab;
-  margin-right: 6px;
-  user-select: none;
-}
-
-.vellum-toolbar-drag:active {
-  cursor: grabbing;
-}
-
 /* ── Logo chip ───────────────────────────────────────────────────────────── */
 .vellum-toolbar-logo {
   display: inline-flex;
