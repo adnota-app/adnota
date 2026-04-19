@@ -279,6 +279,13 @@ function generateCSSSelector(el) {
 }
 
 // ─── Style injection engine ──────────────────────────────────────────────────
+// Map of active resize rules, keyed by the storage `_id`. Mirrors the eraser's
+// `VellumEraseRules` architecture: rules live in the map, the <style> tag is
+// rebuilt from the map after every mutation. This replaced an earlier string-
+// replace approach that could leave zombie rules behind whenever any path
+// (notably the restorer) double-injected — String.prototype.replace with a
+// string argument only strips the first occurrence, so Ctrl+Z and the trash
+// button appeared to do nothing live even though storage was clean.
 function getStyleTag() {
   let tag = document.getElementById('vellum-style-overrides');
   if (!tag) {
@@ -290,16 +297,17 @@ function getStyleTag() {
   return tag;
 }
 
-function injectRule(selector, cssText) {
-  const tag = getStyleTag();
-  tag.textContent += `${selector} { ${cssText} }\n`;
-}
+window.VellumResizeRules = new Map(); // id → { selector, cssText }
 
-function removeRule(selector, cssText) {
+function rebuildResizeStyleTag() {
   const tag = getStyleTag();
-  const ruleString = `${selector} { ${cssText} }\n`;
-  tag.textContent = tag.textContent.replace(ruleString, '');
+  const rules = [];
+  for (const [, rule] of window.VellumResizeRules) {
+    rules.push(`${rule.selector} { ${rule.cssText} }`);
+  }
+  tag.textContent = rules.join('\n');
 }
+window.rebuildResizeStyleTag = rebuildResizeStyleTag;
 
 // ─── Selection: show drag handles around an element ──────────────────────────
 function selectElement(el) {
@@ -499,12 +507,11 @@ async function resetElement(el) {
   const domain = location.hostname;
   const path = location.pathname;
 
-  // Remove all matching rules from the style tag
-  const tag = getStyleTag();
-  const regex = new RegExp(
-    escapeRegExp(selector) + '\\s*\\{[^}]*\\}\\n?', 'g'
-  );
-  tag.textContent = tag.textContent.replace(regex, '');
+  // Drop every rule for this selector from the live map, then rebuild.
+  for (const [id, rule] of window.VellumResizeRules) {
+    if (rule.selector === selector) window.VellumResizeRules.delete(id);
+  }
+  rebuildResizeStyleTag();
 
   // Clear inline style leftovers
   el.style.removeProperty('width');
@@ -533,10 +540,6 @@ async function resetElement(el) {
   );
 
   deselectElement();
-}
-
-function escapeRegExp(str) {
-  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 // ─── Drag logic ──────────────────────────────────────────────────────────────
@@ -656,7 +659,7 @@ function startDrag(e, axis) {
     }
 
     const cssText = cssParts.join('; ');
-    persistResize(selectedEl, cssText, startWidth, startHeight);
+    persistResize(selectedEl, cssText);
 
     dragAxis = null;
     refreshHandles();
@@ -667,11 +670,12 @@ function startDrag(e, axis) {
 }
 
 // ─── Persist resize to storage ───────────────────────────────────────────────
-async function persistResize(el, cssText, originalWidth, originalHeight) {
+async function persistResize(el, cssText) {
   const selector = generateCSSSelector(el);
   const id = Date.now() + '-' + Math.random().toString(36).slice(2, 8);
 
-  injectRule(selector, cssText);
+  window.VellumResizeRules.set(id, { selector, cssText });
+  rebuildResizeStyleTag();
 
   const domain = location.hostname;
   const path = location.pathname;
@@ -697,26 +701,13 @@ async function persistResize(el, cssText, originalWidth, originalHeight) {
   const undoEntry = {
     _resizeSelector: selector,
     undo: async () => {
-      removeRule(selector, cssText);
+      window.VellumResizeRules.delete(id);
+      rebuildResizeStyleTag();
 
-      // Force the element back to its original size immediately so the
-      // user sees the revert without needing to refresh the page.
+      // Force a reflow so the browser re-computes layout against the
+      // updated stylesheet immediately — no refresh needed.
       const target = document.querySelector(selector);
-      if (target) {
-        // Briefly apply original dimensions inline to flush the browser's
-        // layout, then remove so the element returns to natural flow.
-        target.style.setProperty('width', originalWidth + 'px', 'important');
-        target.style.setProperty('height', originalHeight + 'px', 'important');
-        // Force a reflow so the browser computes the new layout
-        void target.offsetHeight;
-        // Remove inline overrides — let the page's own CSS take over
-        target.style.removeProperty('width');
-        target.style.removeProperty('height');
-        target.style.removeProperty('max-width');
-        target.style.removeProperty('max-height');
-        target.style.removeProperty('margin-left');
-        target.style.removeProperty('margin-top');
-      }
+      if (target) void target.offsetHeight;
 
       if (window.VellumStorage) {
         const data = await chrome.storage.local.get(domain);

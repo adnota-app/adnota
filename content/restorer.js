@@ -63,14 +63,25 @@ async function performRestoration() {
 
     // ── Resize overrides: inject via <style> tag — no DOM anchoring needed. ────
     if (item.action === 'RESIZE') {
-      let styleTag = document.getElementById('vellum-style-overrides');
-      if (!styleTag) {
-        styleTag = document.createElement('style');
-        styleTag.id = 'vellum-style-overrides';
-        styleTag.setAttribute('data-vellum-ui', '1');
-        document.head.appendChild(styleTag);
+      // Go through the shared Map so rebuild is the single source of truth.
+      // Older fallback (plain textContent append) is kept for the rare case
+      // where resizer.js hasn't loaded yet — extremely unlikely at restore time.
+      if (window.VellumResizeRules && item._id) {
+        window.VellumResizeRules.set(item._id, {
+          selector: item.selector,
+          cssText: item.cssText,
+        });
+        if (window.rebuildResizeStyleTag) window.rebuildResizeStyleTag();
+      } else {
+        let styleTag = document.getElementById('vellum-style-overrides');
+        if (!styleTag) {
+          styleTag = document.createElement('style');
+          styleTag.id = 'vellum-style-overrides';
+          styleTag.setAttribute('data-vellum-ui', '1');
+          document.head.appendChild(styleTag);
+        }
+        styleTag.textContent += `${item.selector} { ${item.cssText} }\n`;
       }
-      styleTag.textContent += `${item.selector} { ${item.cssText} }\n`;
       processedItems.add(id);
       resizeCount++;
       continue;
