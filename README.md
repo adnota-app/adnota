@@ -12,6 +12,8 @@ NOTE: WE ARE NOT IN PRODUCTION YET, SO MAKE AN EFFORT TO CLEAN UP CODE AND REDUC
 
 Annotate your web, your way.
 
+Adnota: Annotate the web.
+
 ---
 
 ## Shipped: Current Architecture
