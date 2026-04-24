@@ -110,6 +110,19 @@
   body.className = 'vellum-dock-body';
   dock.appendChild(body);
 
+  // Dismiss X — "get off my screen" button. Appears on hover, only when
+  // idle (a tool being active means the dock IS the HUD, so hiding it would
+  // strand the user). Clicking hides the dock until the user activates a
+  // tool (via popup or keyboard shortcut) or reloads the page.
+  // Reuses .vellum-select-delete — identical red-X affordance as the marker
+  // select-tool delete. .vellum-dock-dismiss layers on the hover-reveal +
+  // positioning behavior.
+  const dismissBtn = document.createElement('div');
+  dismissBtn.className = 'vellum-select-delete vellum-dock-dismiss';
+  dismissBtn.textContent = '✕';
+  dismissBtn.setAttribute('data-tooltip', 'Hide menu (any tool or reload restores)');
+  dock.appendChild(dismissBtn);
+
   document.documentElement.appendChild(dock);
 
   // ── Position persistence ──────────────────────────────────────────────────
@@ -235,6 +248,27 @@
     }).catch(() => {});
   }
 
+  // ── Dismiss / restore ────────────────────────────────────────────────────
+  // Session-only: never persisted. Every page load starts with the dock
+  // visible so users don't wonder where it went on a future visit.
+  let userDismissed = false;
+
+  function applyDismissState() {
+    const modeActive = window.VellumState?.mode != null;
+    if (userDismissed && !modeActive) {
+      dock.style.display = 'none';
+    } else {
+      dock.style.display = '';
+      if (modeActive) userDismissed = false;
+    }
+  }
+
+  dismissBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    userDismissed = true;
+    applyDismissState();
+  });
+
   // ── Active-tool indicator on the idle row ────────────────────────────────
   // Briefly visible during mode transitions and during the window between
   // hitting a shortcut and the body mounting. Also keeps the row readable if
@@ -251,11 +285,17 @@
   }
 
   if (window.VellumState?.subscribe) {
-    window.VellumState.subscribe(syncActiveState);
+    window.VellumState.subscribe(() => {
+      syncActiveState();
+      applyDismissState();
+    });
   }
   chrome.storage.onChanged.addListener((changes, area) => {
     if (area === 'local' && 'vellumActiveMode' in changes) {
-      setTimeout(syncActiveState, 50);
+      setTimeout(() => {
+        syncActiveState();
+        applyDismissState();
+      }, 50);
     }
   });
 
