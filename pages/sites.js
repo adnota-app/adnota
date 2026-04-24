@@ -6,7 +6,17 @@
   'use strict';
 
   // ─── Reserved storage keys that are NOT domain data ──────────────────────
-  const RESERVED_KEYS = new Set(['vellumActiveMode']);
+  // The view-state keys (tab / feed type / per-tab sort) belong here too —
+  // the loadAllData pass walks every top-level key looking for domain
+  // payloads, so any meta key we store has to be excluded explicitly or
+  // it'd get (mis)treated as a domain.
+  const RESERVED_KEYS = new Set([
+    'vellumActiveMode',
+    'vellumHomeTab',
+    'vellumHomeFeedType',
+    'vellumHomeSortSnippets',
+    'vellumHomeSortSites',
+  ]);
 
   // ─── Elements ─────────────────────────────────────────────────────────────
   const stateLoading   = document.getElementById('state-loading');
@@ -24,6 +34,69 @@
   const storageBarFill = document.getElementById('storage-bar-fill');
   const tagFilterBar   = document.getElementById('tag-filter-bar');
   const toast          = document.getElementById('toast');
+
+  // Snippets-tab elements
+  const viewSnippets       = document.getElementById('view-snippets');
+  const viewSites          = document.getElementById('view-sites');
+  const tabSnippets        = document.getElementById('tab-snippets');
+  const tabSites           = document.getElementById('tab-sites');
+  const tabSnippetsCount   = document.getElementById('tab-snippets-count');
+  const tabSitesCount      = document.getElementById('tab-sites-count');
+  const proseFeed          = document.getElementById('prose-feed');
+  const feedTypeFilter     = document.getElementById('feed-type-filter');
+  const feedStateEmpty     = document.getElementById('feed-state-empty');
+  const feedStateNoResults = document.getElementById('feed-state-no-results');
+
+  // ─── Theme / color mapping ───────────────────────────────────────────────
+  // Highlights store either a theme key (`vellum-theme-yellow`, etc.) or a
+  // raw hex/rgb string picked with the eyedropper. Sticky notes only use
+  // theme keys. The table below is the source of truth for both rails
+  // (quote-block left border, thought-block theme strip).
+  const THEME_HEX = {
+    'vellum-theme-yellow': '#FBE6A1',
+    'vellum-theme-green':  '#B8F5B8',
+    'vellum-theme-blue':   '#A3DDFB',
+    'vellum-theme-pink':   '#FFC0C8',
+    'vellum-theme-white':  '#E8E6DE',
+    'vellum-theme-black':  '#1a1a1a',
+  };
+  function themeHex(key, fallback = '#cccccc') {
+    if (!key) return fallback;
+    if (typeof key === 'string' && (key.startsWith('#') || key.startsWith('rgb'))) return key;
+    return THEME_HEX[key] ?? fallback;
+  }
+
+  // Black highlight = redaction. In the feed we render redactions as a
+  // narrow black bar instead of reproducing the underlying text — the quote
+  // has no meaningful prose to show, so we honor the user's intent to hide.
+  const REDACTION_THEME = 'vellum-theme-black';
+  function isRedaction(item) {
+    return item.type === 'highlight' && item.color === REDACTION_THEME;
+  }
+
+  // ─── View state ──────────────────────────────────────────────────────────
+  const SORT_OPTIONS = {
+    snippets: [
+      { value: 'newest', label: 'Newest' },
+      { value: 'oldest', label: 'Oldest' },
+    ],
+    sites: [
+      { value: 'recent', label: 'Most Recent' },
+      { value: 'alpha',  label: 'A → Z' },
+      { value: 'count',  label: 'Most Edits' },
+      { value: 'size',   label: 'Largest' },
+    ],
+  };
+
+  const SEARCH_PLACEHOLDER = {
+    snippets: 'Search your snippets…',
+    sites:    'Filter sites…',
+  };
+
+  const TAB_KEY   = 'vellumHomeTab';
+  const TYPE_KEY  = 'vellumHomeFeedType';
+  const SORT_SNIPPETS_KEY = 'vellumHomeSortSnippets';
+  const SORT_SITES_KEY    = 'vellumHomeSortSites';
 
   // ─── Storage quota (MV3: 10MB; falls back to API value on older Chrome) ───
   const STORAGE_QUOTA = chrome.storage.local.QUOTA_BYTES || 10 * 1024 * 1024;
@@ -90,23 +163,29 @@
     return raw.trim().replace(/\s+/g, ' ').slice(0, 40);
   }
 
-  // ─── Load all storage and build domain-grouped model ──────────────────────
-  async function loadSiteData() {
-    const all = await chrome.storage.local.get(null); // pull everything
+  // ─── Load all storage and build both views' data models in one pass ──────
+  // Returns { sites, feedItems }. The Snippets tab reads feedItems (flat
+  // stream of HIGHLIGHT + NOTE text, newest first); the By Site tab reads
+  // sites (existing per-domain aggregation). Keeping both derivations in one
+  // storage walk avoids a duplicate `chrome.storage.local.get(null)` call.
+  async function loadAllData() {
+    const all = await chrome.storage.local.get(null);
 
     const sites = [];
+    const feedItems = [];
 
     for (const [key, value] of Object.entries(all)) {
-      // Skip reserved keys and anything that isn't our domain-keyed format
       if (RESERVED_KEYS.has(key)) continue;
       if (!value || !Array.isArray(value.items) || value.items.length === 0) continue;
 
+      const hostname = key;
       const items = value.items;
 
       // Group items by path (page)
       const pathMap = new Map();
       let latestTs = 0;
-      const tagCounts = {}; // tag → count of items with that tag on this domain
+      const tagCounts = {};
+      const counts = { ERASE: 0, NOTE: 0, HIGHLIGHT: 0, MARKER: 0, RESIZE: 0 };
 
       for (const item of items) {
         const path = item.path || '/';
@@ -118,17 +197,45 @@
 
         const tag = normalizeTag(item.tag);
         if (tag) tagCounts[tag] = (tagCounts[tag] || 0) + 1;
-      }
 
-      // Count action types per domain
-      const counts = { ERASE: 0, NOTE: 0, HIGHLIGHT: 0, MARKER: 0, RESIZE: 0 };
-      for (const item of items) {
         const a = item.action;
         if (a === 'NOTE')           counts.NOTE++;
         else if (a === 'HIGHLIGHT') counts.HIGHLIGHT++;
         else if (a === 'MARKER')    counts.MARKER++;
-        else if (a === 'RESIZE')     counts.RESIZE++;
+        else if (a === 'RESIZE')    counts.RESIZE++;
         else                        counts.ERASE++;
+
+        // Flatten into feed stream. Only HIGHLIGHT + NOTE carry text —
+        // ERASE / MARKER / RESIZE have no user-readable prose and stay in
+        // the By Site tab only. Blank-body notes are silently skipped in
+        // the feed (they'd render empty) but still count in By Site.
+        if (a === 'HIGHLIGHT') {
+          feedItems.push({
+            id: item._id,
+            type: 'highlight',
+            text: item.text ?? '',
+            domain: hostname,
+            path,
+            url: `https://${hostname}${path === '*' ? '/' : path}`,
+            tag,
+            color: item.color,
+            timestamp: ts,
+          });
+        } else if (a === 'NOTE') {
+          const body = (item.comments?.[0]?.text ?? '').trim();
+          if (!body) continue;
+          feedItems.push({
+            id: item.uuid,
+            type: 'note',
+            text: body,
+            domain: hostname,
+            path,
+            url: `https://${hostname}${path === '*' ? '/' : path}`,
+            tag,
+            theme: item.theme,
+            timestamp: ts,
+          });
+        }
       }
 
       const bytes = new Blob([JSON.stringify(value)]).size;
@@ -144,7 +251,7 @@
       });
     }
 
-    return sites;
+    return { sites, feedItems };
   }
 
   // Aggregate per-domain tag counts into a global map for the chip row.
@@ -316,8 +423,8 @@
     btnDelete.title = `Delete all edits for ${hostname}`;
     btnDelete.innerHTML = `
       <svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-        <polyline points="3 6 5 6 17 6"/>
-        <path d="M15 6l-1 10a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/>
+        <polyline points="3 6 17 6"/>
+        <path d="M15 6v10a2 2 0 01-2 2H7a2 2 0 01-2-2V6"/>
         <path d="M8 9v6"/><path d="M12 9v6"/>
         <path d="M8 6V4h4v2"/>
       </svg>`;
@@ -466,10 +573,17 @@
     return card;
   }
 
-  // ─── Render ───────────────────────────────────────────────────────────────
+  // ─── State ───────────────────────────────────────────────────────────────
   let allSites = [];
+  let allFeedItems = [];
   let globalTagCounts = {};
-  let activeTag = null; // null means "All" — no tag filter applied
+  let activeTag = null;              // null means "All" — no tag filter applied
+  let activeTab = 'snippets';        // 'snippets' | 'sites'
+  let feedType = 'all';              // 'all' | 'quotes' | 'notes'
+  const sortValues = {               // per-tab sort; each tab remembers its own
+    snippets: 'newest',
+    sites:    'recent',
+  };
 
   // ── Tag filter URL hash plumbing ─────────────────────────────────────────
   // Filter state survives reloads and can be shared as a link.
@@ -545,6 +659,7 @@
     }
   }
 
+  // ─── Sort helpers ────────────────────────────────────────────────────────
   function sortSites(sites, order) {
     return [...sites].sort((a, b) => {
       switch (order) {
@@ -557,6 +672,12 @@
     });
   }
 
+  function sortFeedItems(items, order) {
+    const dir = order === 'oldest' ? 1 : -1;
+    return [...items].sort((a, b) => (a.timestamp - b.timestamp) * dir);
+  }
+
+  // ─── Filter helpers ──────────────────────────────────────────────────────
   function filterSites(sites, query) {
     let result = sites;
     if (activeTag) {
@@ -565,6 +686,23 @@
     if (query) {
       const q = query.toLowerCase();
       result = result.filter(s => s.hostname.toLowerCase().includes(q));
+    }
+    return result;
+  }
+
+  function filterFeedItems(items, query) {
+    let result = items;
+    if (feedType === 'quotes') result = result.filter(it => it.type === 'highlight');
+    else if (feedType === 'notes') result = result.filter(it => it.type === 'note');
+    if (activeTag) {
+      result = result.filter(it => it.tag === activeTag);
+    }
+    if (query) {
+      const q = query.toLowerCase();
+      result = result.filter(it =>
+        it.text.toLowerCase().includes(q) ||
+        it.domain.toLowerCase().includes(q)
+      );
     }
     return result;
   }
@@ -590,19 +728,327 @@
     totalPages.textContent = pageSum;
   }
 
-  function render() {
-    // Recompute the global tag index before painting — storage may have
-    // changed (a fresh load, a delete, a new tagged item) since last render.
-    globalTagCounts = computeGlobalTagCounts(allSites);
-    // Reset activeTag if the user's chosen tag no longer exists anywhere.
-    if (activeTag && !globalTagCounts[activeTag]) {
-      activeTag = null;
-      writeActiveTagToHash(null);
-    }
-    renderTagFilter();
+  function updateTabCounts() {
+    tabSnippetsCount.textContent = allFeedItems.length;
+    tabSitesCount.textContent = allSites.length;
+  }
 
-    const query   = searchInput.value.trim();
-    const order   = sortSelect.value;
+  // ─── Undo toast (Home-page specific) ─────────────────────────────────────
+  // The lib/vellumUI `softDeleteItems` helper is designed for in-page bulk
+  // deletion (resolves selectors against the live DOM, etc.) and doesn't
+  // fit the Home page where we're operating on remote domains' items.
+  // This is the minimal toast + undo flow we need instead.
+  let undoToastTimer;
+  function showUndoToast(msg, onUndo, duration = 5000) {
+    toast.innerHTML = '';
+    toast.classList.add('has-undo');
+    const label = document.createElement('span');
+    label.className = 'toast-msg';
+    label.textContent = msg;
+    toast.appendChild(label);
+
+    if (onUndo) {
+      const undoBtn = document.createElement('button');
+      undoBtn.type = 'button';
+      undoBtn.className = 'toast-undo';
+      undoBtn.textContent = 'Undo';
+      // Try/catch: a silent rejection inside onUndo used to make the undo
+      // button look dead — click fired, nothing changed, no error shown.
+      // Now any failure surfaces in the console for debugging.
+      undoBtn.addEventListener('click', async () => {
+        clearTimeout(undoToastTimer);
+        try {
+          await onUndo();
+        } catch (err) {
+          console.error('[Vellum Sites] Undo handler failed:', err);
+        }
+        toast.classList.remove('visible');
+        toast.classList.remove('has-undo');
+      });
+      toast.appendChild(undoBtn);
+    }
+
+    toast.classList.add('visible');
+    clearTimeout(undoToastTimer);
+    undoToastTimer = setTimeout(() => {
+      toast.classList.remove('visible');
+      toast.classList.remove('has-undo');
+    }, duration);
+  }
+
+  // ─── Per-item soft-delete ────────────────────────────────────────────────
+  // Removes one HIGHLIGHT or NOTE from storage by its identifier, shows a
+  // 5-second Undo toast. If the user clicks Undo, the snapshot is spliced
+  // back in. The storage.onChanged listener naturally re-renders the feed
+  // in both directions.
+  //
+  // Defensive: we deep-clone the snapshot (via JSON.parse/stringify) so
+  // restoration can't be corrupted by anything else that touches the same
+  // item reference in the meantime. Both delete and undo write paths are
+  // wrapped in try/catch so a quota error or schema surprise surfaces in
+  // the console instead of a silently-broken undo button.
+  async function deleteFeedItem(item) {
+    const domain = item.domain;
+    const actionType = item.type === 'highlight' ? 'HIGHLIGHT' : 'NOTE';
+    const idField = item.type === 'highlight' ? '_id' : 'uuid';
+    let snapshot;
+
+    try {
+      const data = await chrome.storage.local.get(domain);
+      const record = data[domain];
+      if (!record?.items) return;
+
+      const found = record.items.find(
+        i => i.action === actionType && i[idField] === item.id
+      );
+      if (!found) return;
+      snapshot = JSON.parse(JSON.stringify(found));
+
+      record.items = record.items.filter(
+        i => !(i.action === actionType && i[idField] === item.id)
+      );
+      await chrome.storage.local.set({ [domain]: record });
+    } catch (err) {
+      console.error('[Vellum Sites] Delete failed:', err);
+      return;
+    }
+
+    const noun = item.type === 'highlight' ? 'Snippet' : 'Note';
+    showUndoToast(`${noun} deleted`, async () => {
+      const again = await chrome.storage.local.get(domain);
+      const againRec = again[domain] || { items: [] };
+      againRec.items = (againRec.items || []).concat([snapshot]);
+      await chrome.storage.local.set({ [domain]: againRec });
+    });
+  }
+
+  // ─── Feed rendering ──────────────────────────────────────────────────────
+  // Quote block = the highlighted text, rendered as prose with a color-hint
+  // left border. Thought block = the sticky note's body, rendered with a
+  // theme-color strip. Both carry the same source chip underneath.
+
+  function faviconImg(hostname) {
+    const img = document.createElement('img');
+    img.className = 'source-favicon';
+    img.src = faviconUrl(hostname);
+    img.alt = '';
+    img.loading = 'lazy';
+    img.width = 14; img.height = 14;
+    return img;
+  }
+
+  function buildSourceChip(item) {
+    const chip = document.createElement('div');
+    chip.className = 'source-chip';
+
+    const link = document.createElement('a');
+    link.className = 'source-link';
+    link.href = item.url;
+    link.target = '_blank';
+    link.rel = 'noopener noreferrer';
+    link.title = `Open ${item.domain}${item.path !== '*' ? item.path : ''} in a new tab`;
+    link.appendChild(faviconImg(item.domain));
+    const host = document.createElement('span');
+    host.className = 'source-host';
+    host.textContent = item.domain;
+    link.appendChild(host);
+    chip.appendChild(link);
+
+    const dot1 = document.createElement('span');
+    dot1.className = 'source-dot';
+    chip.appendChild(dot1);
+
+    const time = document.createElement('span');
+    time.className = 'source-time';
+    time.textContent = relativeTime(item.timestamp);
+    chip.appendChild(time);
+
+    if (item.tag) {
+      const dot2 = document.createElement('span');
+      dot2.className = 'source-dot';
+      chip.appendChild(dot2);
+
+      const tag = document.createElement('span');
+      tag.className = 'source-tag';
+      tag.textContent = `#${item.tag}`;
+      chip.appendChild(tag);
+    }
+
+    return chip;
+  }
+
+  // SVG path strings for action icons. Keeping them as constants lets the
+  // copy button swap to a checkmark on success without building a new
+  // button element each time.
+  const ICON_COPY = `
+    <svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <rect x="6" y="6" width="11" height="11" rx="2"/>
+      <path d="M4 14H3a1 1 0 01-1-1V3a1 1 0 011-1h10a1 1 0 011 1v1"/>
+    </svg>`;
+  const ICON_CHECK = `
+    <svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <polyline points="4 10 8 14 16 6"/>
+    </svg>`;
+  // Trash path matches lib/vellumUI.js ICONS.trash so Home and HUD toolbars
+  // use visually identical trash icons. Straight-sided can + full-width
+  // polyline top reads cleaner than the tapered variant it replaced.
+  const ICON_TRASH = `
+    <svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <polyline points="3 6 17 6"/>
+      <path d="M15 6v10a2 2 0 01-2 2H7a2 2 0 01-2-2V6"/>
+      <path d="M8 9v6"/><path d="M12 9v6"/>
+      <path d="M8 6V4h4v2"/>
+    </svg>`;
+
+  function buildCopyButton(item) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'feed-item-action feed-item-copy';
+    btn.title = 'Copy text';
+    btn.innerHTML = ICON_COPY;
+    btn.addEventListener('click', async (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      try {
+        await navigator.clipboard.writeText(item.text);
+      } catch (err) {
+        console.error('[Vellum Sites] Copy failed:', err);
+        return;
+      }
+      btn.classList.add('copied');
+      btn.title = 'Copied';
+      btn.innerHTML = ICON_CHECK;
+      // Auto-revert so repeat copies feel natural — each press gives fresh
+      // visual confirmation rather than being stuck in the "copied" state.
+      setTimeout(() => {
+        btn.classList.remove('copied');
+        btn.title = 'Copy text';
+        btn.innerHTML = ICON_COPY;
+      }, 1400);
+    });
+    return btn;
+  }
+
+  function buildTrashButton(item) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'feed-item-action feed-item-trash';
+    btn.title = item.type === 'highlight' ? 'Delete this quote' : 'Delete this note';
+    btn.innerHTML = ICON_TRASH;
+    btn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      deleteFeedItem(item);
+    });
+    return btn;
+  }
+
+  // Action bar in the top-right of every feed card. Hover-reveal so it
+  // doesn't clutter the prose at rest. Redactions get no copy button (the
+  // feed intentionally hides the underlying text for them).
+  function buildActionsBar(item) {
+    const bar = document.createElement('div');
+    bar.className = 'feed-item-actions';
+    if (!isRedaction(item)) bar.appendChild(buildCopyButton(item));
+    bar.appendChild(buildTrashButton(item));
+    return bar;
+  }
+
+  // A `click` event fires after a drag-select on mouseup, which was hijacking
+  // the user's text selection by opening the source in a new tab. Guard by
+  // checking for a live non-collapsed selection inside the block at click
+  // time — if they just selected text, leave them alone.
+  function attachFeedItemClick(block, item) {
+    block.addEventListener('click', (e) => {
+      if (e.target.closest('.source-link') || e.target.closest('.feed-item-action')) return;
+      const sel = window.getSelection();
+      if (sel && !sel.isCollapsed && block.contains(sel.anchorNode)) return;
+      window.open(item.url, '_blank', 'noopener');
+    });
+  }
+
+  function buildQuoteBlock(item) {
+    const block = document.createElement('article');
+    block.className = 'feed-item feed-quote';
+    block.dataset.id = item.id;
+
+    if (isRedaction(item)) {
+      block.classList.add('feed-quote-redaction');
+      block.style.setProperty('--quote-color', '#1a1a1a');
+      const bar = document.createElement('div');
+      bar.className = 'redaction-bar';
+      // Roughly mimic the length of the original text with block glyphs,
+      // clamped so a single long highlight doesn't dominate the feed.
+      const n = Math.max(6, Math.min(48, item.text.length));
+      bar.textContent = '█'.repeat(n);
+      bar.title = 'Redacted';
+      block.appendChild(bar);
+    } else {
+      block.style.setProperty('--quote-color', themeHex(item.color));
+      const body = document.createElement('p');
+      body.className = 'feed-text';
+      body.textContent = item.text || '(empty highlight)';
+      block.appendChild(body);
+    }
+
+    block.appendChild(buildSourceChip(item));
+    block.appendChild(buildActionsBar(item));
+    attachFeedItemClick(block, item);
+    return block;
+  }
+
+  function buildThoughtBlock(item) {
+    const block = document.createElement('article');
+    block.className = 'feed-item feed-thought';
+    block.dataset.id = item.id;
+    block.style.setProperty('--thought-color', themeHex(item.theme, '#FBE6A1'));
+
+    const body = document.createElement('p');
+    body.className = 'feed-text';
+    body.textContent = item.text;
+    block.appendChild(body);
+
+    block.appendChild(buildSourceChip(item));
+    block.appendChild(buildActionsBar(item));
+    attachFeedItemClick(block, item);
+    return block;
+  }
+
+  function renderProseFeed() {
+    const query = searchInput.value.trim();
+    const order = sortValues.snippets;
+    const filtered = filterFeedItems(sortFeedItems(allFeedItems, order), query);
+
+    proseFeed.innerHTML = '';
+
+    // Three-way state: nothing captured at all → empty; captures exist but
+    // filter narrowed to zero → no-results; otherwise → render items.
+    if (allFeedItems.length === 0) {
+      feedStateEmpty.hidden = false;
+      feedStateNoResults.hidden = true;
+      proseFeed.hidden = true;
+      return;
+    }
+    feedStateEmpty.hidden = true;
+
+    if (filtered.length === 0) {
+      feedStateNoResults.hidden = false;
+      proseFeed.hidden = true;
+      return;
+    }
+    feedStateNoResults.hidden = true;
+    proseFeed.hidden = false;
+
+    for (const item of filtered) {
+      proseFeed.appendChild(
+        item.type === 'highlight' ? buildQuoteBlock(item) : buildThoughtBlock(item)
+      );
+    }
+  }
+
+  function renderSitesList() {
+    const query = searchInput.value.trim();
+    const order = sortValues.sites;
     const filtered = filterSites(sortSites(allSites, order), query);
 
     sitesList.innerHTML = '';
@@ -613,7 +1059,6 @@
       sitesList.hidden = true;
       return;
     }
-
     stateEmpty.hidden = true;
 
     if (filtered.length === 0) {
@@ -621,29 +1066,118 @@
       sitesList.hidden = true;
       return;
     }
-
     stateNoResults.hidden = true;
     sitesList.hidden = false;
 
     for (const site of filtered) {
       sitesList.appendChild(buildSiteCard(site));
     }
+  }
+
+  // Master render — recomputes chips + tab counts, then renders both panes.
+  // Rendering the inactive pane is cheap (DOM insert, no paint) and keeps
+  // the hand-off on tab switch instant.
+  function render() {
+    globalTagCounts = computeGlobalTagCounts(allSites);
+    // Reset activeTag if the user's chosen tag no longer exists anywhere.
+    if (activeTag && !globalTagCounts[activeTag]) {
+      activeTag = null;
+      writeActiveTagToHash(null);
+    }
+    renderTagFilter();
+    updateTabCounts();
+
+    renderProseFeed();
+    renderSitesList();
 
     updateSummary(allSites); // summary always reflects total, not filtered
   }
 
-  // ─── Initial load ─────────────────────────────────────────────────────────
+  // ─── Tab / type / sort controllers ───────────────────────────────────────
+  function applyTabChrome() {
+    // Visibility
+    viewSnippets.hidden = activeTab !== 'snippets';
+    viewSites.hidden    = activeTab !== 'sites';
+
+    // Tab button states
+    tabSnippets.classList.toggle('active', activeTab === 'snippets');
+    tabSites.classList.toggle('active', activeTab === 'sites');
+    tabSnippets.setAttribute('aria-selected', activeTab === 'snippets' ? 'true' : 'false');
+    tabSites.setAttribute('aria-selected', activeTab === 'sites' ? 'true' : 'false');
+
+    // Search + sort adapt per tab
+    searchInput.placeholder = SEARCH_PLACEHOLDER[activeTab];
+    renderSortOptions();
+  }
+
+  function renderSortOptions() {
+    const options = SORT_OPTIONS[activeTab];
+    const current = sortValues[activeTab];
+    sortSelect.innerHTML = '';
+    for (const opt of options) {
+      const el = document.createElement('option');
+      el.value = opt.value;
+      el.textContent = opt.label;
+      if (opt.value === current) el.selected = true;
+      sortSelect.appendChild(el);
+    }
+  }
+
+  function setActiveTab(tab) {
+    if (tab !== 'snippets' && tab !== 'sites') return;
+    if (tab === activeTab) return;
+    activeTab = tab;
+    chrome.storage.local.set({ [TAB_KEY]: activeTab });
+    applyTabChrome();
+    // No need to re-render items — both panes were painted by render();
+    // we just toggled visibility.
+  }
+
+  function setFeedType(type) {
+    if (!['all', 'quotes', 'notes'].includes(type)) return;
+    if (type === feedType) return;
+    feedType = type;
+    chrome.storage.local.set({ [TYPE_KEY]: feedType });
+    for (const chip of feedTypeFilter.querySelectorAll('.feed-type-chip')) {
+      chip.classList.toggle('active', chip.dataset.type === feedType);
+    }
+    renderProseFeed();
+  }
+
+  // ─── Initial load ────────────────────────────────────────────────────────
   try {
-    allSites = await loadSiteData();
+    const { sites, feedItems } = await loadAllData();
+    allSites = sites;
+    allFeedItems = feedItems;
   } catch (err) {
     console.error('[Vellum Sites] Failed to load storage:', err);
     allSites = [];
+    allFeedItems = [];
+  }
+
+  // Restore view state. Per-tab sort lives in chrome.storage (not URL) so
+  // it's device-local and doesn't pollute shareable tag-filter links.
+  const saved = await chrome.storage.local.get([
+    TAB_KEY, TYPE_KEY, SORT_SNIPPETS_KEY, SORT_SITES_KEY,
+  ]);
+  if (saved[TAB_KEY] === 'sites' || saved[TAB_KEY] === 'snippets') activeTab = saved[TAB_KEY];
+  if (['all', 'quotes', 'notes'].includes(saved[TYPE_KEY])) feedType = saved[TYPE_KEY];
+  if (SORT_OPTIONS.snippets.some(o => o.value === saved[SORT_SNIPPETS_KEY])) {
+    sortValues.snippets = saved[SORT_SNIPPETS_KEY];
+  }
+  if (SORT_OPTIONS.sites.some(o => o.value === saved[SORT_SITES_KEY])) {
+    sortValues.sites = saved[SORT_SITES_KEY];
+  }
+
+  // Seed the Snippets type-filter active chip to match restored state.
+  for (const chip of feedTypeFilter.querySelectorAll('.feed-type-chip')) {
+    chip.classList.toggle('active', chip.dataset.type === feedType);
   }
 
   activeTag = readActiveTagFromHash();
   stateLoading.hidden = true;
-  updateSummary(allSites);
   updateStorageMeter();
+  applyTabChrome();
   render();
 
   // Hash changes (e.g. user edits the URL or hits Back/Forward) resync the
@@ -660,6 +1194,8 @@
   // ─── Search wiring ────────────────────────────────────────────────────────
   searchInput.addEventListener('input', () => {
     searchClear.hidden = searchInput.value.length === 0;
+    // Search predicates differ per tab but both panes always re-render,
+    // so a single render() handles both Snippets and Sites filtering.
     render();
   });
 
@@ -671,19 +1207,40 @@
   });
 
   // ─── Sort wiring ──────────────────────────────────────────────────────────
-  sortSelect.addEventListener('change', render);
+  sortSelect.addEventListener('change', () => {
+    const newValue = sortSelect.value;
+    sortValues[activeTab] = newValue;
+    const key = activeTab === 'snippets' ? SORT_SNIPPETS_KEY : SORT_SITES_KEY;
+    chrome.storage.local.set({ [key]: newValue });
+    // Only re-render the active pane's items — the other tab's sort hasn't
+    // changed, and we'd waste work rebuilding its DOM.
+    if (activeTab === 'snippets') renderProseFeed();
+    else renderSitesList();
+  });
+
+  // ─── Tab wiring ──────────────────────────────────────────────────────────
+  tabSnippets.addEventListener('click', () => setActiveTab('snippets'));
+  tabSites.addEventListener('click', () => setActiveTab('sites'));
+
+  // ─── Type filter wiring ──────────────────────────────────────────────────
+  feedTypeFilter.addEventListener('click', (e) => {
+    const chip = e.target.closest('.feed-type-chip');
+    if (!chip) return;
+    setFeedType(chip.dataset.type);
+  });
 
   // ─── Live storage updates ─────────────────────────────────────────────────
   // Re-build data model whenever storage changes (e.g. user made an edit on
   // another tab while the Sites page was open).
   chrome.storage.onChanged.addListener(async (changes, area) => {
     if (area !== 'local') return;
-    // Skip if only vellumActiveMode changed
+    // Skip if every changed key is view-state/reserved — nothing to re-read.
     const changedKeys = Object.keys(changes);
     if (changedKeys.every(k => RESERVED_KEYS.has(k))) return;
 
-    allSites = await loadSiteData();
-    updateSummary(allSites);
+    const { sites, feedItems } = await loadAllData();
+    allSites = sites;
+    allFeedItems = feedItems;
     updateStorageMeter();
     render();
   });

@@ -63,7 +63,15 @@
   logo.setAttribute('data-tooltip', 'My Edited Sites');
   logo.addEventListener('click', (e) => {
     e.stopPropagation();
-    chrome.runtime.sendMessage({ action: 'open-sites' }).catch(() => {});
+    // Try/catch + .catch: after a Vellum reload, any tab already loaded
+    // has a stale content-script context. chrome.runtime.sendMessage
+    // throws SYNCHRONOUSLY in that case ("Extension context invalidated"),
+    // so .catch() alone doesn't help — it only handles async rejection.
+    try {
+      chrome.runtime.sendMessage({ action: 'open-sites' }).catch(() => {});
+    } catch (_) {
+      /* context invalidated after extension reload — reload the page */
+    }
   });
   home.appendChild(logo);
 
@@ -241,11 +249,15 @@
     }
     // Fire the tool's toggle through the background relay so the content
     // script's runtime message listener handles it (same path keyboard
-    // shortcuts take).
-    chrome.runtime.sendMessage({
-      action: 'relay-to-tab',
-      payload: { action: tool.action },
-    }).catch(() => {});
+    // shortcuts take). Same stale-context guard as the V-logo handler —
+    // sendMessage throws synchronously when the extension has been
+    // reloaded since this tab was opened.
+    try {
+      chrome.runtime.sendMessage({
+        action: 'relay-to-tab',
+        payload: { action: tool.action },
+      }).catch(() => {});
+    } catch (_) { /* context invalidated */ }
   }
 
   // ── Dismiss / restore ────────────────────────────────────────────────────
