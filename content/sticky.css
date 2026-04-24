@@ -238,12 +238,20 @@ html.vellum-hidden .vellum-sticky-container {
   box-shadow: 0 0 0 1px rgba(245, 158, 11, 0.5);
 }
 
-/* ─── Vellum Toast — brand-consistent across all tools ─── */
+/* ─── Vellum Toast — brand-consistent across all tools ───
+   Animation matches the Home page toast (pages/sites.css .toast): slide up
+   20px + fade in on entrance, reverse on exit, both 0.2s. The .vellum-toast
+   -visible class is toggled by VellumUI.showToast (rAF on insert) and
+   VellumUI.dismissToast (removed, then element is removed after the
+   transition). Initial state below is the "off-screen" state so the
+   element animates in cleanly on its first paint. */
 .vellum-toast {
   position: fixed;
   bottom: 96px;
   left: 50%;
-  transform: translateX(-50%);
+  transform: translateX(-50%) translateY(20px);
+  opacity: 0;
+  transition: opacity 0.2s ease, transform 0.2s ease;
   z-index: 2147483647;
   display: flex;
   align-items: stretch;
@@ -255,8 +263,14 @@ html.vellum-hidden .vellum-sticky-container {
   border: 1px solid rgba(124, 58, 237, 0.3);
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(124, 58, 237, 0.08);
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-  transition: opacity 0.3s;
   white-space: nowrap;
+  pointer-events: none;
+}
+
+.vellum-toast-visible {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+  pointer-events: auto;
 }
 
 /* V logo chip — matches the popup brand monogram exactly */
