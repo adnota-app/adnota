@@ -414,7 +414,7 @@ function setHudVisible(visible) {
   if (visible) {
     window.VellumDock.mount('eraser', () => eraserBody);
   } else {
-    window.VellumDock.unmount();
+    window.VellumDock.unmount('eraser');
   }
 }
 

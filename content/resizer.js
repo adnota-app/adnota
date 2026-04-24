@@ -42,46 +42,11 @@ hoverOverlay.appendChild(dimensionBadge);
 // Mirrors the eraser HUD but tinted with the resizer's blue accent. Persistent
 // chrome (drag handle + logo + info + trash + undo) so trash/undo stay reachable
 // even when nothing is hovered or selected.
-const resizerHud = document.createElement('div');
-resizerHud.id = 'vellum-resizer-hud';
-resizerHud.setAttribute('data-vellum-ui', '1');
-Object.assign(resizerHud.style, {
-  position: 'fixed',
-  bottom: '20px',
-  left: '50%',
-  transform: 'translateX(-50%)',
-  background: 'rgba(15, 15, 15, 0.92)',
-  backdropFilter: 'blur(8px)',
-  color: '#e4e4e7',
-  fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
-  fontSize: '12.5px',
-  lineHeight: '1',
-  padding: '6px 10px',
-  borderRadius: '10px',
-  border: '1px solid rgba(59, 130, 246, 0.45)',
-  boxShadow: '0 4px 24px rgba(0,0,0,0.5)',
-  zIndex: '2147483646',
-  pointerEvents: 'auto',
-  display: 'none',
-  alignItems: 'center',
-  whiteSpace: 'nowrap',
-  opacity: '0',
-  transition: 'opacity 0.15s ease',
-});
-document.documentElement.appendChild(resizerHud);
-
-// Drag handle
-const resizerDragHandle = document.createElement('span');
-resizerDragHandle.className = 'vellum-toolbar-drag';
-resizerDragHandle.textContent = '\u2847';
-resizerDragHandle.setAttribute('data-tooltip', 'Drag to reposition');
-resizerHud.appendChild(resizerDragHandle);
-
-// Logo chip — tinted blue to match the tool's accent.
-const resizerLogo = document.createElement('span');
-resizerLogo.className = 'vellum-toolbar-logo vellum-toolbar-logo-blue';
-resizerLogo.textContent = 'V';
-resizerHud.appendChild(resizerLogo);
+// Dock body — mounted into VellumDock when resizer mode is active. The dock
+// owns drag handle + V logo + radial; we own the info span + trash + undo.
+const resizerBody = document.createElement('div');
+resizerBody.style.display = 'inline-flex';
+resizerBody.style.alignItems = 'center';
 
 // Info section (dynamic — updated on hover / selection)
 const resizerHudInfo = document.createElement('span');
@@ -89,22 +54,20 @@ resizerHudInfo.id = 'vellum-resizer-hud-info';
 resizerHudInfo.style.display = 'inline-flex';
 resizerHudInfo.style.alignItems = 'center';
 resizerHudInfo.style.minWidth = '220px';
-resizerHud.appendChild(resizerHudInfo);
+resizerBody.appendChild(resizerHudInfo);
 
 // Divider
-resizerHud.appendChild(Object.assign(document.createElement('div'), { className: 'vellum-toolbar-divider vellum-toolbar-divider-blue' }));
+resizerBody.appendChild(Object.assign(document.createElement('div'), { className: 'vellum-toolbar-divider vellum-toolbar-divider-blue' }));
 
 // Trash — clears all resize rules on this page
-resizerHud.appendChild(window.VellumUI.createTrashButton({
+resizerBody.appendChild(window.VellumUI.createTrashButton({
   singular: 'resize',
   plural: 'resizes',
   actionTypes: ['RESIZE'],
 }));
 
 // Undo
-resizerHud.appendChild(window.VellumUI.createUndoButton());
-
-window.VellumUI.makeDraggable(resizerHud, resizerDragHandle);
+resizerBody.appendChild(window.VellumUI.createUndoButton());
 
 // ─── Rotating help tips (idle state) ───────────────────────────────────────
 const hudTips = [
@@ -137,21 +100,14 @@ function ensureTipRotation() {
   }, 4000);
 }
 
-function resetHudPosition() {
-  resizerHud.style.left = '50%';
-  resizerHud.style.top = '';
-  resizerHud.style.bottom = '32px';
-  resizerHud.style.transform = 'translateX(-50%)';
-}
-
+let resizerDockMounted = false;
 function setHudVisible(visible) {
-  if (visible) {
-    resizerHud.style.display = 'flex';
-    resizerHud.offsetHeight; // force reflow
-    resizerHud.style.opacity = '1';
-  } else {
-    resizerHud.style.display = 'none';
-    resizerHud.style.opacity = '0';
+  if (visible && !resizerDockMounted) {
+    window.VellumDock.mount('resizer', () => resizerBody);
+    resizerDockMounted = true;
+  } else if (!visible && resizerDockMounted) {
+    window.VellumDock.unmount('resizer');
+    resizerDockMounted = false;
   }
 }
 
@@ -759,7 +715,6 @@ window.VellumState.subscribe((state) => {
     deselectElement();
     setHudVisible(false);
     stopHudTips();
-    resetHudPosition();
     hudTipIndex = 0;
   }
 });

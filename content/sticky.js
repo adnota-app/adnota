@@ -94,30 +94,11 @@ window.VellumSticky = { applyCursor: applyStickyCursor };
 // Sticky HUD Toolbar — frosted glass bar, matches marker/eraser aesthetic
 // ---------------------------------------------------------------------------
 
-const stickyToolbar = document.createElement('div');
-stickyToolbar.id = 'vellum-sticky-toolbar';
-stickyToolbar.setAttribute('data-vellum-ui', '1');
-stickyToolbar.style.display = 'none';
-stickyToolbar.style.bottom = '32px';
-stickyToolbar.style.left = '50%';
-stickyToolbar.style.transform = 'translateX(-50%)';
-document.documentElement.appendChild(stickyToolbar);
-
-// Drag handle (namespaced to avoid collision with highlighter.js)
-const stickyDragHandle = document.createElement('span');
-stickyDragHandle.className = 'vellum-toolbar-drag';
-stickyDragHandle.textContent = '\u2847';
-stickyDragHandle.setAttribute('data-tooltip', 'Drag to reposition');
-stickyToolbar.appendChild(stickyDragHandle);
-
-// Logo chip
-const stickyLogoChip = document.createElement('span');
-stickyLogoChip.className = 'vellum-toolbar-logo vellum-toolbar-logo-orange';
-stickyLogoChip.textContent = 'V';
-stickyToolbar.appendChild(stickyLogoChip);
-
-// Divider
-stickyToolbar.appendChild(Object.assign(document.createElement('div'), { className: 'vellum-toolbar-divider vellum-toolbar-divider-orange' }));
+// Dock body \u2014 mounts into VellumDock when sticky mode is active. The dock
+// owns the drag handle + V logo + radial; we own swatches + trash + undo.
+const stickyBody = document.createElement('div');
+stickyBody.style.display = 'inline-flex';
+stickyBody.style.alignItems = 'center';
 
 // Color swatches — mini sticky note icons instead of plain circles
 const stickySwatches = {};
@@ -137,7 +118,7 @@ for (const [themeClass, info] of Object.entries(STICKY_THEMES)) {
     if (window.VellumState.mode === 'sticky') applyStickyCursor();
   };
   stickySwatches[themeClass] = swatch;
-  stickyToolbar.appendChild(swatch);
+  stickyBody.appendChild(swatch);
 }
 
 function updateStickySwatches() {
@@ -148,7 +129,7 @@ function updateStickySwatches() {
 updateStickySwatches();
 
 // Divider
-stickyToolbar.appendChild(Object.assign(document.createElement('div'), { className: 'vellum-toolbar-divider vellum-toolbar-divider-orange' }));
+stickyBody.appendChild(Object.assign(document.createElement('div'), { className: 'vellum-toolbar-divider vellum-toolbar-divider-orange' }));
 
 // Trash — clears all sticky notes on this page
 const stickyTrashBtn = window.VellumUI.createTrashButton({
@@ -157,15 +138,12 @@ const stickyTrashBtn = window.VellumUI.createTrashButton({
   actionTypes: ['NOTE'],
 });
 stickyTrashBtn.classList.add('vellum-undo-btn-orange');
-stickyToolbar.appendChild(stickyTrashBtn);
+stickyBody.appendChild(stickyTrashBtn);
 
 // Undo
 const stickyUndoBtn = window.VellumUI.createUndoButton();
 stickyUndoBtn.classList.add('vellum-undo-btn-orange');
-stickyToolbar.appendChild(stickyUndoBtn);
-
-// Make toolbar draggable
-window.VellumUI.makeDraggable(stickyToolbar, stickyDragHandle);
+stickyBody.appendChild(stickyUndoBtn);
 
 // ---------------------------------------------------------------------------
 // Keyboard / message routing
@@ -177,19 +155,18 @@ chrome.runtime.onMessage.addListener((request) => {
   }
 });
 
-// React to VellumState changes — show/hide toolbar, update cursor.
+// React to VellumState changes — mount/unmount dock body.
+let stickyDockMounted = false;
 window.VellumState.subscribe(state => {
   document.body.classList.toggle('vellum-sticky-active', state.mode === 'sticky');
 
-  const showToolbar = state.mode === 'sticky';
-  stickyToolbar.style.display = showToolbar ? 'flex' : 'none';
-
-  // Reset toolbar position when hidden
-  if (!showToolbar) {
-    stickyToolbar.style.left = '50%';
-    stickyToolbar.style.top = '';
-    stickyToolbar.style.bottom = '32px';
-    stickyToolbar.style.transform = 'translateX(-50%)';
+  const isSticky = state.mode === 'sticky';
+  if (isSticky && !stickyDockMounted) {
+    window.VellumDock.mount('sticky', () => stickyBody);
+    stickyDockMounted = true;
+  } else if (!isSticky && stickyDockMounted) {
+    window.VellumDock.unmount('sticky');
+    stickyDockMounted = false;
   }
 });
 

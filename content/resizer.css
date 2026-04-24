@@ -112,25 +112,16 @@
   background: transparent;
 }
 
-/* ─── HUD blue accents ────────────────────────────────────────────────────── */
-/* The shared .vellum-toolbar-logo and .vellum-toolbar-divider ship with a
-   purple tint (matched to the drawing palette). These modifiers recolor them
-   for the resizer's blue accent so the HUD reads as its own tool. */
-
-.vellum-toolbar-logo-blue {
-  background: rgba(59, 130, 246, 0.35);
-  color: #93c5fd;
-}
-
+/* Recolor the shared divider for the resizer's blue accent. */
 .vellum-toolbar-divider-blue {
   background: rgba(59, 130, 246, 0.25);
 }
 
 /* Scope the hover tint of the shared .vellum-undo-btn (trash + undo) to the
-   resizer's blue so they match the rest of the HUD chrome. */
-#vellum-resizer-hud .vellum-undo-btn:hover {
+   resizer's blue when the dock is in resizer mode. */
+#vellum-dock[data-accent="resizer"] .vellum-undo-btn:hover {
   background: rgba(59, 130, 246, 0.15);
 }
-#vellum-resizer-hud .vellum-undo-btn:hover svg {
+#vellum-dock[data-accent="resizer"] .vellum-undo-btn:hover svg {
   stroke: #93c5fd;
 }
