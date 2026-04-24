@@ -24,7 +24,7 @@ Adnota: Annotate the web.
 MV3 manifest. Permissions: `storage`, `activeTab`, `scripting`, `tabs`. Host permissions: `*://*/*`. Declares keyboard commands for all four tools (Alt+E, Alt+S, Alt+H, Alt+V). Declares `web_accessible_resources` for the `pages/` directory (Sites history page).
 
 #### `background.js`
-Minimal service worker. Routes keyboard command events from the browser to the active tab's content scripts via `chrome.tabs.sendMessage`. Also relays messages from the radial quick-access menu (content scripts can't `sendMessage` to their own tab): `open-sites` and `relay-to-tab`.
+Minimal service worker. Routes keyboard command events from the browser to the active tab's content scripts via `chrome.tabs.sendMessage`. Also relays messages from the dock (content scripts can't `sendMessage` to their own tab): `open-sites` and `relay-to-tab`.
 
 ---
 
@@ -217,21 +217,19 @@ Premium dark-header popup (360px wide). Features:
 - **My Edited Sites** button in footer (purple outline) — opens the Sites history page
 - **Clear All Page Edits** button in footer (red outline)
 
-#### `content/radialMenu.js` + `content/radialMenu.css` — Radial Quick-Access Menu
-Animated floating widget (fixed bottom-left) that provides one-click access to all tools without opening the popup:
-- **Center button**: branded "V" monogram circle (34px, frosted dark glass matching HUD aesthetic) — hover or click to expand
-- **Six satellite buttons** fan out in a radial arc (−40° to 120°, 58px radius) with staggered spring animation:
-  - **Show / Hide All** (purple) — toggles annotation visibility, icon swaps between eye/eye-off
-  - **Eraser** (red) — toggles eraser mode
-  - **Sticky Note** (amber) — toggles sticky note mode
-  - **Drawing Palette** (purple) — toggles highlighter/marker toolbar
-  - **Resizer** (blue) — toggles resizer mode
-  - **My Edited Sites** (green) — opens the Sites history page in a new tab
-- **Active tool sync**: satellite borders glow with their accent color when the corresponding tool is active, synced via `VellumState.subscribe()` and `storage.onChanged`
-- **Collapse behavior**: clicking any satellite collapses immediately; mousing away auto-collapses after 1.5s with reverse-staggered animation
-- **Tooltips**: appear to the right on satellite hover
-- Invisible circular hit-zone prevents accidental collapse when moving between buttons
-- All elements marked `data-vellum-ui` so eraser/resizer ignore them
+#### `content/dock.js` + `content/dock.css` — The Vellum Dock
+One persistent floating widget (fixed, bottom-center, draggable) that is the only Vellum chrome on the page. Two visual states, toggled by which tool (if any) is active:
+- **Idle**: `[drag][V][eraser][sticky][marker][resizer][vis]` — always-visible tool row, one click away. At `opacity: 0.55` so it stays out of the way.
+- **Active**: `[drag][← back (tinted)][tool's HUD body]` — tool row collapses, V morphs into an accent-colored back arrow, the tool's own controls fill the body slot.
+- **Back arrow / Escape / clicking the active tool again** all exit the tool and return to idle.
+- **V logo** opens the Sites history page in a new tab.
+- **Dismiss X** (red circle, reuses `.vellum-select-delete` styling) fades in on hover when idle — click to hide the dock for the current page. Any tool activation (popup, keyboard shortcut) or reload restores it. Session-only, never persisted.
+- **Drag anywhere** on the dock to reposition. 4px threshold distinguishes drag from click; saved position persists to `chrome.storage.local.vellumDockPosition` and survives reloads.
+- **Position flash prevention**: `visibility: hidden` until JS has read the saved position and added `.vellum-dock-ready`, so a repositioned dock never blinks at the default center on page load.
+- **Print hide**: `@media print { #vellum-dock { display: none !important; } }` — Ctrl+P never includes the dock.
+- **Per-tool accent** (`data-accent` attribute set on mount): back arrow + dock border both pick up the active tool's color (red / amber / purple / blue).
+- **Public API**: tools mount their body via `VellumDock.mount(toolId, buildBodyFn)` on mode entry and `VellumDock.unmount(toolId)` on exit. The `toolId` on unmount guards against cross-tool races where the outgoing tool's subscriber would clear the body the incoming tool just installed.
+- All elements marked `data-vellum-ui` so eraser/resizer ignore them.
 
 #### `pages/sites.html` + `pages/sites.js` + `pages/sites.css`
 Dedicated extension page (opened as a new tab via `chrome.runtime.getURL`). Aggregates all `chrome.storage.local` data and renders a browseable history of every site Vellum has touched:

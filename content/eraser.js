@@ -24,7 +24,7 @@ Object.assign(dimensionBadge.style, {
 highlightOverlay.appendChild(dimensionBadge);
 
 // ─── HUD body (mounts into the unified VellumDock on activation) ───────────
-// The dock owns the chrome (drag handle, V logo, radial menu, position).
+// The dock owns the chrome (drag handle, V logo, tool row, position).
 // The eraser owns its controls — info strip + trash + undo — built once
 // and mounted into the dock body slot when the tool is active.
 const eraserBody = document.createElement('div');
@@ -621,7 +621,7 @@ document.addEventListener('mousemove', (e) => {
     return;
   }
 
-  // When cursor is over Vellum UI (radial menu, HUD, etc.), hide the hover
+  // When cursor is over Vellum UI (dock, HUD, etc.), hide the hover
   // overlay so our own controls aren't visually framed as erase targets.
   if (isVellumElement(raw)) {
     hoveredElement = null;

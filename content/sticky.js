@@ -95,7 +95,7 @@ window.VellumSticky = { applyCursor: applyStickyCursor };
 // ---------------------------------------------------------------------------
 
 // Dock body \u2014 mounts into VellumDock when sticky mode is active. The dock
-// owns the drag handle + V logo + radial; we own swatches + trash + undo.
+// owns the drag handle + V logo + tool row; we own swatches + trash + undo.
 const stickyBody = document.createElement('div');
 stickyBody.style.display = 'inline-flex';
 stickyBody.style.alignItems = 'center';
@@ -236,7 +236,7 @@ async function createStickyAt(clientX, clientY, { targetEl = null, theme = null 
 document.addEventListener('click', async (e) => {
   if (window.VellumState.mode !== 'sticky') return;
 
-  // Don't fire through any Vellum UI (toolbar, existing notes, toasts, radial menu, etc.)
+  // Don't fire through any Vellum UI (dock, existing notes, toasts, etc.)
   if (window.VellumUI.isVellumElement(e.target)) return;
 
   e.preventDefault();

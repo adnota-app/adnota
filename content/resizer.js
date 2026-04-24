@@ -43,7 +43,7 @@ hoverOverlay.appendChild(dimensionBadge);
 // chrome (drag handle + logo + info + trash + undo) so trash/undo stay reachable
 // even when nothing is hovered or selected.
 // Dock body — mounted into VellumDock when resizer mode is active. The dock
-// owns drag handle + V logo + radial; we own the info span + trash + undo.
+// owns drag handle + V logo + tool row; we own the info span + trash + undo.
 const resizerBody = document.createElement('div');
 resizerBody.style.display = 'inline-flex';
 resizerBody.style.alignItems = 'center';

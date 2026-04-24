@@ -86,7 +86,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // Visibility is ephemeral (not persisted). Content scripts broadcast
   // 'visibility-changed' via chrome.runtime on every toggle/show; catch it
-  // here so the popup icon stays in sync with Alt+V and the radial menu.
+  // here so the popup icon stays in sync with Alt+V and the dock's eye button.
   chrome.runtime.onMessage.addListener((msg) => {
     if (msg?.action === 'visibility-changed') {
       setVisibilityBtn(!!msg.hidden);
