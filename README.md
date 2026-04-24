@@ -23,7 +23,7 @@ My read on the product North Star: Vellum today is "make any webpage yours" (des
 ### Extension Shell
 
 #### `manifest.json`
-MV3 manifest. Permissions: `storage`, `activeTab`, `scripting`, `tabs`. Host permissions: `*://*/*`. Declares keyboard commands for all four tools (Alt+E, Alt+S, Alt+H, Alt+V). Declares `web_accessible_resources` for the `pages/` directory (Sites history page).
+MV3 manifest. Permissions: `storage`, `activeTab`, `scripting`, `tabs`. Host permissions: `*://*/*`. Declares keyboard commands for all four tools (Alt+E, Alt+S, Alt+H, Alt+V). Declares `web_accessible_resources` for the `pages/` directory (Sites history page). Content scripts inject `lib/storage.js`, `lib/annotationState.js`, `lib/vellumUI.js`, `lib/tagIndex.js`, then the content modules in dependency order.
 
 #### `background.js`
 Minimal service worker. Routes keyboard command events from the browser to the active tab's content scripts via `chrome.tabs.sendMessage`. Also relays messages from the dock (content scripts can't `sendMessage` to their own tab): `open-sites` and `relay-to-tab`.
@@ -39,6 +39,7 @@ Wrapper around `chrome.storage.local`. All data is keyed by `hostname`, and each
 - `anchor`: nested object containing all FuzzyAnchor signals (cssSelector, tagName, textFingerprint, attributes, structure, geometry) — present on ERASE, HIGHLIGHT, MARKER, and NOTE (for hybrid anchor placement)
 - `timestamp` / `createdAt` / `updatedAt` as appropriate per action type
 - FuzzyAnchor fields for restoration
+- `tag`: optional user-supplied string, NOTE and HIGHLIGHT only. Normalized on write (trim + collapse interior whitespace, 40-char cap). Field is omitted entirely when empty so the untagged path leaves no empty-string debris in storage.
 
 Methods: `saveItem`, `saveNote` (generic upsert-by-uuid — caller passes full payload), `deleteItem`, `getAnchorsForUrl`, `clearPage`.
 
@@ -59,6 +60,13 @@ Shared UI utilities that prevent duplication across content scripts.
 **Shared HUD button helpers**: `createToolbarIconButton`, `createUndoButton`, and `createTrashButton` produce the dark-frosted `vellum-undo-btn`-styled controls used across every HUD. `softDeleteItems({singular, plural, actionTypes})` is the single implementation behind every bulk trash action (popup stat cards, popup "Clear All," and HUD trash buttons): it snapshots matching items by ID, removes them from storage, hides them from the DOM, and shows a 5-second toast with Undo. Undo re-writes storage and re-renders in place; Ctrl+Z also pops the batch off `VellumUndo`.
 
 **Shared DOM-walk helpers**: `bubbleToVisualRoot(el, opts)` walks up parents whose bounding box matches `el` within a small tolerance — the "visually-identical wrapper" climb used by both the eraser and resizer so a hover/click on an inner element lands on the outer container users almost always actually mean. `dominatesViewport(rect, threshold)` guards the walk (and the eraser's better-target nudge) against ever promoting to a page-level container.
+
+#### `lib/tagIndex.js` — `window.VellumTags`
+Single source of truth for the optional tag layer on NOTE and HIGHLIGHT items. Consumed by the sticky note tag input, the quick-highlight popup tag input, and the Sites page filter chip row.
+
+- `normalize(raw)` — trims, collapses interior whitespace, caps at 40 chars. Used everywhere a tag is read or written so "legos", "Legos ", and "  LEGOS  " never coexist in storage.
+- `getAllTags()` — async; reads all storage, flattens `items[]`, returns `[{ tag, count }]` sorted by count desc then alphabetically. No caching (single read per tag-input focus; bounded by the 10 MB storage cap).
+- `buildAutocompleteDropdown(inputEl, { onPick })` — attaches a dropdown under an input: prefix+substring match against existing tags, keyboard nav (Arrow↑/↓/Enter/Escape), mousedown-pick (so blur doesn't hide before the click lands). Dropdown is appended to `<body>` with `position: fixed !important` + max z-index so it escapes every parent stacking context and host-site CSS bleed. Styling lives in `lib/vellumUI.css` under `.vellum-tag-suggest*`.
 
 ---
 
@@ -114,6 +122,7 @@ Also exposes `generateCSSSelector(el)` as a shared utility (used by the resizer)
 - Delete: instant visual hide + 5s undo window before storage commit
 - `Alt+V` toggles note visibility via the shared `VellumVisibility` controller (see below)
 - Smart Z-index elevation on focus
+- **Tag row**: thin bar at the bottom of each note card (below the textarea, symmetric with the 28px header) holding a `#` glyph and a text input. Optional — leave it blank and the note stores no `tag` field. Focusing the input opens the `VellumTags` autocomplete dropdown; writes ride through the same `saveNote` merge path as the textarea and drag/resize persist, so the tag is never lost on reload
 
 #### `content/highlighter.js` — `window.VellumHighlighter`
 - Activated via popup or `Alt+H`
@@ -188,11 +197,13 @@ Also exposes `generateCSSSelector(el)` as a shared utility (used by the resizer)
 
 #### `content/quickHighlight.js`
 - Medium-style contextual popup that appears above any non-empty text selection after a ~400 ms dwell — independent of the Alt+H highlight mode
-- Single-purpose: a Vellum "V" brand chip on the left (so it's visually distinct from the host site's own toolbar) followed by the five color swatches; clicking one applies the highlight and dismisses the popup
-- Each new selection re-prompts — colors are not "sticky" between highlights; the user picks per-action
-- Dismisses on: selection collapse, `Escape`, scroll, resize, click-away, or `Ctrl/Cmd+C` (copy is never intercepted — the popup just gets out of the way)
+- **Two-row layout**. Row 1: Vellum "V" brand chip (visually distinct from the host site's own toolbar) → five color swatches → session-dismiss `✕`. Row 2: an optional tag input (`#` glyph + text field). Clicking a swatch reads the current tag value and forwards it to `VellumHighlighter.createHighlightFromRange(range, color, tag)` so the created HIGHLIGHT carries the tag; leaving the input blank preserves the original one-tap flow
+- Each new selection re-prompts — colors and tag are not "sticky" between highlights; the user picks per-action. The tag input clears on every `hidePopup`
+- **Selection preservation**: clicking into the tag input collapses the browser's live text selection. To work around this, the popup caches a clone of the selection range at show-time; `applyHighlight()` prefers the live selection but falls back to the cached range. The `selectionchange` hide is also suppressed while the tag input has focus
+- Tag autocomplete is wired via `VellumTags.buildAutocompleteDropdown`. The dropdown lives outside the popup (appended to `<body>` with `position: fixed`), so the outside-click hide-handler has an explicit bypass for `.vellum-tag-suggest`
+- Dismisses on: selection collapse (except during tag-input focus), `Escape`, scroll, resize, click-away, or `Ctrl/Cmd+C` (copy is never intercepted — the popup just gets out of the way)
 - Skips editable contexts (`input`, `textarea`, `contenteditable`) and any selection inside a Vellum UI element
-- Suppressed while `VellumState.mode === 'highlight'` so it doesn't double up with the classic auto-apply mouseup
+- Suppressed while `VellumState.mode === 'highlight'` so it doesn't double up with the classic auto-apply mouseup. The Alt+H auto-apply path itself does **not** read a tag — it stays a zero-UI fast path. Tagging a highlight created that way is deferred to v2 (Select-tool integration or Home-page retrofit)
 - Reuses `VellumHighlighter.createHighlightFromRange()` — no duplicate save/undo logic
 - Feature-gated by `chrome.storage.local.vellumQuickHighlightEnabled` (default `true`); a future toggle UI can flip this without touching the content script
 
@@ -241,6 +252,7 @@ Dedicated extension page (opened as a new tab via `chrome.runtime.getURL`). Aggr
 - **Visit button**: opens the most recently edited page for that domain
 - **Delete-domain button**: red trash icon next to Visit wipes every edit for that hostname in one confirmation step (uses the shared branded confirmDialog)
 - **Search + Sort**: real-time filter by hostname; sort by Most Recent / A→Z / Most Edits
+- **Tag filter chip row**: sticky row below the header holding an `All` chip plus one chip per unique tag (from `VellumTags.getAllTags()`). Hidden entirely when no tagged items exist, so untagged users see the original UI. Chips are sorted by count descending with alphabetical tiebreak, each carrying a `#tag count` pill. Clicking a chip toggles the active filter: domain cards and drawer rows are filtered to only items carrying that tag, and a purple `#tag · N` pill is appended to the matching cards and page rows so the match is visible in place. Active-tag state is mirrored to the URL hash (`#tag=foo`) so filters survive reloads and are shareable; a `hashchange` listener keeps the view in sync with back/forward navigation. If the active tag disappears (last item with that tag deleted), the filter auto-clears on next render
 - **Live updates**: `storage.onChanged` listener refreshes the view automatically
 - **Summary bar**: total sites, total edits, total pages at a glance
 - **Storage meter**: live `chrome.storage.local.getBytesInUse(null)` reading against `QUOTA_BYTES` (10 MB on MV3). Shows `X.XX MB / 10 MB · N%` with a gradient progress bar that turns amber at ≥80% and red at ≥95% so users can self-manage before hitting the cap
