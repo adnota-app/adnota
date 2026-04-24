@@ -194,6 +194,72 @@ claude design has cool take on this:
 
 
 
+
+
+
+
+
+-----
+
+  2. Killing the select tool entirely — bigger, and it has one real obstacle.   
+   
+  Why clicking-anywhere-to-select isn't free today                              
+                  
+  Marker wrappers live on top of page content with pointer-events: none         
+  (content/marker.js:1321). That's deliberate — a pen stroke scribbled across an
+   article paragraph must not block the user from clicking links underneath. The
+   select tool "turns on" pointer events only while the mode is active (line
+  1322). So "always selectable" means removing that shield, which means a
+  freehand stroke over body text steals clicks from the page.
+
+  Stickies and the dock don't hit this because they're solid cards — you already
+   don't want to click through them. Paint objects are the hard case, and
+  they're the reason the select tool exists as a mode.                          
+                  
+  The workable path, if you want to pursue this                                 
+   
+  Keep pointer-events: none on shapes, but run the select handlers              
+  unconditionally at the document level (they already use geometric
+  isPointNearShape hit-testing, not DOM hit-testing — so wrapper pointer-events 
+  don't matter). Then gate "steal this click for selection" on:
+  - pointer is within a tight proximity (say 4–6px of the actual stroke path,
+  not just the bbox)                                                            
+  - AND the element under the pointer is not interactive (a, button, input,
+  [contenteditable], form fields)                                               
+  - AND no paint tool is currently active (pen/arrow/rect/etc. still own their  
+  clicks for drawing)                                                         
+                                                                                
+  If those hold, select. Otherwise fall through. Stickies and text boxes are
+  always selectable since they're opaque anyway. Select tool goes away, dock    
+  gets one fewer button.
+                                                                                
+  Concerns        
+
+  - Drag-to-move on pen mode: if you're drawing and your first pointerdown      
+  happens to be 3px from an existing stroke, does it drag or draw? Need the rule
+   "active paint tool always wins."                                             
+  - Tiny markers: an 8px arrow in the corner of a dense page would fight for
+  every click. Proximity threshold needs to scale down for small shapes.        
+  - Discoverability of the affordance: without a dedicated mode, how does the
+  user know a pen stroke is draggable? Cursor change on hover (already in place 
+  for select mode via html.vellum-select-mode) would need to become always-on
+  for Vellum elements — which is fine, just more CSS.                           
+                  
+  My take
+
+  Do (1) this week — it's the inconsistency you're actually running into. Then  
+  try (2) behind a one-liner feature flag; if the proximity+interactive-guard
+  rule feels good on a dense page like a news article, delete the select tool.  
+  If it feels janky (accidental selects on content, fights with page clicks),
+  the select tool earned its keep.
+
+-----
+
+
+
+
+
+
 HMMMM...:
 
   Why HN showed a broken link: Not a Sites-page bug — it's baked into storage.  
