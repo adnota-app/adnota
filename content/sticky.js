@@ -207,12 +207,12 @@ async function createStickyAt(clientX, clientY, { targetEl = null, theme = null 
   const comments = [{ text: '', author: 'Me', createdAt: Date.now() }];
   const resolvedTheme = theme || activeStickyColor;
 
-  window.StickyEngine.renderNote(placement, comments, uuid, true, null, resolvedTheme, anchor, anchorOffset);
+  window.StickyEngine.renderNote(placement, comments, uuid, true, null, resolvedTheme, anchor, anchorOffset, '');
 
   if (window.VellumStorage) {
     await window.VellumStorage.saveNote(
       location.hostname, location.pathname, uuid,
-      { placement, comments, theme: resolvedTheme, anchor, anchorOffset }
+      { placement, comments, theme: resolvedTheme, anchor, anchorOffset, tag: '' }
     );
   }
 
@@ -314,7 +314,7 @@ window.StickyEngine = {
    * @param {object}  anchor        FuzzyAnchor data or null
    * @param {object}  anchorOffset  { dx, dy } pixel offset from anchor element
    */
-  renderNote(placement, comments, uuid, isNew = false, dimensions = null, theme = 'vellum-theme-yellow', anchor = null, anchorOffset = null) {
+  renderNote(placement, comments, uuid, isNew = false, dimensions = null, theme = 'vellum-theme-yellow', anchor = null, anchorOffset = null, tag = '') {
     // Guard duplicate renders.
     if (document.querySelector(`.vellum-sticky-container[data-uuid="${uuid}"]`)) return;
 
@@ -340,6 +340,10 @@ window.StickyEngine = {
           </button>
         </div>
         <textarea class="vellum-sticky-textarea" placeholder="Take a note...">${initialText}</textarea>
+        <div class="vellum-sticky-tag-row" data-vellum-ui="1">
+          <span class="vellum-sticky-tag-icon">#</span>
+          <input class="vellum-sticky-tag-input" type="text" placeholder="tag" maxlength="40" />
+        </div>
       </div>
     `;
 
@@ -361,8 +365,14 @@ window.StickyEngine = {
       anchor: anchor || null,
       anchorOffset: anchorOffset || null,
       theme: theme || 'vellum-theme-yellow',
+      tag: window.VellumTags ? window.VellumTags.normalize(tag) : (tag || ''),
     };
     activeNotes.set(uuid, noteState);
+
+    // Preload tag into the input — using .value rather than template
+    // interpolation so we don't have to escape HTML into an attribute.
+    const tagInput = container.querySelector('.vellum-sticky-tag-input');
+    if (tagInput) tagInput.value = noteState.tag;
 
     this.updatePosition(uuid);
 
@@ -380,7 +390,7 @@ window.StickyEngine = {
           const savedDimensions = { width: Math.round(width), height: Math.round(height) };
           await window.VellumStorage.saveNote(
             location.hostname, location.pathname, uuid,
-            { placement: noteState.placement, comments, theme: noteState.theme, anchor: noteState.anchor, anchorOffset: noteState.anchorOffset, dimensions: savedDimensions }
+            { placement: noteState.placement, comments, theme: noteState.theme, anchor: noteState.anchor, anchorOffset: noteState.anchorOffset, dimensions: savedDimensions, tag: noteState.tag }
           );
         }, DEBOUNCE_MS);
       }
@@ -475,7 +485,7 @@ window.StickyEngine = {
       if (window.VellumStorage) {
         await window.VellumStorage.saveNote(
           location.hostname, location.pathname, uuid,
-          { placement: updatedPlacement, comments, theme: noteState.theme, anchor: noteState.anchor, anchorOffset: noteState.anchorOffset }
+          { placement: updatedPlacement, comments, theme: noteState.theme, anchor: noteState.anchor, anchorOffset: noteState.anchorOffset, tag: noteState.tag }
         );
       }
     });
@@ -492,10 +502,42 @@ window.StickyEngine = {
         comments[0].text = textarea.value;
         await window.VellumStorage.saveNote(
           location.hostname, location.pathname, uuid,
-          { placement: noteState.placement, comments, theme: noteState.theme, anchor: noteState.anchor, anchorOffset: noteState.anchorOffset }
+          { placement: noteState.placement, comments, theme: noteState.theme, anchor: noteState.anchor, anchorOffset: noteState.anchorOffset, tag: noteState.tag }
         );
       }, DEBOUNCE_MS);
     });
+
+    // ── Tag input: autocomplete + persist ───────────────────────────────────
+    // Tags ride through the same saveNote merge path as every other field; we
+    // keep a separate debounce timer so typing into the tag input doesn't
+    // interfere with (and isn't interfered by) the textarea autosave.
+    if (tagInput && window.VellumTags) {
+      window.VellumTags.buildAutocompleteDropdown(tagInput);
+
+      const commitTag = async () => {
+        if (!window.VellumStorage) return;
+        await window.VellumStorage.saveNote(
+          location.hostname, location.pathname, uuid,
+          { placement: noteState.placement, comments, theme: noteState.theme, anchor: noteState.anchor, anchorOffset: noteState.anchorOffset, tag: noteState.tag }
+        );
+      };
+
+      let tagSaveTimeout;
+      tagInput.addEventListener('input', () => {
+        noteState.tag = window.VellumTags.normalize(tagInput.value);
+        clearTimeout(tagSaveTimeout);
+        tagSaveTimeout = setTimeout(commitTag, DEBOUNCE_MS);
+      });
+      tagInput.addEventListener('blur', () => {
+        // Snap the displayed value to the normalized form (trim, collapse
+        // internal whitespace) so what the user sees matches what we stored.
+        const normalized = window.VellumTags.normalize(tagInput.value);
+        if (tagInput.value !== normalized) tagInput.value = normalized;
+        noteState.tag = normalized;
+        clearTimeout(tagSaveTimeout);
+        commitTag();
+      });
+    }
 
     // ── Delete with undo ─────────────────────────────────────────────────────
     const trashBtn = container.querySelector('.vellum-trash-btn');

@@ -22,6 +22,7 @@
   const storageMeter   = document.getElementById('storage-meter');
   const storageText    = document.getElementById('storage-text');
   const storageBarFill = document.getElementById('storage-bar-fill');
+  const tagFilterBar   = document.getElementById('tag-filter-bar');
   const toast          = document.getElementById('toast');
 
   // ─── Storage quota (MV3: 10MB; falls back to API value on older Chrome) ───
@@ -81,6 +82,14 @@
     return (hostname || '?')[0].toUpperCase();
   }
 
+  // Normalize a tag string; mirrors lib/tagIndex.js. Defined inline so the
+  // Sites page still works if tagIndex.js fails to load for any reason.
+  function normalizeTag(raw) {
+    if (window.VellumTags) return window.VellumTags.normalize(raw);
+    if (typeof raw !== 'string') return '';
+    return raw.trim().replace(/\s+/g, ' ').slice(0, 40);
+  }
+
   // ─── Load all storage and build domain-grouped model ──────────────────────
   async function loadSiteData() {
     const all = await chrome.storage.local.get(null); // pull everything
@@ -97,6 +106,7 @@
       // Group items by path (page)
       const pathMap = new Map();
       let latestTs = 0;
+      const tagCounts = {}; // tag → count of items with that tag on this domain
 
       for (const item of items) {
         const path = item.path || '/';
@@ -105,6 +115,9 @@
 
         const ts = item.updatedAt || item.createdAt || item.timestamp || 0;
         if (ts > latestTs) latestTs = ts;
+
+        const tag = normalizeTag(item.tag);
+        if (tag) tagCounts[tag] = (tagCounts[tag] || 0) + 1;
       }
 
       // Count action types per domain
@@ -127,10 +140,22 @@
         counts,
         pathMap,
         bytes,
+        tagCounts,
       });
     }
 
     return sites;
+  }
+
+  // Aggregate per-domain tag counts into a global map for the chip row.
+  function computeGlobalTagCounts(sites) {
+    const totals = {};
+    for (const s of sites) {
+      for (const [tag, n] of Object.entries(s.tagCounts || {})) {
+        totals[tag] = (totals[tag] || 0) + n;
+      }
+    }
+    return totals;
   }
 
   // ─── Build a pill element ─────────────────────────────────────────────────
@@ -244,6 +269,14 @@
       const p = makePill(type, counts[type]);
       if (p) pills.appendChild(p);
     }
+    // When a tag filter is active, surface the per-site match count so the
+    // user sees *why* this domain is in the filtered view.
+    if (activeTag && site.tagCounts?.[activeTag]) {
+      const tagPill = document.createElement('span');
+      tagPill.className = 'pill pill-tag';
+      tagPill.innerHTML = `<span class="pill-dot"></span>#${activeTag} · ${site.tagCounts[activeTag]}`;
+      pills.appendChild(tagPill);
+    }
     body.appendChild(pills);
 
     // Actions
@@ -351,16 +384,21 @@
     drawerLabel.textContent = 'Pages';
     drawerInner.appendChild(drawerLabel);
 
-    // Sort paths: '*' domain-wide last, then alphabetical
-    const sortedPaths = [...pathMap.keys()].sort((a, b) => {
-      if (a === '*') return 1;
-      if (b === '*') return -1;
-      return a.localeCompare(b);
-    });
+    // Sort paths: '*' domain-wide last, then alphabetical. When a tag filter
+    // is active, drop paths that have no matching tagged items so the drawer
+    // stays focused on what the user asked for.
+    const sortedPaths = [...pathMap.keys()]
+      .filter(path => !activeTag || tagMatchCount(pathMap.get(path)) > 0)
+      .sort((a, b) => {
+        if (a === '*') return 1;
+        if (b === '*') return -1;
+        return a.localeCompare(b);
+      });
 
     for (const path of sortedPaths) {
       const items = pathMap.get(path);
       const pageCounts = pageCountsFromItems(items);
+      const pageTagMatches = tagMatchCount(items);
 
       const row = document.createElement('div');
       row.className = 'page-row';
@@ -411,6 +449,12 @@
         const p = makePill(type, pageCounts[type]);
         if (p) pagePillsEl.appendChild(p);
       }
+      if (activeTag && pageTagMatches > 0) {
+        const tagPill = document.createElement('span');
+        tagPill.className = 'pill pill-tag';
+        tagPill.innerHTML = `<span class="pill-dot"></span>#${activeTag} · ${pageTagMatches}`;
+        pagePillsEl.appendChild(tagPill);
+      }
       row.appendChild(pagePillsEl);
 
       drawerInner.appendChild(row);
@@ -424,6 +468,82 @@
 
   // ─── Render ───────────────────────────────────────────────────────────────
   let allSites = [];
+  let globalTagCounts = {};
+  let activeTag = null; // null means "All" — no tag filter applied
+
+  // ── Tag filter URL hash plumbing ─────────────────────────────────────────
+  // Filter state survives reloads and can be shared as a link.
+  function readActiveTagFromHash() {
+    const m = /^#tag=(.+)$/.exec(location.hash || '');
+    if (!m) return null;
+    try { return decodeURIComponent(m[1]); } catch (err) { return null; }
+  }
+
+  function writeActiveTagToHash(tag) {
+    if (tag) {
+      const encoded = encodeURIComponent(tag);
+      if (location.hash !== `#tag=${encoded}`) {
+        history.replaceState(null, '', `${location.pathname}${location.search}#tag=${encoded}`);
+      }
+    } else if (location.hash) {
+      history.replaceState(null, '', `${location.pathname}${location.search}`);
+    }
+  }
+
+  function setActiveTag(tag) {
+    activeTag = tag || null;
+    writeActiveTagToHash(activeTag);
+    render();
+  }
+
+  function renderTagFilter() {
+    // Sort by usage count desc, ties broken alphabetically. Most-used tags
+    // first means the chip row stays useful even as tags proliferate — the
+    // high-signal entries stay visible before any horizontal scrolling.
+    const sortedTags = Object.keys(globalTagCounts).sort((a, b) =>
+      (globalTagCounts[b] - globalTagCounts[a]) || a.localeCompare(b)
+    );
+    if (sortedTags.length === 0) {
+      tagFilterBar.hidden = true;
+      tagFilterBar.innerHTML = '';
+      return;
+    }
+
+    tagFilterBar.hidden = false;
+    tagFilterBar.innerHTML = '';
+
+    const label = document.createElement('span');
+    label.className = 'tag-filter-label';
+    label.textContent = 'Filter';
+    tagFilterBar.appendChild(label);
+
+    const allChip = document.createElement('button');
+    allChip.type = 'button';
+    allChip.className = 'tag-chip' + (activeTag === null ? ' active' : '');
+    allChip.textContent = 'All';
+    allChip.addEventListener('click', () => setActiveTag(null));
+    tagFilterBar.appendChild(allChip);
+
+    for (const tag of sortedTags) {
+      const chip = document.createElement('button');
+      chip.type = 'button';
+      chip.className = 'tag-chip' + (activeTag === tag ? ' active' : '');
+      const hash = document.createElement('span');
+      hash.className = 'tag-chip-hash';
+      hash.textContent = '#';
+      const name = document.createElement('span');
+      name.className = 'tag-chip-name';
+      name.textContent = tag;
+      const count = document.createElement('span');
+      count.className = 'tag-chip-count';
+      count.textContent = globalTagCounts[tag];
+      chip.appendChild(hash);
+      chip.appendChild(name);
+      chip.appendChild(count);
+      chip.addEventListener('click', () => setActiveTag(activeTag === tag ? null : tag));
+      tagFilterBar.appendChild(chip);
+    }
+  }
 
   function sortSites(sites, order) {
     return [...sites].sort((a, b) => {
@@ -438,9 +558,25 @@
   }
 
   function filterSites(sites, query) {
-    if (!query) return sites;
-    const q = query.toLowerCase();
-    return sites.filter(s => s.hostname.toLowerCase().includes(q));
+    let result = sites;
+    if (activeTag) {
+      result = result.filter(s => (s.tagCounts?.[activeTag] || 0) > 0);
+    }
+    if (query) {
+      const q = query.toLowerCase();
+      result = result.filter(s => s.hostname.toLowerCase().includes(q));
+    }
+    return result;
+  }
+
+  // Count items tagged with `activeTag` on a specific page (array of items).
+  function tagMatchCount(items) {
+    if (!activeTag) return 0;
+    let n = 0;
+    for (const it of items) {
+      if (normalizeTag(it.tag) === activeTag) n++;
+    }
+    return n;
   }
 
   function updateSummary(sites) {
@@ -455,6 +591,16 @@
   }
 
   function render() {
+    // Recompute the global tag index before painting — storage may have
+    // changed (a fresh load, a delete, a new tagged item) since last render.
+    globalTagCounts = computeGlobalTagCounts(allSites);
+    // Reset activeTag if the user's chosen tag no longer exists anywhere.
+    if (activeTag && !globalTagCounts[activeTag]) {
+      activeTag = null;
+      writeActiveTagToHash(null);
+    }
+    renderTagFilter();
+
     const query   = searchInput.value.trim();
     const order   = sortSelect.value;
     const filtered = filterSites(sortSites(allSites, order), query);
@@ -494,10 +640,22 @@
     allSites = [];
   }
 
+  activeTag = readActiveTagFromHash();
   stateLoading.hidden = true;
   updateSummary(allSites);
   updateStorageMeter();
   render();
+
+  // Hash changes (e.g. user edits the URL or hits Back/Forward) resync the
+  // active tag filter. Guarded so we don't re-render when we wrote the hash
+  // ourselves to reflect an in-page chip click.
+  window.addEventListener('hashchange', () => {
+    const fromHash = readActiveTagFromHash();
+    if (fromHash !== activeTag) {
+      activeTag = fromHash;
+      render();
+    }
+  });
 
   // ─── Search wiring ────────────────────────────────────────────────────────
   searchInput.addEventListener('input', () => {

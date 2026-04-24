@@ -390,7 +390,7 @@ function getOccurrenceIndex(range, anchorElement) {
 // contextual "quick highlight" popup. Accepts any range and color, writes to
 // storage, adds to the CSS Highlights registry (or renders fallback), and
 // pushes an undo entry. Selection clearing is the caller's responsibility.
-async function createHighlightFromRange(range, color) {
+async function createHighlightFromRange(range, color, tag = '') {
   let anchorElement = range.commonAncestorContainer;
   if (anchorElement.nodeType !== Node.ELEMENT_NODE) {
     anchorElement = anchorElement.parentNode;
@@ -399,6 +399,13 @@ async function createHighlightFromRange(range, color) {
   const blockElement = anchorElement.closest('p, div, section, article, main, li, h1, h2, h3, h4, td') || document.body;
   const anchor = window.FuzzyAnchor.generate(blockElement);
   const _id = Date.now() + Math.random().toString();
+
+  // Only attach the tag field when it's actually set, so the untagged Alt+H
+  // path (and any other caller that doesn't pass a tag) leaves no empty-string
+  // debris in storage.
+  const normalizedTag = window.VellumTags
+    ? window.VellumTags.normalize(tag)
+    : (typeof tag === 'string' ? tag.trim() : '');
 
   const payload = {
     anchor,
@@ -409,6 +416,7 @@ async function createHighlightFromRange(range, color) {
     color,
     attachedNoteId: null
   };
+  if (normalizedTag) payload.tag = normalizedTag;
 
   // Custom hex (eyedropper) colors aren't registered in CSS.highlights — route
   // them through the fallback overlay renderer instead.
