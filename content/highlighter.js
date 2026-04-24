@@ -363,6 +363,228 @@ chrome.runtime.onMessage.addListener((request) => {
   }
 });
 
+// ── Hover affordances: #tag tooltip + delete ✕ ───────────────────────────────
+// CSS Custom Highlights don't receive pointer events, and fallback overlays use
+// pointer-events: none so links beneath stay clickable. So no `title` attribute
+// or DOM listener on the highlight itself would work. Instead we keep a Map of
+// every live highlight, hit-test on mousemove, and render:
+//   • a floating `#tag` chip near the cursor (when the highlight has a tag)
+//   • a clickable red ✕ at the highlight's top-right (always)
+// The ✕ reuses .vellum-select-delete styling for consistency with the Select
+// tool's per-item delete affordance on markers.
+const liveHighlights = new Map(); // _id → { tag, color, text, range?, fallbackEl? }
+
+function registerLiveHighlight(id, entry) {
+  if (!id) return;
+  liveHighlights.set(id, entry);
+}
+
+function unregisterLiveHighlight(id) {
+  liveHighlights.delete(id);
+}
+
+// Returns the bounding client rects that cover the highlight on screen, or
+// null if the entry's underlying range/element has gone stale. Stale entries
+// self-clean from the Map — _rebuildLiveHighlights() clears/re-adds CSS
+// ranges during bulk trash, and soft-deletes remove fallback wrappers.
+function rectsForHighlight(entry, id) {
+  if (entry.fallbackEl) {
+    if (!entry.fallbackEl.isConnected) {
+      liveHighlights.delete(id);
+      return null;
+    }
+    const rects = [];
+    for (const child of entry.fallbackEl.children) rects.push(child.getBoundingClientRect());
+    return rects;
+  }
+  if (entry.range) {
+    const registry = highlightRegistries[entry.color];
+    if (!registry || !registry.has(entry.range)) {
+      liveHighlights.delete(id);
+      return null;
+    }
+    return Array.from(entry.range.getClientRects());
+  }
+  return null;
+}
+
+function findHighlightAt(x, y) {
+  for (const [id, entry] of liveHighlights) {
+    const rects = rectsForHighlight(entry, id);
+    if (!rects) continue;
+    for (const r of rects) {
+      if (x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) {
+        return { id, entry, rects };
+      }
+    }
+  }
+  return null;
+}
+
+// ── Tag tooltip layer ───────────────────────────────────────────────────────
+let tagTooltipEl = null;
+function ensureTagTooltip() {
+  if (tagTooltipEl) return tagTooltipEl;
+  tagTooltipEl = document.createElement('div');
+  tagTooltipEl.className = 'vellum-highlight-tag-tooltip';
+  tagTooltipEl.setAttribute('data-vellum-ui', '1');
+  tagTooltipEl.style.display = 'none';
+  document.documentElement.appendChild(tagTooltipEl);
+  return tagTooltipEl;
+}
+
+function hideTagTooltip() {
+  if (tagTooltipEl) tagTooltipEl.style.display = 'none';
+}
+
+function showTagTooltip(tag, x, y) {
+  const el = ensureTagTooltip();
+  el.textContent = '#' + tag;
+  el.style.display = 'block';
+  const r = el.getBoundingClientRect();
+  const OX = 12, OY = 14;
+  let left = x + OX;
+  let top = y + OY;
+  if (left + r.width + 4 > window.innerWidth) left = x - r.width - OX;
+  if (top + r.height + 4 > window.innerHeight) top = y - r.height - OY;
+  if (left < 4) left = 4;
+  if (top < 4) top = 4;
+  el.style.left = left + 'px';
+  el.style.top = top + 'px';
+}
+
+// ── Delete ✕ button layer ───────────────────────────────────────────────────
+// A single shared button, repositioned to whichever highlight the cursor is
+// currently over. pointer-events: auto so it's clickable.
+let deleteBtnEl = null;
+let deleteBtnHighlightId = null;
+function ensureDeleteBtn() {
+  if (deleteBtnEl) return deleteBtnEl;
+  deleteBtnEl = document.createElement('div');
+  // Reuse the Select-tool's red-circle class for visual consistency; our own
+  // class overrides positioning to fixed and scopes any tweaks.
+  deleteBtnEl.className = 'vellum-select-delete vellum-highlight-delete-btn';
+  deleteBtnEl.setAttribute('data-vellum-ui', '1');
+  deleteBtnEl.setAttribute('title', 'Delete highlight');
+  deleteBtnEl.textContent = '✕';
+  deleteBtnEl.style.display = 'none';
+  deleteBtnEl.addEventListener('click', async (e) => {
+    e.stopPropagation();
+    e.preventDefault();
+    const id = deleteBtnHighlightId;
+    if (!id) return;
+    hideDeleteBtn();
+    hideTagTooltip();
+    await deleteHighlight(id);
+  });
+  document.documentElement.appendChild(deleteBtnEl);
+  return deleteBtnEl;
+}
+
+function hideDeleteBtn() {
+  if (deleteBtnEl) deleteBtnEl.style.display = 'none';
+  deleteBtnHighlightId = null;
+}
+
+function showDeleteBtn(id, rects) {
+  const el = ensureDeleteBtn();
+  // Anchor to the first rect's top-right — the natural "start of this
+  // highlight" corner, matching how Select hangs its ✕ off marker wrappers.
+  const first = rects[0];
+  const SIZE = 20; // matches .vellum-select-delete width/height
+  let left = first.right - SIZE / 2;
+  let top = first.top - SIZE / 2;
+  left = Math.max(2, Math.min(window.innerWidth - SIZE - 2, left));
+  top = Math.max(2, Math.min(window.innerHeight - SIZE - 2, top));
+  el.style.left = left + 'px';
+  el.style.top = top + 'px';
+  el.style.display = 'flex';
+  deleteBtnHighlightId = id;
+}
+
+let pendingHitTest = 0;
+let lastPointer = null;
+document.addEventListener('mousemove', (e) => {
+  lastPointer = { x: e.clientX, y: e.clientY, target: e.target };
+  if (pendingHitTest) return;
+  pendingHitTest = requestAnimationFrame(() => {
+    pendingHitTest = 0;
+    if (!lastPointer) return;
+    if (liveHighlights.size === 0) { hideTagTooltip(); hideDeleteBtn(); return; }
+    // Cursor on the ✕ itself → keep it visible, no tooltip.
+    if (deleteBtnEl && lastPointer.target === deleteBtnEl) {
+      hideTagTooltip();
+      return;
+    }
+    // Any other Vellum UI surface → stand down.
+    if (window.VellumUI?.isVellumElement(lastPointer.target)) {
+      hideTagTooltip();
+      hideDeleteBtn();
+      return;
+    }
+    const hit = findHighlightAt(lastPointer.x, lastPointer.y);
+    if (!hit) {
+      hideTagTooltip();
+      hideDeleteBtn();
+      return;
+    }
+    if (hit.entry.tag) showTagTooltip(hit.entry.tag, lastPointer.x, lastPointer.y);
+    else hideTagTooltip();
+    showDeleteBtn(hit.id, hit.rects);
+  });
+}, { passive: true });
+
+// Viewport changes invalidate cached rects. Hiding is cheaper than tracking;
+// the next mousemove re-tests.
+window.addEventListener('scroll', () => { hideTagTooltip(); hideDeleteBtn(); }, { passive: true, capture: true });
+window.addEventListener('resize', () => { hideTagTooltip(); hideDeleteBtn(); }, { passive: true });
+
+// Single-item delete. Tears down visual (CSS registry entry or fallback
+// wrapper), drops the storage row, pushes an undo, and shows a 5s toast —
+// matches the eraser/sticky pattern. The `consumed` guard inside the undo
+// closure makes Ctrl+Z and the toast Undo button safely idempotent.
+async function deleteHighlight(id) {
+  const entry = liveHighlights.get(id);
+  if (!entry) return null;
+  const items = await window.VellumStorage.getAnchorsForUrl(location.href);
+  const payload = items.find(i => i._id === id);
+  if (!payload) return null;
+
+  if (entry.fallbackEl) {
+    entry.fallbackEl.remove();
+  } else if (entry.range) {
+    highlightRegistries[entry.color]?.delete(entry.range);
+  }
+  liveHighlights.delete(id);
+
+  await window.VellumStorage.deleteItem(location.hostname, '_id', id);
+
+  let consumed = false;
+  const undoEntry = {
+    undo: async () => {
+      if (consumed) return;
+      consumed = true;
+      await window.VellumStorage.saveItem(location.hostname, location.pathname, payload);
+      const match = window.FuzzyAnchor.findMatch(payload.anchor);
+      if (match.confidence >= 40 && match.element) {
+        if (payload.isFallback) {
+          window.VellumHighlighter.renderFallback(match.element, payload);
+        } else {
+          window.VellumHighlighter.applyStoredHighlight(match.element, payload);
+        }
+      }
+      window.VellumUndo.remove(undoEntry);
+    }
+  };
+  window.VellumUndo.push(undoEntry);
+
+  window.VellumUI?.showToast?.('Highlight deleted', {
+    id: 'vellum-highlight-toast',
+    onUndo: () => undoEntry.undo(),
+  });
+  return payload;
+}
+
 function getOccurrenceIndex(range, anchorElement) {
   const preSelectionRange = range.cloneRange();
   try {
@@ -440,6 +662,12 @@ async function createHighlightFromRange(range, color, tag = '') {
         const clonedRange = range.cloneRange();
         registry.add(clonedRange);
         payload._clonedRange = clonedRange;
+        registerLiveHighlight(_id, {
+          tag: normalizedTag || '',
+          color,
+          text: payload.text,
+          range: clonedRange,
+        });
       } catch (err) {
         console.warn("Vellum: CSS Highlight API rejected range, likely crossing a Shadow DOM boundary. Range:", range);
         payload.isFallback = true;
@@ -471,6 +699,7 @@ async function createHighlightFromRange(range, color, tag = '') {
       } else if (capturedRange) {
         highlightRegistries[capturedColor]?.delete(capturedRange);
       }
+      unregisterLiveHighlight(capturedId);
       if (window.VellumStorage) {
         await window.VellumStorage.deleteItem(location.hostname, '_id', capturedId);
       }
@@ -506,6 +735,7 @@ document.addEventListener('mouseup', async (e) => {
 
 window.VellumHighlighter = {
   createHighlightFromRange,
+  deleteHighlight,
 
   renderFallback: function (anchorElement, payload) {
     if (!payload.fallbackRects) return;
@@ -559,6 +789,15 @@ window.VellumHighlighter = {
     window.addEventListener('scroll', syncBounds, { passive: true });
     const observer = new ResizeObserver(() => syncBounds());
     observer.observe(anchorElement);
+
+    if (payload._id) {
+      registerLiveHighlight(payload._id, {
+        tag: payload.tag || '',
+        color: payload.color,
+        text: payload.text,
+        fallbackEl: wrapper,
+      });
+    }
   },
 
   applyStoredHighlight: function (anchorElement, payload) {
@@ -611,6 +850,14 @@ window.VellumHighlighter = {
 
       if (startSet && endSet) {
         highlightRegistries[payload.color].add(range);
+        if (payload._id) {
+          registerLiveHighlight(payload._id, {
+            tag: payload.tag || '',
+            color: payload.color,
+            text: payload.text,
+            range,
+          });
+        }
         return true;
       }
     }

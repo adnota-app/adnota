@@ -131,21 +131,30 @@ html.vellum-hidden .vellum-sticky-container {
   opacity: 0.9;
 }
 
+/* Every visually-impactful property is !important because host sites commonly
+   ship broad `textarea { ... !important }` rules (Amazon, Notion, many CMSes)
+   that would otherwise punch through a transparent, borderless card look with
+   white backgrounds and rounded borders. `input[type]`/`textarea` also out-
+   specifies our class selector (11 vs 10), so we can't rely on source order. */
 .vellum-sticky-textarea {
   flex: 1;
-  width: 100%;
-  box-sizing: border-box;
-  background: transparent;
-  border: none;
-  resize: none;
+  width: 100% !important;
+  box-sizing: border-box !important;
+  background: transparent !important;
+  border: none !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  outline: none !important;
+  resize: none !important;
   /* Disable native resize on textarea since card handles it */
-  padding: 12px;
-  font-size: 13px;
-  line-height: 1.5;
-  color: var(--text);
+  padding: 12px !important;
+  margin: 0 !important;
+  font-size: 13px !important;
+  line-height: 1.5 !important;
+  color: var(--text) !important;
   overflow-y: auto;
-  font-family: inherit;
-  font-weight: 500;
+  font-family: inherit !important;
+  font-weight: 500 !important;
 }
 
 .vellum-sticky-textarea:focus,
@@ -188,14 +197,19 @@ html.vellum-hidden .vellum-sticky-container {
 .vellum-sticky-tag-input {
   flex: 1;
   min-width: 0;
-  background: transparent;
-  border: none;
-  outline: none;
-  color: var(--text);
-  font-family: inherit;
-  font-size: 11px;
-  font-weight: 500;
-  padding: 2px 0;
+  background: transparent !important;
+  border: none !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  outline: none !important;
+  padding: 2px 0 !important;
+  margin: 0 !important;
+  color: var(--text) !important;
+  font-family: inherit !important;
+  font-size: 11px !important;
+  font-weight: 500 !important;
+  line-height: 1.2 !important;
+  height: auto !important;
 }
 
 /* Same host-site bleed guard the textarea carries: some sites apply a blue
