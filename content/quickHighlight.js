@@ -19,6 +19,9 @@
   // Suppress re-showing until the next selection change (set after Ctrl+C so
   // the popup doesn't reappear from the still-live selection post-copy).
   let suppressUntilSelectionChange = false;
+  // Session-level dismiss: user clicked the × to banish the popup for this
+  // page. Cleared on reload (nothing persisted), mirrors the dock's dismiss.
+  let sessionDismissed = false;
 
   chrome.storage.local.get(['vellumQuickHighlightEnabled'], (result) => {
     if (result.vellumQuickHighlightEnabled === false) enabled = false;
@@ -68,6 +71,19 @@
       });
       el.appendChild(dot);
     }
+
+    // Dismiss X — session-level "don't show me this again until I reload."
+    // Reuses .vellum-select-delete styling (same red circle as the dock's X).
+    const dismiss = document.createElement('div');
+    dismiss.className = 'vellum-select-delete vellum-qh-dismiss';
+    dismiss.textContent = '✕';
+    dismiss.setAttribute('title', 'Hide on this page (reload restores)');
+    dismiss.addEventListener('click', (e) => {
+      e.stopPropagation();
+      sessionDismissed = true;
+      hidePopup();
+    });
+    el.appendChild(dismiss);
 
     return el;
   }
@@ -139,6 +155,7 @@
 
   document.addEventListener('mouseup', (e) => {
     if (!enabled) return;
+    if (sessionDismissed) return;
     if (suppressUntilSelectionChange) return;
     // When classic highlight mode is on, its mouseup handler auto-applies the
     // active color. Showing the popup on top would be redundant.

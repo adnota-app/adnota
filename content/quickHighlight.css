@@ -24,9 +24,16 @@
   white-space: nowrap;
 }
 
+/* Idle (visible but not hovered) dims to 0.55 so the highlighted text
+   behind/under the popup stays readable — matches the dock's idle
+   transparency. Snap to full on hover. */
 #vellum-quick-highlight.visible {
-  opacity: 1;
+  opacity: 0.55;
   transform: translateY(0);
+}
+
+#vellum-quick-highlight.visible:hover {
+  opacity: 1;
 }
 
 /* Vellum brand chip — same look as the HUD toolbar logos so users immediately
@@ -79,4 +86,17 @@
   white-space: nowrap;
   pointer-events: none;
   border: 1px solid rgba(124, 58, 237, 0.3);
+}
+
+/* Dismiss X — reuses .vellum-select-delete from marker.css, shrunk to fit
+   the popup's smaller chrome (18px swatches/logo). 14px keeps the X in the
+   same proportional relationship to its container as the dock's 16px X has
+   to the dock's 26-28px elements. Scoped to #vellum-quick-highlight to
+   beat .vellum-select-delete's base 20px on specificity. */
+#vellum-quick-highlight .vellum-qh-dismiss {
+  width: 14px;
+  height: 14px;
+  font-size: 8px;
+  top: -6px;
+  right: -6px;
 }
