@@ -987,7 +987,7 @@
       block.style.setProperty('--quote-color', themeHex(item.color));
       const body = document.createElement('p');
       body.className = 'feed-text';
-      body.textContent = item.text || '(empty highlight)';
+      body.textContent = (item.text || '').trim() || '(empty highlight)';
       block.appendChild(body);
     }
 

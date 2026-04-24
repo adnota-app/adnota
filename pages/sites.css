@@ -971,7 +971,13 @@ a.page-path:hover .page-path-icon {
 
 /* The actual cut text — the whole point. Body-text sized to match the
    site-host row on the Sites tab (14px) so snippets and sites feel like
-   one product. Still selectable prose. */
+   one product. Still selectable prose.
+
+   `white-space: pre-wrap` preserves the newlines that range.toString()
+   captures at block-element boundaries in the source page, so a highlight
+   that spans several paragraphs renders as several paragraphs here too —
+   not one collapsed blob. The Copy button already writes the same raw
+   text to the clipboard, so visual + clipboard output stay in sync. */
 .feed-text {
   font-size: 14px;
   line-height: 1.5;
@@ -980,6 +986,8 @@ a.page-path:hover .page-path-icon {
   margin-bottom: 6px;
   user-select: text;
   cursor: text;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 /* Quote block = highlighted text. 3px left border in the highlight color
