@@ -55,30 +55,12 @@ function makeToolBtn(name, title, mode) {
 }
 
 // ── Create Toolbar UI ───────────────────────────────────────────────────────
+// Dock body — mounts into VellumDock when a drawing-family mode is active.
+// The dock owns drag handle + V logo + radial; we own tools + swatches +
+// stroke widths + fill toggle + trash + undo.
 const highlightToolbar = document.createElement('div');
-highlightToolbar.id = 'vellum-highlighter-widget';
-highlightToolbar.setAttribute('data-vellum-ui', '1');
-highlightToolbar.style.display = 'none';
-highlightToolbar.style.bottom = '32px';
-highlightToolbar.style.left = '50%';
-highlightToolbar.style.transform = 'translateX(-50%)';
-document.documentElement.appendChild(highlightToolbar);
-
-// Drag handle
-const dragHandle = document.createElement('span');
-dragHandle.className = 'vellum-toolbar-drag';
-dragHandle.textContent = '\u2847';
-dragHandle.setAttribute('data-tooltip', 'Drag to reposition');
-highlightToolbar.appendChild(dragHandle);
-
-// Logo chip
-const logoChip = document.createElement('span');
-logoChip.className = 'vellum-toolbar-logo';
-logoChip.textContent = 'V';
-highlightToolbar.appendChild(logoChip);
-
-// Divider
-highlightToolbar.appendChild(Object.assign(document.createElement('div'), { className: 'vellum-toolbar-divider' }));
+highlightToolbar.style.display = 'inline-flex';
+highlightToolbar.style.alignItems = 'center';
 
 // Tool buttons — drawing sub-tools are all "pen-family" modes that share the SVG overlay
 const drawingModes = ['pen', 'highlight', 'arrow', 'rect', 'ellipse', 'text', 'select'];
@@ -233,10 +215,7 @@ highlightToolbar.appendChild(window.VellumUI.createTrashButton({
 // Undo
 highlightToolbar.appendChild(window.VellumUI.createUndoButton());
 
-// ── Toolbar drag logic ──────────────────────────────────────────────────────
-window.VellumUI.makeDraggable(highlightToolbar, dragHandle);
-
-// All drawing-family modes that show this toolbar
+// All drawing-family modes that show the dock body
 const _drawingModes = new Set(['pen', 'highlight', 'arrow', 'rect', 'ellipse', 'text', 'select']);
 
 // ── Per-tool cursor icons ─────────────────────────────────────────────────
@@ -300,17 +279,19 @@ window.VellumCursor = { set: setCursorLock, svgCursor };
 
 // Global VellumState Subscription — single place that owns cursor and toolbar state
 // for ALL modes. Eraser and sticky manage their own overlays but delegate cursor here.
+let highlightDockMounted = false;
 window.VellumState.subscribe(state => {
-  // Toolbar is visible for all drawing-family modes — not eraser or sticky.
+  // Mount the dock body for all drawing-family modes (pen, highlight, arrow,
+  // rect, ellipse, text, select). Switching between sub-modes keeps the body
+  // mounted — the dock just stays active and the body's internal state
+  // (active tool button, fill group visibility, etc.) updates below.
   const showToolbar = _drawingModes.has(state.mode);
-  highlightToolbar.style.display = showToolbar ? 'flex' : 'none';
-
-  // Reset toolbar position when hidden
-  if (!showToolbar) {
-    highlightToolbar.style.left = '50%';
-    highlightToolbar.style.top = '';
-    highlightToolbar.style.bottom = '32px';
-    highlightToolbar.style.transform = 'translateX(-50%)';
+  if (showToolbar && !highlightDockMounted) {
+    window.VellumDock.mount('highlight', () => highlightToolbar);
+    highlightDockMounted = true;
+  } else if (!showToolbar && highlightDockMounted) {
+    window.VellumDock.unmount('highlight');
+    highlightDockMounted = false;
   }
 
   // Central cursor management for every mode. Custom icons for sticky/eraser
@@ -494,7 +475,7 @@ async function createHighlightFromRange(range, color) {
 document.addEventListener('mouseup', async (e) => {
   if (window.VellumState.mode !== 'highlight') return;
 
-  if (e.target.closest('#vellum-highlighter-widget')) return;
+  if (window.VellumUI.isVellumElement(e.target)) return;
 
   const selection = window.getSelection();
   if (!selection || selection.isCollapsed) {

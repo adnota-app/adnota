@@ -188,6 +188,14 @@ claude design has cool take on this:
 ![alt text](image.png)
 (if you just START TYPING, wherever your mouse is, it puts down a sticky note that captures what you typed at your cursor, pretty smooth!)
 
+Ok, really close. I realized: if you hover over logo and the buttons are top and centered, when you click a tool button, THEY SHOULD ALL JUST DISAPPEAR. 
+However, if you're in a tool HUD, and you hover, the buttons just show up on the left side. Right now it's doing something weird where it sometimes shows 2 animations when exiting instead of one (for example, if in eraser tool and hovering over the logo (so the rollout is on the left), if you hit escape it will first move the rollout to the top center, and then dissappear, which is super confusing!). If I'm in the eraser tool and hover over the buttons, but then hit escape to exit the eraser tool, the buttons should NOT swivel back to top center etc, THEY SHOULD JUST DISAPPEAR BECAUSE I HIT ESCAPE. (NOT TOGGLE BACK TO THE ABOVE THE LOGO LOCATION AND THEN DISAPPEAR)
+Actually, (instead of just disappear), they should probably always just EXIT by rotating or swiveling to the LEFT AND DOWN, and always ENTER by rotating or swiveling to the RIGHT AND UP. Does that make sense? Whether you're in logo only mode or tool HUD mode, they rotate on exit/enter exactly THE SAME.
+Also, you're putting the button rollouts to far away from the logo/hud, move them closer so it looks cleaner.
+Also, the logo only mode no longer shows at like 50% transparency, can you fix that? I liked that look.
+Also, can you make the entire logo only mode draggable? (it's a little confusing that if you click anywhere outside of the actual drag icons, it does NOT drag) Even if you just wanted to click the button, it'd be handy to be able to always drag it if you wanted.
+Also, if you move the logo to a new position and then reload the page, on page load, it still blinks in the original position for a split second, and then jumps super fast over to the new saved location. IT SHOULD NEVER DO FIRST DRAW IN THE ORIGINAL LOCATION IF YOU EVER MOVED IT. IT SHOULD WAIT TO DRAW UNTIL IT'S LOADED THE SAVED POSITION OF WHERE YOU MOVED IT TO.
+
 HMMMM...:
 
   Why HN showed a broken link: Not a Sites-page bug — it's baked into storage.  
