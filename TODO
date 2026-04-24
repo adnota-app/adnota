@@ -143,15 +143,13 @@ Add ability to delete all storage for entire domain from HOME page (you can alre
 - Update SELECTION tool to be able to move objects around the page (e.g. select text box and move it somewhere else).
 - get rid of eraser cursor! (it's ugly... just have a pointer? can we have a white pointer?)
 - fix the resize tool, does it need a HUD? (it's the oldest tool at this point...) Should it have same element fill as eraser tool? It also doesn't set "ACTIVE" when you use the tool in popup.js.
-
+- FIX HUD MENU DRAG BAR ICONS... (they're way too small!)
 
 TODO:
 
 thin=16px, medium=24px, thick=36px - this works well for lines, but might be too big for text size?
 
 make all huds consistent look and feel!
-
-FIX HUD MENU DRAG BAR ICONS... (they're way too small!)
 
 wire up right click for sticky notes (also, if you right click and a sticky note is selected, should it give options like: delete, change color, etc? Or is that just gimmicky?)
 What if you could right click ANY vellum item?? (e.g. for deletion, would that be the most natural way to select/delete something you don't want anymore??)
