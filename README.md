@@ -245,16 +245,33 @@ One persistent floating widget (fixed, bottom-center, draggable) that is the onl
 - All elements marked `data-vellum-ui` so eraser/resizer ignore them.
 
 #### `pages/sites.html` + `pages/sites.js` + `pages/sites.css`
-Dedicated extension page (opened as a new tab via `chrome.runtime.getURL`). Aggregates all `chrome.storage.local` data and renders a browseable history of every site Vellum has touched:
-- **Per-domain cards**: favicon, hostname, page count, last-edited timestamp
+Dedicated extension page (opened as a new tab via `chrome.runtime.getURL`). Two tabs share a common sticky header; each tab owns its own chrome.
+
+**Shared header** (sticky)
+- **View tabs** (primary nav, centered in the dark header): `Snippets` (prose feed, default) and `Sites` (per-domain browser). Each carries a live count badge. Active tab persists to `chrome.storage.local.vellumHomeTab`.
+- **Tag filter chip row** lives inside the sticky header so it never scrolls off. Rendered from `VellumTags.getAllTags()`; hidden entirely when no tagged items exist so untagged users see the original UI. Chips are sorted by count desc with alphabetical tiebreak and each carry a `#tag count` pill. Active tag is mirrored to the URL hash (`#tag=foo`) so filters survive reloads and are shareable; a `hashchange` listener keeps the view in sync with back/forward. If the active tag disappears (last item deleted), the filter auto-clears on next render.
+- **Search** adapts per tab: on Snippets it matches body text OR domain; on Sites it matches hostname only. Same `<input>`, placeholder swaps.
+- **Sort** adapts per tab: `Newest` / `Oldest` on Snippets, `Recent` / `A→Z` / `Most Edits` / `Largest` on Sites. Each tab's last-selected sort is preserved across tab switches.
+- **Live updates**: a `chrome.storage.onChanged` listener rebuilds both tabs automatically on any write.
+
+**Snippets tab** — prose feed of captured text (the research payoff surface)
+- **Mingled chronological stream** of highlights + sticky notes, newest first. Derived per render from storage; no new persisted schema — both types already carry the fields this view needs.
+- **Highlight blocks**: 3px left border in the highlight color, plain body text. Black redactions render as a `█` bar scaled to the original length rather than leaking the hidden text into the feed.
+- **Note blocks**: 3px theme-color left strip + faint color tint bleeding in from the edge. Blank-body notes are skipped on the feed (still counted on Sites).
+- **Type filter** centered above the feed: `All` / `Highlights` / `Notes`, persisted to `vellumHomeFeedType`.
+- **Source chip** under each item: favicon + domain + relative time + optional `#tag`. Click on the card opens the source page in a new tab.
+- **Per-item hover actions** (top-right): **Copy** writes the raw text (newlines preserved) to the clipboard with a green flash on success; **Trash** soft-deletes with a 5s Undo toast via `VellumUI.softDeleteItems` — single-id batch, same plumbing as the HUD bulk-delete.
+- **Paragraph fidelity**: `range.toString()` captures newlines at block-element boundaries in the source page, so a multi-paragraph highlight is stored with its paragraph breaks intact. `.feed-text` uses `white-space: pre-wrap` so those breaks render in the feed instead of collapsing to one blob. Copy button and visual output stay in sync because both read the same `item.text`.
+- **Selection guard**: a click handler that opens a new tab would hijack drag-select. The handler checks `window.getSelection().isCollapsed` + block containment; if the user finished a selection inside the card, the click no-ops instead of navigating. Drag-select + Ctrl+C then copies the visible text with the same newlines the Copy button writes.
+
+**Sites tab** — per-domain browser (kept as the management surface for non-text annotations: erasures, drawings, resizes have no body text and can only be managed here)
+- **Per-domain cards**: favicon, hostname, page count, last-edited timestamp, size
 - **Annotation type pills**: Erased / Notes / Highlights / Resized / Strokes with color-coded badges
 - **Expandable page drawer**: chevron reveals every individual path within a domain, each with its own pills. The path itself is a `target="_blank"` hyperlink with an external-link icon to the right (icon brightens + nudges on hover); domain-wide `*` entries stay as non-clickable labels
 - **Visit button**: opens the most recently edited page for that domain
 - **Delete-domain button**: red trash icon next to Visit wipes every edit for that hostname in one confirmation step (uses the shared branded confirmDialog)
-- **Search + Sort**: real-time filter by hostname; sort by Most Recent / A→Z / Most Edits
-- **Tag filter chip row**: sticky row below the header holding an `All` chip plus one chip per unique tag (from `VellumTags.getAllTags()`). Hidden entirely when no tagged items exist, so untagged users see the original UI. Chips are sorted by count descending with alphabetical tiebreak, each carrying a `#tag count` pill. Clicking a chip toggles the active filter: domain cards and drawer rows are filtered to only items carrying that tag, and a purple `#tag · N` pill is appended to the matching cards and page rows so the match is visible in place. Active-tag state is mirrored to the URL hash (`#tag=foo`) so filters survive reloads and are shareable; a `hashchange` listener keeps the view in sync with back/forward navigation. If the active tag disappears (last item with that tag deleted), the filter auto-clears on next render
-- **Live updates**: `storage.onChanged` listener refreshes the view automatically
-- **Summary bar**: total sites, total edits, total pages at a glance
+- **Active tag filter** (when set on the shared chip row) narrows cards + drawer rows to items carrying that tag, and a purple `#tag · N` pill is appended to matching cards and page rows so the match is visible in place
+- **Summary bar** (scoped to this tab — per-domain aggregates don't belong on a prose feed): total sites, total edits, total pages
 - **Storage meter**: live `chrome.storage.local.getBytesInUse(null)` reading against `QUOTA_BYTES` (10 MB on MV3). Shows `X.XX MB / 10 MB · N%` with a gradient progress bar that turns amber at ≥80% and red at ≥95% so users can self-manage before hitting the cap
 
 ---
