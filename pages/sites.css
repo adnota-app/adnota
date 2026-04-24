@@ -942,17 +942,20 @@ a.page-path:hover .page-path-icon {
 .prose-feed {
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 10px;
   max-width: 720px;
   margin: 0 auto;
 }
 
 .prose-feed[hidden] { display: none; }
 
-/* Shared feed-item frame — both quote and thought inherit. */
+/* Shared feed-item frame — both quote and thought inherit. Padding and gap
+   tuned to match the Sites row density (site-card uses 16px 18px) so both
+   tabs read at the same rhythm rather than the feed feeling airy next to
+   the tight list. */
 .feed-item {
   position: relative;
-  padding: 14px 78px 12px 18px; /* right pad reserves space for copy + trash */
+  padding: 12px 70px 10px 16px; /* right pad reserves space for copy + trash */
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
@@ -966,13 +969,15 @@ a.page-path:hover .page-path-icon {
   transform: translateY(-1px);
 }
 
-/* The actual cut text — the whole point. Readable prose size, selectable. */
+/* The actual cut text — the whole point. Body-text sized to match the
+   site-host row on the Sites tab (14px) so snippets and sites feel like
+   one product. Still selectable prose. */
 .feed-text {
-  font-size: 17px;
-  line-height: 1.55;
+  font-size: 14px;
+  line-height: 1.5;
   color: var(--text-1);
-  letter-spacing: -0.15px;
-  margin-bottom: 10px;
+  letter-spacing: -0.1px;
+  margin-bottom: 6px;
   user-select: text;
   cursor: text;
 }
@@ -982,7 +987,7 @@ a.page-path:hover .page-path-icon {
    stays unstyled so it reads as prose. */
 .feed-quote {
   border-left: 3px solid var(--quote-color, #cccccc);
-  padding-left: 18px;
+  padding-left: 14px;
 }
 
 /* Black highlight = redaction. Don't reproduce the underlying text — the
@@ -1006,7 +1011,7 @@ a.page-path:hover .page-path-icon {
    bleeding right from the edge. Preserve newlines the user typed. */
 .feed-thought {
   border-left: 3px solid var(--thought-color, #FBE6A1);
-  padding-left: 18px;
+  padding-left: 14px;
   background: var(--surface);
 }
 
@@ -1216,7 +1221,7 @@ a.page-path:hover .page-path-icon {
   .site-card-body { gap: 10px; padding: 14px 14px; }
   .btn-visit span { display: none; }
   .view-tab { padding: 7px 12px; font-size: 12.5px; }
-  .feed-text { font-size: 15.5px; }
-  .feed-item { padding: 13px 68px 11px 16px; }
-  .feed-quote, .feed-thought { padding-left: 14px; }
+  .feed-text { font-size: 13.5px; }
+  .feed-item { padding: 11px 64px 9px 14px; }
+  .feed-quote, .feed-thought { padding-left: 12px; }
 }
