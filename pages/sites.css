@@ -943,8 +943,6 @@ a.page-path:hover .page-path-icon {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  max-width: 720px;
-  margin: 0 auto;
 }
 
 .prose-feed[hidden] { display: none; }
