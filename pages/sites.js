@@ -579,7 +579,7 @@
   let globalTagCounts = {};
   let activeTag = null;              // null means "All" — no tag filter applied
   let activeTab = 'snippets';        // 'snippets' | 'sites'
-  let feedType = 'all';              // 'all' | 'quotes' | 'notes'
+  let feedType = 'all';              // 'all' | 'highlights' | 'notes'
   const sortValues = {               // per-tab sort; each tab remembers its own
     snippets: 'newest',
     sites:    'recent',
@@ -692,7 +692,7 @@
 
   function filterFeedItems(items, query) {
     let result = items;
-    if (feedType === 'quotes') result = result.filter(it => it.type === 'highlight');
+    if (feedType === 'highlights') result = result.filter(it => it.type === 'highlight');
     else if (feedType === 'notes') result = result.filter(it => it.type === 'note');
     if (activeTag) {
       result = result.filter(it => it.tag === activeTag);
@@ -1134,7 +1134,7 @@
   }
 
   function setFeedType(type) {
-    if (!['all', 'quotes', 'notes'].includes(type)) return;
+    if (!['all', 'highlights', 'notes'].includes(type)) return;
     if (type === feedType) return;
     feedType = type;
     chrome.storage.local.set({ [TYPE_KEY]: feedType });
@@ -1161,7 +1161,7 @@
     TAB_KEY, TYPE_KEY, SORT_SNIPPETS_KEY, SORT_SITES_KEY,
   ]);
   if (saved[TAB_KEY] === 'sites' || saved[TAB_KEY] === 'snippets') activeTab = saved[TAB_KEY];
-  if (['all', 'quotes', 'notes'].includes(saved[TYPE_KEY])) feedType = saved[TYPE_KEY];
+  if (['all', 'highlights', 'notes'].includes(saved[TYPE_KEY])) feedType = saved[TYPE_KEY];
   if (SORT_OPTIONS.snippets.some(o => o.value === saved[SORT_SNIPPETS_KEY])) {
     sortValues.snippets = saved[SORT_SNIPPETS_KEY];
   }

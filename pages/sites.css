@@ -899,7 +899,7 @@ a.page-path:hover .page-path-icon {
 .view-pane[hidden] { display: none; }
 
 /* ═══════════════════════════════════════════════
-   FEED TYPE FILTER — segmented control (All / Quotes / Notes).
+   FEED TYPE FILTER — segmented control (All / Highlights / Notes).
    Snippets tab only; centered above the prose feed so it visually ties
    to the content it filters rather than floating detached on one side.
 ═══════════════════════════════════════════════ */
