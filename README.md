@@ -149,7 +149,11 @@ Also exposes `generateCSSSelector(el)` as a shared utility (used by the resizer)
   - **Black uses `color: #000; background-color: #000`** — fully opaque, text invisible underneath. Fallback path uses normal blend mode (not multiply) so the cover is solid
 - Persists last-chosen color and stroke width to storage across sessions
 - Undo: removes range from CSS Highlights registry and deletes from storage
-- Schema stores: `text`, `occurrenceIndex`, `color`, `isFallback`, `fallbackRects`, `attachedNoteId` (reserved for future note cross-linking)
+- Schema stores: `text`, `occurrenceIndex`, `color`, `isFallback`, `fallbackRects`, `attachedNoteId` (reserved for future note cross-linking), optional `tag`
+- **Hover affordances**: every live highlight is tracked in a module-level `liveHighlights` Map keyed by `_id` (`{ tag, color, text, range?, fallbackEl? }`). An rAF-throttled `mousemove` handler hit-tests via `range.getClientRects()` (CSS path) or the fallback wrapper's children, then paints two layers — both rendered ourselves because CSS Custom Highlights and `pointer-events: none` overlays can't receive a `title` or DOM listener:
+  - **`#tag` chip** tracks the cursor when the highlight has a tag (viewport-clamped, hides on scroll/resize)
+  - **Delete ✕** — clickable red circle (reuses `.vellum-select-delete` styling from the Select tool, position-overridden to `fixed`) anchored to the first-rect top-right. Click runs `VellumHighlighter.deleteHighlight(id)`: tears down the visual (CSS registry entry or fallback wrapper), drops the storage row, pushes a `VellumUndo` entry and shows a 5s `Highlight deleted` toast. The toast Undo and Ctrl+Z share the same `undoEntry` (consumed-flag guard prevents double-restore); restore re-saves the original payload and re-renders via `renderFallback` / `applyStoredHighlight`
+- **Self-healing registry**: stale entries drop from the Map on the next hit-test — CSS-path entries when `highlightRegistries[color].has(range)` returns false (after `_rebuildLiveHighlights()` clears the registry on bulk trash), fallback entries when `fallbackEl.isConnected` goes false. So bulk deletions don't need to know about the Map
 
 #### `content/resizer.js` — Element Resizer
 - Activated via popup tool card (no keyboard shortcut — Chrome limits extensions to 4)
