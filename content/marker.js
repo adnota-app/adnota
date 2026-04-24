@@ -499,6 +499,7 @@ function commitActiveText() {
 
 function handleTextClick(e) {
   if (window.VellumState.mode !== 'text') return;
+  if (e.shiftKey) return;                              // Shift shortcut owns the click
   if (isToolbarHit(e)) return;
   if (e.target.closest('.vellum-select-box')) return;
   if (e.target.closest('[data-vellum-ui]')) return;
@@ -1085,14 +1086,28 @@ let moveDragState = null;
 let suppressNextClick = false;
 
 function handleSelectPointerDown(e) {
-  if (window.VellumState.mode !== 'select') return;
+  const inSelectMode = window.VellumState.mode === 'select';
+  const shiftShortcut = e.shiftKey;
+  if (!inSelectMode && !shiftShortcut) return;
   if (isToolbarHit(e)) return;
   if (e.button !== 0) return; // left-click only
   if (e.target.closest('.vellum-select-box')) return; // delete button handles itself
   if (e.target.closest('.vellum-text-content[contenteditable="true"]')) return; // editing — don't drag
+  // Shift-shortcut defers to interactive page targets (links, buttons, inputs)
+  // when the geometric hit would overlap them — but only when there's no paint
+  // item directly in the way. We check hit-test first below, then decide.
 
   const wrapper = hitTestMarker(e.clientX, e.clientY);
   if (!wrapper) return;
+
+  // Shift-shortcut with a paint item under the pointer: take the click. This
+  // is the key win — a solid rect/ellipse used for redaction now absorbs
+  // clicks instead of passing through to the link it was covering. Suppressing
+  // the browser's default also kills the text-drag-selection that otherwise
+  // paints highlights across the page while dragging.
+  if (shiftShortcut && !inSelectMode) {
+    e.preventDefault();
+  }
 
   moveDragState = {
     wrapper,
@@ -1221,7 +1236,9 @@ function shiftMarkerPayload(payload, dxPct, dyPct) {
 }
 
 function handleSelectClick(e) {
-  if (window.VellumState.mode !== 'select') return;
+  const inSelectMode = window.VellumState.mode === 'select';
+  const shiftShortcut = e.shiftKey;
+  if (!inSelectMode && !shiftShortcut) return;
   if (isToolbarHit(e)) return;
 
   // A drag just committed — its pointerup bubbles into a synthetic click that
@@ -1241,18 +1258,75 @@ function handleSelectClick(e) {
     e.preventDefault();
     e.stopPropagation();
     showSelectionUI(bestWrapper);
-  } else {
+  } else if (inSelectMode) {
+    // Select mode clicks on empty canvas clear the selection. Shift+click on
+    // empty canvas in non-select mode is just a normal shift+click — let the
+    // plain-click dismiss handler manage teardown.
     clearSelection();
   }
 }
 
-// Delete key handler for selected element
+// Delete key handler for selected element. Works both inside Select mode and
+// for ephemeral Shift+click selections in any other mode. Guarded against
+// typing in inputs/textareas/contenteditable so the user's own Backspace in a
+// page form doesn't nuke an annotation they happened to have selected.
 document.addEventListener('keydown', (e) => {
-  if (!selectedWrapper || window.VellumState.mode !== 'select') return;
-  if (e.key === 'Delete' || e.key === 'Backspace') {
-    e.preventDefault();
-    deleteSelectedMarker(selectedWrapper);
-  }
+  if (!selectedWrapper) return;
+  if (e.key !== 'Delete' && e.key !== 'Backspace') return;
+  const active = document.activeElement;
+  if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable)) return;
+  e.preventDefault();
+  deleteSelectedMarker(selectedWrapper);
+});
+
+// Plain click outside the selection while NOT in select mode dismisses a live
+// Shift+click selection. Select mode has its own dismiss path inside
+// handleSelectClick above so it doesn't need to run here.
+function handleShiftSelectionDismiss(e) {
+  if (!selectedWrapper) return;
+  if (window.VellumState.mode === 'select') return;
+  if (e.shiftKey) return;                               // shift+click = re-select, handled by handleSelectClick
+  if (e.button !== 0) return;
+  if (e.target.closest('.vellum-select-box')) return;   // ✕ button handles itself
+  if (hitTestMarker(e.clientX, e.clientY) === selectedWrapper) return; // clicking the same item is a no-op
+  clearSelection();
+}
+
+// Global Shift-held tracking. While Shift is down:
+//   - Paint annotations become first-class interactive objects (CSS in
+//     marker.css flips `pointer-events` + cursor to grab).
+//   - The marker capture overlay is suspended so holding Shift temporarily
+//     turns off any drawing tool. User wanted this to be an absolute rule —
+//     there's no reason to Shift while drawing, so collapsing the overlap
+//     kills whole categories of jank.
+function syncOverlayForShift() {
+  if (!captureSvg) return;
+  const overlayActive = window.VellumState.isVisible && _overlayModes.has(window.VellumState.mode);
+  if (!overlayActive) return;                             // nothing to suspend
+  const shiftHeld = document.documentElement.classList.contains('vellum-shift-mode');
+  captureSvg.style.pointerEvents = shiftHeld ? 'none' : 'auto';
+}
+
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'Shift') return;
+  document.documentElement.classList.add('vellum-shift-mode');
+  // Abort any in-progress drawing stroke — user changed intent mid-gesture.
+  if (capturePath) { capturePath.remove(); capturePath = null; }
+  if (captureShape) { captureShape.remove(); captureShape = null; }
+  shapeOrigin = null;
+  syncOverlayForShift();
+}, true);
+document.addEventListener('keyup', (e) => {
+  if (e.key !== 'Shift') return;
+  document.documentElement.classList.remove('vellum-shift-mode');
+  syncOverlayForShift();
+}, true);
+// Dropped focus (alt-tab, devtools) never fires a keyup for still-held Shift.
+// Clear the class so the page doesn't get stuck in shift-mode, and restore
+// the overlay.
+window.addEventListener('blur', () => {
+  document.documentElement.classList.remove('vellum-shift-mode');
+  syncOverlayForShift();
 });
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -1285,8 +1359,12 @@ document.addEventListener('pointermove', (e) => {
   captureSvg.style.pointerEvents = overUI ? 'none' : 'auto';
 }, true);
 
-// Select tool click handler (on document, not on overlay — select doesn't use the overlay)
+// Select tool click handler (on document, not on overlay — select doesn't use the overlay).
+// Also handles Shift+click selections in any other mode via the relaxed gate
+// inside handleSelectClick itself.
 document.addEventListener('click', handleSelectClick, true);
+// Outside-click dismiss for Shift+click selections while NOT in select mode.
+document.addEventListener('click', handleShiftSelectionDismiss, true);
 // Drag-to-move handlers for select mode. Capture phase so we see the pointerdown
 // before the marker wrapper's own handlers (e.g., text re-edit double-click).
 document.addEventListener('pointerdown', handleSelectPointerDown, true);
@@ -1298,6 +1376,7 @@ document.addEventListener('click', handleTextClick, true);
 document.addEventListener('dblclick', handleTextDblClick, true);
 
 // VellumState Subscription
+let _prevVellumMode = window.VellumState.mode;
 window.VellumState.subscribe(state => {
   // Commit any in-progress text when switching modes
   if (activeTextEditor) commitActiveText();
@@ -1306,7 +1385,10 @@ window.VellumState.subscribe(state => {
 
   if (isOverlayActive) {
     captureSvg.style.display = 'block';
-    captureSvg.style.pointerEvents = 'auto';
+    // Shift held: suspend the overlay's pointer capture so holding Shift
+    // temporarily turns off any drawing tool in favor of the select shortcut.
+    // Restored when Shift is released via the keyup listener.
+    captureSvg.style.pointerEvents = document.documentElement.classList.contains('vellum-shift-mode') ? 'none' : 'auto';
   } else {
     captureSvg.style.display = 'none';
     captureSvg.style.pointerEvents = 'none';
@@ -1322,9 +1404,12 @@ window.VellumState.subscribe(state => {
     el.style.pointerEvents = interactive ? 'auto' : 'none';
   });
 
-  // Clear selection when leaving select mode
-  if (state.mode !== 'select') {
+  // Clear selection on a real mode transition — not on HUD color/strokeWidth
+  // emits (those keep the mode but would otherwise clobber a live Shift+click
+  // selection).
+  if (state.mode !== _prevVellumMode) {
     clearSelection();
+    _prevVellumMode = state.mode;
   }
 });
 

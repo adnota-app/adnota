@@ -47,6 +47,25 @@ html.vellum-select-mode .vellum-marker-wrapper * {
   cursor: grab;
 }
 
+/* Shift-held shortcut: while Shift is pressed, paint annotations become
+   first-class interactive objects.
+   - `pointer-events: auto` lets a solid rect/ellipse block clicks to the
+     page link it was redacting, instead of passing through.
+   - `cursor: grab` signals the drag affordance.
+   A hover outline was tried here and removed — marker wrappers are sized to
+   their anchor element's bbox (not the visible shape), so the outline looked
+   like it was grabbing a random page element. The dashed selection box on
+   actual click is the real affordance; grab cursor is enough for hover. */
+html.vellum-shift-mode .vellum-marker-wrapper,
+html.vellum-shift-mode .vellum-marker-wrapper * {
+  pointer-events: auto !important;
+  cursor: grab !important;
+}
+html.vellum-shift-mode.vellum-dragging .vellum-marker-wrapper,
+html.vellum-shift-mode.vellum-dragging .vellum-marker-wrapper * {
+  cursor: grabbing !important;
+}
+
 /* Suppress accidental text selection while select mode is active (drags would
    otherwise paint selections across page text). Contenteditable text
    annotations still allow editing via the override below. */
