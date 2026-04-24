@@ -229,6 +229,32 @@
   margin-left: 8px;
 }
 
+/* ── Dismiss X — "get off my screen" ──────────────────────────────────────
+   Reuses .vellum-select-delete from marker.css (same red circle as the
+   select-tool delete affordance). This rule only adds dock-specific
+   behavior: top-right corner positioning and hover-reveal while idle.
+   Hidden when a tool is active — the dock IS the HUD then, so the user
+   needs the back arrow, not an escape hatch that strands them. */
+.vellum-dock-dismiss {
+  top: -10px;
+  right: -10px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.12s ease, background 0.15s, transform 0.15s;
+  z-index: 1;
+}
+
+#vellum-dock:hover:not(.vellum-dock-active) .vellum-dock-dismiss {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* Never print the dock — otherwise a user reaching for Ctrl+P has to
+   disable the extension just to get it out of the way. */
+@media print {
+  #vellum-dock { display: none !important; }
+}
+
 /* ── Per-tool accent: border + back arrow pick up the active tool's color ── */
 #vellum-dock[data-accent="eraser"]    { --dock-accent-border: rgba(239, 68, 68, 0.55); }
 #vellum-dock[data-accent="eraser"]    .vellum-dock-back { background: rgba(239, 68, 68, 0.35); color: #fca5a5; }
