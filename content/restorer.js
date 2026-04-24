@@ -98,7 +98,8 @@ async function performRestoration() {
           item.dimensions || null,
           item.theme || 'vellum-theme-yellow',
           item.anchor || null,
-          item.anchorOffset || null
+          item.anchorOffset || null,
+          item.tag || ''
         );
       }
       processedItems.add(id);

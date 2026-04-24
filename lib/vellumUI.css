@@ -190,3 +190,81 @@
 .vellum-toolbar-divider.vellum-toolbar-divider-orange { background: rgba(245, 158, 11, 0.25); }
 .vellum-undo-btn.vellum-undo-btn-orange:hover { background: rgba(245, 158, 11, 0.15); }
 .vellum-undo-btn.vellum-undo-btn-orange:hover svg { stroke: #fcd34d; }
+
+/* Tag autocomplete dropdown — attached under tag inputs on sticky notes and
+   the quick-highlight popup. Positioned fixed so it escapes every parent
+   stacking context; !important protects against host-site CSS bleed on
+   arbitrary pages. Aesthetic matches the HUD family (eraser / sticky /
+   highlighter toolbars + quick-highlight popup): dark frosted glass with a
+   purple accent border. */
+.vellum-tag-suggest {
+  position: fixed !important;
+  z-index: 2147483647 !important;
+  display: none;
+  max-height: 240px;
+  overflow-y: auto;
+  background: rgba(15, 15, 15, 0.92) !important;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(124, 58, 237, 0.45) !important;
+  border-radius: 10px !important;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.5);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-size: 12px;
+  color: #e4e4e7;
+  padding: 5px;
+  margin: 0 !important;
+  min-width: 160px;
+}
+
+.vellum-tag-suggest-item {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  line-height: 1.3;
+  white-space: nowrap;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+
+.vellum-tag-suggest-item:hover {
+  background: rgba(124, 58, 237, 0.14);
+}
+
+.vellum-tag-suggest-item.highlighted {
+  background: rgba(124, 58, 237, 0.22);
+  color: #ffffff;
+}
+
+.vellum-tag-suggest-item-hash {
+  color: #c084fc;
+  font-weight: 700;
+  font-size: 11px;
+  opacity: 0.85;
+  flex-shrink: 0;
+}
+
+.vellum-tag-suggest-item-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: 500;
+}
+
+.vellum-tag-suggest-item-count {
+  font-size: 10.5px;
+  font-weight: 600;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: rgba(124, 58, 237, 0.18);
+  color: #c084fc;
+  flex-shrink: 0;
+}
+
+.vellum-tag-suggest-item.highlighted .vellum-tag-suggest-item-count {
+  background: rgba(255, 255, 255, 0.22);
+  color: #ffffff;
+}

@@ -16,6 +16,11 @@
   let enabled = true;
   let showTimer = null;
   let popup = null;
+  let tagInput = null;
+  // Cached clone of the selection range at popup-show time. Lets the tag input
+  // steal focus (which collapses the live selection) without losing the range
+  // we actually want to highlight when a swatch is clicked.
+  let cachedRange = null;
   // Suppress re-showing until the next selection change (set after Ctrl+C so
   // the popup doesn't reappear from the still-live selection post-copy).
   let suppressUntilSelectionChange = false;
@@ -48,17 +53,23 @@
     el.id = 'vellum-quick-highlight';
     el.setAttribute('data-vellum-ui', '1');
     // Prevent the selection from collapsing the moment the user presses down
-    // on any popup control — without this, the selection vanishes before the
-    // click handler reads it.
-    el.addEventListener('mousedown', (e) => e.preventDefault());
+    // on the popup frame or a swatch. The tag input needs real focus to accept
+    // typing, so we re-allow mousedown to propagate normally inside the tag
+    // row below.
+    el.addEventListener('mousedown', (e) => {
+      if (e.target.closest('.vellum-qh-tag-row')) return;
+      e.preventDefault();
+    });
 
-    // Vellum logo chip on the left — signals the popup is ours, not the
-    // host site's own toolbar (Medium, Substack, etc.).
+    // Row 1: [logo][swatches][dismiss] — unchanged one-tap highlight path.
+    const row = document.createElement('div');
+    row.className = 'vellum-qh-row';
+
     const logo = document.createElement('span');
     logo.className = 'vellum-qh-logo';
     logo.textContent = 'V';
     logo.setAttribute('title', 'Vellum');
-    el.appendChild(logo);
+    row.appendChild(logo);
 
     for (const theme of THEMES) {
       const dot = document.createElement('div');
@@ -69,11 +80,9 @@
         e.stopPropagation();
         applyHighlight(theme.key);
       });
-      el.appendChild(dot);
+      row.appendChild(dot);
     }
 
-    // Dismiss X — session-level "don't show me this again until I reload."
-    // Reuses .vellum-select-delete styling (same red circle as the dock's X).
     const dismiss = document.createElement('div');
     dismiss.className = 'vellum-select-delete vellum-qh-dismiss';
     dismiss.textContent = '✕';
@@ -83,7 +92,35 @@
       sessionDismissed = true;
       hidePopup();
     });
-    el.appendChild(dismiss);
+    row.appendChild(dismiss);
+
+    el.appendChild(row);
+
+    // Row 2: tag input. Optional — leaving it empty preserves the original
+    // one-tap flow (select → click swatch). Typing attaches the tag to the
+    // created highlight; autocomplete pulls from every prior tag in storage.
+    const tagRow = document.createElement('div');
+    tagRow.className = 'vellum-qh-tag-row';
+
+    const tagIcon = document.createElement('span');
+    tagIcon.className = 'vellum-qh-tag-icon';
+    tagIcon.textContent = '#';
+    tagRow.appendChild(tagIcon);
+
+    tagInput = document.createElement('input');
+    tagInput.className = 'vellum-qh-tag-input';
+    tagInput.type = 'text';
+    tagInput.placeholder = 'tag (optional)';
+    tagInput.maxLength = 40;
+    tagInput.setAttribute('autocomplete', 'off');
+    tagInput.setAttribute('spellcheck', 'false');
+    tagRow.appendChild(tagInput);
+
+    el.appendChild(tagRow);
+
+    if (window.VellumTags) {
+      window.VellumTags.buildAutocompleteDropdown(tagInput);
+    }
 
     return el;
   }
@@ -127,6 +164,10 @@
       popup.classList.remove('visible');
       popup.style.display = 'none';
     }
+    // Reset the tag input so each new selection starts from a blank tag.
+    // Per-highlight tagging is a conscious opt-in, not a sticky preference.
+    if (tagInput) tagInput.value = '';
+    cachedRange = null;
   }
 
   // ── Selection gating ──────────────────────────────────────────────────────
@@ -168,12 +209,17 @@
       if (!cur) return;
       const rect = cur.range.getBoundingClientRect();
       if (!rect || (rect.width === 0 && rect.height === 0)) return;
+      cachedRange = cur.range.cloneRange();
       positionPopup(rect);
     }, SHOW_DELAY_MS);
   }, true);
 
   document.addEventListener('selectionchange', () => {
     suppressUntilSelectionChange = false;
+    // Skip the hide while the user is interacting with the tag input — the
+    // selection collapses the moment focus moves, but cachedRange preserves
+    // what we actually want to highlight.
+    if (document.activeElement === tagInput) return;
     if (!getCurrentSelection()) hidePopup();
   });
 
@@ -196,18 +242,28 @@
 
   document.addEventListener('mousedown', (e) => {
     if (popup && popup.contains(e.target)) return;
+    // Tag autocomplete dropdown lives outside the popup (appended to <body>
+    // with position:fixed). Don't hide when the user is picking a suggestion.
+    if (e.target.closest && e.target.closest('.vellum-tag-suggest')) return;
     hidePopup();
   }, true);
 
   // ── Actions ───────────────────────────────────────────────────────────────
 
   async function applyHighlight(colorKey) {
+    // Prefer the live selection; fall back to the cached range if the user
+    // typed in the tag input (which collapses the visible selection).
     const cur = getCurrentSelection();
-    if (!cur) { hidePopup(); return; }
+    const range = cur ? cur.range.cloneRange()
+                      : (cachedRange ? cachedRange.cloneRange() : null);
+    if (!range) { hidePopup(); return; }
     window.VellumVisibility?.show?.();
-    const range = cur.range.cloneRange();
+    // Snapshot the tag *before* hidePopup clears the input.
+    const tag = window.VellumTags
+      ? window.VellumTags.normalize(tagInput?.value || '')
+      : (tagInput?.value || '').trim();
     hidePopup();
-    try { cur.selection.removeAllRanges(); } catch (err) {}
-    await window.VellumHighlighter?.createHighlightFromRange?.(range, colorKey);
+    try { cur?.selection?.removeAllRanges(); } catch (err) {}
+    await window.VellumHighlighter?.createHighlightFromRange?.(range, colorKey, tag);
   }
 })();

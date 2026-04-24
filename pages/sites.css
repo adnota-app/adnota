@@ -526,6 +526,7 @@ body {
 .pill-highlight { background: rgba(124,58,237,0.10); color: #7c3aed; }
 .pill-stroke    { background: rgba(16,185,129,0.10); color: #059669; }
 .pill-resize     { background: rgba(59,130,246,0.10); color: #2563eb; }
+.pill-tag        { background: rgba(124,58,237,0.14); color: #6d28d9; font-weight: 700; }
 
 .pill-dot {
   width: 5px; height: 5px;
@@ -537,6 +538,84 @@ body {
 .pill-highlight .pill-dot { background: #7c3aed; }
 .pill-stroke .pill-dot    { background: #10b981; }
 .pill-resize .pill-dot     { background: #3b82f6; }
+.pill-tag .pill-dot        { background: #7c3aed; }
+
+/* ═══════════════════════════════════════════════
+   TAG FILTER BAR — sits between the header and the sites list when any
+   tagged item exists. Clicking a chip filters the whole view. The row hides
+   itself entirely when no tags exist, so untagged users see the original UI.
+═══════════════════════════════════════════════ */
+.tag-filter-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 12px 24px;
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  z-index: 90;
+}
+
+.tag-filter-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-3);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  margin-right: 2px;
+}
+
+.tag-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  color: var(--text-2);
+  border-radius: 999px;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s, border-color 0.12s, transform 0.12s;
+  line-height: 1.2;
+}
+
+.tag-chip:hover {
+  background: rgba(124, 58, 237, 0.06);
+  border-color: rgba(124, 58, 237, 0.4);
+  color: #6d28d9;
+}
+
+.tag-chip.active {
+  background: #7c3aed;
+  border-color: #7c3aed;
+  color: #ffffff;
+  font-weight: 600;
+}
+
+.tag-chip-hash {
+  opacity: 0.7;
+  font-weight: 700;
+}
+
+.tag-chip-count {
+  font-size: 10.5px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: rgba(124, 58, 237, 0.12);
+  color: #6d28d9;
+  margin-left: 2px;
+}
+
+.tag-chip.active .tag-chip-count {
+  background: rgba(255, 255, 255, 0.22);
+  color: #ffffff;
+}
 
 /* Actions */
 .site-actions {

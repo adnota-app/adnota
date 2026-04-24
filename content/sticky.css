@@ -162,6 +162,57 @@ html.vellum-hidden .vellum-sticky-container {
   opacity: 0.6;
 }
 
+/* Tag row — one thin line at the bottom of each note. Autocomplete dropdown
+   is positioned by JS (lib/tagIndex.js) and styled by lib/vellumUI.css. */
+.vellum-sticky-tag-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px 6px;
+  border-top: 1px solid var(--line);
+  flex-shrink: 0;
+  min-height: 22px;
+}
+
+.vellum-sticky-tag-icon {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text);
+  opacity: 0.45;
+  user-select: none;
+  line-height: 1;
+}
+
+.vellum-sticky-tag-input {
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 500;
+  padding: 2px 0;
+}
+
+/* Same host-site bleed guard the textarea carries: some sites apply a blue
+   focus ring to every input in their stylesheet and it leaks through unless
+   we pin these with !important. */
+.vellum-sticky-tag-input:focus,
+.vellum-sticky-tag-input:focus-visible,
+.vellum-sticky-tag-input:active {
+  outline: none !important;
+  box-shadow: none !important;
+  border: none !important;
+  background: transparent !important;
+}
+
+.vellum-sticky-tag-input::placeholder {
+  color: var(--text);
+  opacity: 0.4;
+}
+
 /* ─── Sticky note icon swatches ─── */
 .vellum-sticky-swatch {
   display: inline-flex;

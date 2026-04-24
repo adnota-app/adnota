@@ -68,6 +68,7 @@
         "lib/storage.js",
         "lib/annotationState.js",
         "lib/vellumUI.js",
+        "lib/tagIndex.js",
         "content/dock.js",
         "content/fuzzyAnchor.js",
         "content/eraser.js",
