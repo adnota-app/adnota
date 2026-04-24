@@ -120,7 +120,7 @@
   const dismissBtn = document.createElement('div');
   dismissBtn.className = 'vellum-select-delete vellum-dock-dismiss';
   dismissBtn.textContent = '✕';
-  dismissBtn.setAttribute('data-tooltip', 'Hide menu (any tool or reload restores)');
+  dismissBtn.setAttribute('data-tooltip', 'Hide (reload restores)');
   dock.appendChild(dismissBtn);
 
   document.documentElement.appendChild(dock);

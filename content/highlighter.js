@@ -56,7 +56,7 @@ function makeToolBtn(name, title, mode) {
 
 // ── Create Toolbar UI ───────────────────────────────────────────────────────
 // Dock body — mounts into VellumDock when a drawing-family mode is active.
-// The dock owns drag handle + V logo + radial; we own tools + swatches +
+// The dock owns drag handle + V logo + tool row; we own tools + swatches +
 // stroke widths + fill toggle + trash + undo.
 const highlightToolbar = document.createElement('div');
 highlightToolbar.style.display = 'inline-flex';

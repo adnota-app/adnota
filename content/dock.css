@@ -185,25 +185,8 @@
 .vellum-dock-tool[data-accent="highlight"] { --tool-color: #7c3aed; --tool-glow: rgba(124, 58, 237, 0.3); }
 .vellum-dock-tool[data-accent="resizer"]   { --tool-color: #3b82f6; --tool-glow: rgba(59, 130, 246, 0.3); }
 
-/* Tool-button tooltip — positioned above since the dock sits near the bottom
-   of the page. Matches the shared [data-tooltip] styling in vellumUI.css. */
-.vellum-dock-tool[data-tooltip]:hover::after {
-  content: attr(data-tooltip);
-  position: absolute;
-  bottom: calc(100% + 8px);
-  left: 50%;
-  transform: translateX(-50%);
-  background: rgba(15, 15, 15, 0.95);
-  color: #e4e4e7;
-  font-size: 11px;
-  font-weight: 500;
-  padding: 3px 8px;
-  border-radius: 4px;
-  white-space: nowrap;
-  pointer-events: none;
-  border: 1px solid var(--tool-color, rgba(124, 58, 237, 0.35));
-  z-index: 2147483647;
-}
+/* Tool buttons need position:relative so the shared [data-tooltip]::after
+   rule from vellumUI.css positions correctly. */
 .vellum-dock-tool { position: relative; }
 
 /* ── Tool body (active) ────────────────────────────────────────────────── */
@@ -235,9 +218,17 @@
    behavior: top-right corner positioning and hover-reveal while idle.
    Hidden when a tool is active — the dock IS the HUD then, so the user
    needs the back arrow, not an escape hatch that strands them. */
-.vellum-dock-dismiss {
-  top: -10px;
-  right: -10px;
+/* Scoped to #vellum-dock to beat .vellum-select-delete on specificity —
+   marker.css loads after dock.css per the manifest, so a bare class wouldn't
+   override the shared 20px sizing. */
+#vellum-dock .vellum-dock-dismiss {
+  /* Shrink the shared .vellum-select-delete (sized for annotation shapes)
+     down to something proportionate to the compact dock. */
+  width: 16px;
+  height: 16px;
+  font-size: 8px;
+  top: -7px;
+  right: -7px;
   opacity: 0;
   pointer-events: none;
   transition: opacity 0.12s ease, background 0.15s, transform 0.15s;

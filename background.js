@@ -70,9 +70,9 @@ chrome.commands.onCommand.addListener((command, tab) => {
   }
 });
 
-// ─── Radial menu message relay ───────────────────────────────────────────────
+// ─── Dock message relay ──────────────────────────────────────────────────────
 // Content scripts can't send messages to themselves via chrome.tabs.sendMessage,
-// so the radial menu sends to the background which relays back to the same tab.
+// so the dock sends to the background which relays back to the same tab.
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.action === 'open-sites') {
