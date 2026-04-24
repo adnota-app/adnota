@@ -53,14 +53,19 @@
 .vellum-qh-tag-input {
   flex: 1;
   min-width: 140px;
-  background: transparent;
-  border: none;
-  outline: none;
-  color: #e4e4e7;
-  font-family: inherit;
-  font-size: 11px;
-  font-weight: 500;
-  padding: 3px 0;
+  background: transparent !important;
+  border: none !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  outline: none !important;
+  padding: 3px 0 !important;
+  margin: 0 !important;
+  color: #e4e4e7 !important;
+  font-family: inherit !important;
+  font-size: 11px !important;
+  font-weight: 500 !important;
+  line-height: 1.2 !important;
+  height: auto !important;
   -webkit-user-select: text;
   user-select: text;
 }
