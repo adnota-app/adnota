@@ -356,37 +356,17 @@
     setVisibilityIcon(false);
   }
 
-  // ── State subscription: show/hide dock based on which tool is active ────
-  // Phase 1: only the eraser is migrated. For every other tool the dock
-  // hides itself so the tool's existing fixed HUD can appear in its normal
-  // position. The dock returns to idle when the tool exits.
-  const MIGRATED_MODES = new Set([null, 'eraser']);
-
-  function updateDockVisibility() {
-    const mode = window.VellumState?.mode;
-    dock.style.display = MIGRATED_MODES.has(mode) ? 'flex' : 'none';
-  }
-
+  // All tools mount their controls into the dock body — it's the only Vellum
+  // chrome on the page, visible at all times.
   if (window.VellumState?.subscribe) {
-    window.VellumState.subscribe(() => {
-      updateDockVisibility();
-      syncActiveState();
-    });
+    window.VellumState.subscribe(syncActiveState);
   }
 
-  // Keyboard shortcuts also flip VellumState — the subscriber above catches
-  // in-page changes. For cross-page storage changes, resync on storage event
-  // with a small delay so VellumState updates first.
   chrome.storage.onChanged.addListener((changes, area) => {
     if (area === 'local' && 'vellumActiveMode' in changes) {
-      setTimeout(() => {
-        updateDockVisibility();
-        syncActiveState();
-      }, 50);
+      setTimeout(syncActiveState, 50);
     }
   });
-
-  updateDockVisibility();
 
   // ── Public API ──────────────────────────────────────────────────────────
   // A tool mounts its body fragment when it activates; unmount on exit.
@@ -410,7 +390,13 @@
       // Swivel satellites to the active arc so they don't overlap the body.
       reorbitIfOpen();
     },
-    unmount() {
+    // toolId is optional but recommended — when supplied, unmount no-ops if
+    // the dock is currently owned by a different tool. This avoids a race when
+    // switching tools: the outgoing tool's VellumState subscriber fires AFTER
+    // the incoming tool's (registration order), so an unconditional unmount
+    // would clear the body the new tool just installed.
+    unmount(toolId) {
+      if (toolId && dock.getAttribute('data-accent') !== toolId) return;
       body.replaceChildren();
       dock.classList.remove('vellum-dock-active');
       dock.removeAttribute('data-accent');

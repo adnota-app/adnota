@@ -152,11 +152,6 @@
   z-index: 2147483647;
 }
 
-/* Per-HUD tooltip accent colors */
-#vellum-eraser-hud   { --vellum-tooltip-border: rgba(239, 68, 68, 0.35); }
-#vellum-sticky-toolbar { --vellum-tooltip-border: rgba(245, 158, 11, 0.35); }
-#vellum-resizer-hud  { --vellum-tooltip-border: rgba(59, 130, 246, 0.3); }
-
 /* Dock picks up the active tool's tooltip accent via data-accent. */
 #vellum-dock[data-accent="eraser"]    { --vellum-tooltip-border: rgba(239, 68, 68, 0.35); }
 #vellum-dock[data-accent="sticky"]    { --vellum-tooltip-border: rgba(245, 158, 11, 0.35); }
@@ -181,13 +176,11 @@
 }
 
 /* HUD Eraser (Red variants) */
-.vellum-toolbar-logo.vellum-toolbar-logo-red { background: rgba(239, 68, 68, 0.35); color: #fca5a5; }
 .vellum-toolbar-divider.vellum-toolbar-divider-red { background: rgba(239, 68, 68, 0.25); }
 .vellum-undo-btn.vellum-undo-btn-red:hover { background: rgba(239, 68, 68, 0.15); }
 .vellum-undo-btn.vellum-undo-btn-red:hover svg { stroke: #fca5a5; }
 
 /* HUD Sticky (Orange/Yellow variants) */
-.vellum-toolbar-logo.vellum-toolbar-logo-orange { background: rgba(245, 158, 11, 0.35); color: #fcd34d; }
 .vellum-toolbar-divider.vellum-toolbar-divider-orange { background: rgba(245, 158, 11, 0.25); }
 .vellum-undo-btn.vellum-undo-btn-orange:hover { background: rgba(245, 158, 11, 0.15); }
 .vellum-undo-btn.vellum-undo-btn-orange:hover svg { stroke: #fcd34d; }
