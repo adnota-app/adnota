@@ -1,21 +1,22 @@
 // content/dock.js — The Vellum Dock
 //
-// One persistent fixed-position widget that replaces both the old radial
-// menu and the per-tool HUD strips. It is the ONLY Vellum chrome that
-// sits on the page at all times.
+// One persistent fixed-position widget. Two visual states, toggled by which
+// tool (if any) is active:
 //
-//   idle           → drag handle + V logo
-//   radial open    → satellites fan out in a half-dome above the V
-//   tool active    → body slot grows right with the tool's controls
+//   idle   — [drag][V][vis][eraser][sticky][marker][resizer]
+//            Tool row is always visible, one click away.
+//   active — [drag][← back][tool HUD body grows right →]
+//            The tool row collapses, V morphs into an accent-colored back
+//            arrow, and the tool's own controls fill the body slot.
 //
-// Tools register their controls via VellumDock.mount(toolId, buildFn)
-// when they enter their mode, and call VellumDock.unmount() when they
-// leave. The dock handles its own drag, radial, and state-sync.
+// Back arrow / Escape / clicking the active tool again all exit the tool.
+// Tools register their controls via VellumDock.mount(toolId, buildFn) on
+// entry, VellumDock.unmount(toolId) on exit.
 
 (function () {
   'use strict';
 
-  // ── Satellite icon markup ───────────────────────────────────────────────
+  // ── Icons ──────────────────────────────────────────────────────────────────
   const icons = {
     visibility:    `<svg viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>`,
     visibilityOff: `<svg viewBox="0 0 24 24"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/></svg>`,
@@ -23,111 +24,97 @@
     sticky:  `<svg viewBox="0 0 24 24"><path d="M15.5 3H5a2 2 0 0 0-2 2v14c0 1.1.9 2 2 2h14a2 2 0 0 0 2-2V8.5L15.5 3z"/><polyline points="15 3 15 9 21 9"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="12" y2="17"/></svg>`,
     marker:  `<svg viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>`,
     resizer: `<svg viewBox="0 0 24 24"><path d="M15 3h6v6"/><path d="M9 21H3v-6"/><path d="M21 3l-7 7"/><path d="M3 21l7-7"/></svg>`,
-    sites:   `<svg viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>`,
+    back:    `<svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>`,
   };
 
-  // Order here = rendering order = DOM order = left-to-right arc order.
-  const satellites = [
-    { id: 'vis',     tooltip: 'Show / Hide All', icon: 'visibility', color: '#a78bfa', glow: 'rgba(167,139,250,0.3)', action: 'toggle-view' },
-    { id: 'eraser',  tooltip: 'Eraser',          icon: 'eraser',     color: '#ef4444', glow: 'rgba(239,68,68,0.3)',   action: 'toggle-eraser',      mode: 'eraser'  },
-    { id: 'sticky',  tooltip: 'Sticky Note',     icon: 'sticky',     color: '#f59e0b', glow: 'rgba(245,158,11,0.3)',  action: 'toggle-sticky',      mode: 'sticky'  },
-    { id: 'marker',  tooltip: 'Drawing Palette', icon: 'marker',     color: '#7c3aed', glow: 'rgba(124,58,237,0.3)',  action: 'toggle-highlighter', mode: 'highlight' },
-    { id: 'resizer', tooltip: 'Resizer',         icon: 'resizer',    color: '#3b82f6', glow: 'rgba(59,130,246,0.3)',  action: 'toggle-resizer',     mode: 'resizer' },
-    { id: 'sites',   tooltip: 'My Edited Sites', icon: 'sites',      color: '#10b981', glow: 'rgba(16,185,129,0.3)',  action: 'open-sites' },
+  // Left-to-right order in the idle row. Tool modes (eraser/sticky/marker/
+  // resizer) come first as a group, then Show/Hide at the end — it's a
+  // global toggle, not a tool mode, and sits visually apart for that reason.
+  const toolDefs = [
+    { id: 'eraser',  tooltip: 'Eraser',          icon: 'eraser',     action: 'toggle-eraser',      mode: 'eraser',    accent: 'eraser'    },
+    { id: 'sticky',  tooltip: 'Sticky Note',     icon: 'sticky',     action: 'toggle-sticky',      mode: 'sticky',    accent: 'sticky'    },
+    { id: 'marker',  tooltip: 'Drawing Palette', icon: 'marker',     action: 'toggle-highlighter', mode: 'highlight', accent: 'highlight' },
+    { id: 'resizer', tooltip: 'Resizer',         icon: 'resizer',    action: 'toggle-resizer',     mode: 'resizer',   accent: 'resizer'   },
+    { id: 'vis',     tooltip: 'Show / Hide All', icon: 'visibility', action: 'toggle-view' },
   ];
 
-  // ── Radial geometry ─────────────────────────────────────────────────────
-  // Satellites form a rigid arc: fixed spacing between neighbors, fixed radius
-  // from the V. Idle vs active only changes the CENTER ANGLE — i.e. the whole
-  // cluster rotates as a single unit. This way the satellites keep the same
-  // order, spacing, and distance from the logo across the swivel, and each
-  // one travels the same arc length to its new home.
-  //   IDLE   — cluster centered straight up (90°). Symmetric above the V.
-  //   ACTIVE — cluster rotated 45° CCW (135°). All satellites are upper-LEFT
-  //            of the V, leaving the body slot to the right uncovered.
-  const RADIUS = 80;
-  const SAT_SPACING_DEG = 22;          // angular gap between adjacent satellites
-  const IDLE_CENTER_DEG   =  90;       // straight up
-  const ACTIVE_CENTER_DEG = 135;       // upper-left
-  const count = satellites.length;
-  const HALF_SPAN_DEG = ((count - 1) * SAT_SPACING_DEG) / 2;
+  // Drawing sub-modes all count as "marker" for the active-state indicator.
+  const MARKER_SUB_MODES = new Set(['highlight', 'pen', 'arrow', 'rect', 'ellipse', 'text', 'select']);
 
-  function currentCenterDeg() {
-    return dock.classList.contains('vellum-dock-active')
-      ? ACTIVE_CENTER_DEG
-      : IDLE_CENTER_DEG;
-  }
-
-  // Sat 0 sits at the highest angle (which corresponds to upper-LEFT in the
-  // idle arc, reading left-to-right: vis, eraser, sticky, marker, resizer,
-  // sites). After rotation, that ordering is preserved — sat 0 just moves
-  // along the arc to wherever the new center puts it.
-  function angleForIndex(i) {
-    return currentCenterDeg() + HALF_SPAN_DEG - i * SAT_SPACING_DEG;
-  }
-
-  // ── Build DOM ───────────────────────────────────────────────────────────
+  // ── Build DOM ─────────────────────────────────────────────────────────────
   const dock = document.createElement('div');
   dock.id = 'vellum-dock';
   dock.setAttribute('data-vellum-ui', '1');
 
-  const anchor = document.createElement('div');
-  anchor.className = 'vellum-dock-anchor';
-  dock.appendChild(anchor);
-
-  // Drag handle (reuses the existing .vellum-toolbar-drag class).
   const dragHandle = document.createElement('span');
   dragHandle.className = 'vellum-toolbar-drag';
-  dragHandle.textContent = '\u2847';
+  dragHandle.textContent = '⡇';
   dragHandle.setAttribute('data-tooltip', 'Drag to reposition');
-  anchor.appendChild(dragHandle);
+  dock.appendChild(dragHandle);
 
-  // V logo — the radial anchor. Click or hover to fan.
+  // Home chrome: V logo (idle) OR back arrow (active). They share a slot so
+  // the dock's left edge is visually anchored across state transitions.
+  const home = document.createElement('div');
+  home.className = 'vellum-dock-home';
+
   const logo = document.createElement('span');
   logo.className = 'vellum-dock-logo';
   logo.textContent = 'V';
-  anchor.appendChild(logo);
-
-  // Invisible hit zone to the upper-left of the logo — keeps the radial open
-  // while the cursor crosses the empty space between the V and a satellite.
-  // Lives INSIDE the logo so its coordinates are relative to the logo's box
-  // and so leaving the logo's parent (anchor) doesn't accidentally exit it.
-  const hitzone = document.createElement('div');
-  hitzone.className = 'vellum-dock-hitzone';
-  logo.appendChild(hitzone);
-
-  // Satellite buttons — children of the logo so positioning is relative to
-  // its center. Order here matches the nth-of-type cascade rules in dock.css.
-  const satEls = [];
-  satellites.forEach((sat, i) => {
-    const el = document.createElement('div');
-    el.className = 'vellum-dock-satellite';
-    el.setAttribute('data-vellum-ui', '1');
-    el.setAttribute('data-tooltip', sat.tooltip);
-    el.setAttribute('data-sat-id', sat.id);
-    el.style.setProperty('--sat-color', sat.color);
-    el.style.setProperty('--sat-glow', sat.glow);
-    el.innerHTML = icons[sat.icon];
-    el.addEventListener('click', (e) => {
-      e.stopPropagation();
-      handleSatelliteClick(sat);
-    });
-    logo.appendChild(el);
-    satEls.push({ el, sat, index: i });
+  logo.setAttribute('data-tooltip', 'My Edited Sites');
+  logo.addEventListener('click', (e) => {
+    e.stopPropagation();
+    chrome.runtime.sendMessage({ action: 'open-sites' }).catch(() => {});
   });
+  home.appendChild(logo);
 
-  // Tool body slot — tools mount their controls here.
+  const back = document.createElement('button');
+  back.type = 'button';
+  back.className = 'vellum-dock-back';
+  back.setAttribute('data-tooltip', 'Exit tool (Esc)');
+  back.innerHTML = icons.back;
+  back.addEventListener('click', (e) => {
+    e.stopPropagation();
+    window.VellumState?.set({ mode: null });
+  });
+  home.appendChild(back);
+
+  dock.appendChild(home);
+
+  // Tool row — always-visible when idle, hidden when a tool is active.
+  const toolRow = document.createElement('div');
+  toolRow.className = 'vellum-dock-tools';
+
+  const toolEls = [];
+  for (const tool of toolDefs) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'vellum-dock-tool';
+    btn.setAttribute('data-vellum-ui', '1');
+    btn.setAttribute('data-tooltip', tool.tooltip);
+    btn.setAttribute('data-tool-id', tool.id);
+    if (tool.accent) btn.setAttribute('data-accent', tool.accent);
+    btn.innerHTML = icons[tool.icon];
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      handleToolClick(tool);
+    });
+    toolRow.appendChild(btn);
+    toolEls.push({ btn, tool });
+  }
+
+  dock.appendChild(toolRow);
+
+  // Tool body — mounted into when a tool is active. Grows right from the
+  // back arrow, shares the same frosted-glass panel.
   const body = document.createElement('div');
   body.className = 'vellum-dock-body';
   dock.appendChild(body);
 
   document.documentElement.appendChild(dock);
 
-  // ── Drag + position persistence ─────────────────────────────────────────
-  // The dock starts centered (left:50% + transform). On first drag — or first
-  // tool mount, see commitPositionIfCentered() — it commits to absolute left/
-  // top. We persist the committed coordinates to chrome.storage.local so the
-  // user's chosen spot survives page reloads and Chrome restarts.
+  // ── Position persistence ──────────────────────────────────────────────────
+  // The dock starts centered (left:50% + transform). On first drag OR first
+  // tool mount, commit to absolute px and persist so the spot survives reloads.
   const POSITION_KEY = 'vellumDockPosition';
 
   function commitPositionIfCentered() {
@@ -148,10 +135,10 @@
     }
   }
 
-  // Drag-anywhere: the whole dock is a drag surface. A short movement
-  // threshold distinguishes drag from click, and we cancel the synthetic
-  // click that follows a real drag so satellite / logo clicks still work
-  // when the user means to click without moving.
+  // ── Drag anywhere on the dock ─────────────────────────────────────────────
+  // 4px threshold distinguishes a drag from a click, and we swallow the
+  // synthetic click that follows a real drag so tool buttons only fire when
+  // the user genuinely meant to click.
   const DRAG_THRESHOLD_PX = 4;
   let dragState = null;
   let suppressNextClick = false;
@@ -163,8 +150,6 @@
     if (!dragState.dragging) {
       if (Math.abs(dx) < DRAG_THRESHOLD_PX && Math.abs(dy) < DRAG_THRESHOLD_PX) return;
       dragState.dragging = true;
-      // Commit position BEFORE the first positional update so the transform-
-      // based center shift can't fight our absolute coordinates.
       commitPositionIfCentered();
       const r = dock.getBoundingClientRect();
       dragState.startLeft = r.left;
@@ -210,8 +195,6 @@
     window.addEventListener('pointercancel', onDragEnd);
   });
 
-  // Swallow the click that fires right after a drag so the drop doesn't
-  // double-activate whatever happened to be under the cursor.
   dock.addEventListener('click', (e) => {
     if (suppressNextClick) {
       suppressNextClick = false;
@@ -220,9 +203,9 @@
     }
   }, true);
 
-  // Restore saved position on init. The dock is visibility:hidden until this
-  // resolves (success OR failure) so we never flash at the default center
-  // when a saved position exists.
+  // ── Restore saved position ────────────────────────────────────────────────
+  // Dock is visibility:hidden until this resolves so we never flash at the
+  // default center position when a saved spot exists.
   function markReady() {
     dock.classList.add('vellum-dock-ready');
   }
@@ -237,117 +220,51 @@
     markReady();
   }).catch(markReady);
 
-  // ── Radial expand / collapse ────────────────────────────────────────────
-  function positionSatellites(expanded) {
-    satEls.forEach(({ el, index }) => {
-      if (expanded) {
-        const angleRad = (angleForIndex(index) * Math.PI) / 180;
-        const x = Math.cos(angleRad) * RADIUS;
-        const y = -Math.sin(angleRad) * RADIUS; // negative: CSS y grows down
-        el.style.left = (-2 + x) + 'px';
-        el.style.top  = (-2 + y) + 'px';
-      } else {
-        el.style.left = '-2px';
-        el.style.top  = '-2px';
-      }
-    });
-  }
-
-  let collapseTimer = null;
-
-  function expand() {
-    clearTimeout(collapseTimer);
-    if (dock.classList.contains('vellum-dock-radial-open')) return;
-    dock.classList.add('vellum-dock-radial-open');
-    positionSatellites(true);
-    syncActiveState();
-  }
-
-  function collapse() {
-    clearTimeout(collapseTimer);
-    dock.classList.remove('vellum-dock-radial-open');
-    positionSatellites(false);
-  }
-
-  function scheduleCollapse(delayMs = 1500) {
-    clearTimeout(collapseTimer);
-    collapseTimer = setTimeout(collapse, delayMs);
-  }
-
-  // Re-orbit satellites to the current arc. No-op if the radial isn't open.
-  // Used when the dock toggles between idle and active so the satellites
-  // visibly swivel as the body grows/shrinks.
-  function reorbitIfOpen() {
-    if (dock.classList.contains('vellum-dock-radial-open')) {
-      positionSatellites(true);
-    }
-  }
-
-  // Open trigger: hovering the V. The drag handle does NOT open the radial
-  // (so the user can grab and drag without summoning the menu).
-  // Close trigger: leaving the whole dock. As long as the cursor is anywhere
-  // in the dock (logo, satellites, body, drag handle), the radial stays open.
-  // This avoids spurious collapses when moving from a satellite back across
-  // the dock to grab the drag handle, or to click a body control.
-  logo.addEventListener('mouseenter', expand);
-  dock.addEventListener('mouseenter', () => clearTimeout(collapseTimer));
-  dock.addEventListener('mouseleave', scheduleCollapse);
-
-  // Click on the logo toggles — useful on touch or when hover is flaky.
-  logo.addEventListener('click', (e) => {
-    // Don't toggle if the click came from a satellite (its own handler runs).
-    if (e.target !== logo) return;
-    e.stopPropagation();
-    if (dock.classList.contains('vellum-dock-radial-open')) collapse();
-    else expand();
-  });
-
-  // ── Satellite click → fire tool action ──────────────────────────────────
-  function handleSatelliteClick(sat) {
-    if (sat.action === 'open-sites') {
-      chrome.runtime.sendMessage({ action: 'open-sites' }).catch(() => {});
-      collapse();
-      return;
-    }
-
-    if (sat.action === 'toggle-view') {
+  // ── Tool button clicks ────────────────────────────────────────────────────
+  function handleToolClick(tool) {
+    if (tool.action === 'toggle-view') {
       window.VellumVisibility?.toggle();
-      collapse();
       return;
     }
-
-    // Tool toggles — relay through the background so the content scripts'
-    // runtime message listeners fire (same path keyboard shortcuts take).
-    // Collapse immediately: the user clicked a tool, so the radial should
-    // disappear right away. The body growing to include the tool's controls
-    // is a separate animation owned by .vellum-dock-active.
+    // Fire the tool's toggle through the background relay so the content
+    // script's runtime message listener handles it (same path keyboard
+    // shortcuts take).
     chrome.runtime.sendMessage({
       action: 'relay-to-tab',
-      payload: { action: sat.action },
+      payload: { action: tool.action },
     }).catch(() => {});
-    collapse();
   }
 
-  // ── Active-state sync (border glow on the right satellite) ──────────────
-  const MARKER_SUB_MODES = new Set(['highlight', 'pen', 'arrow', 'rect', 'ellipse', 'text', 'select']);
-
+  // ── Active-tool indicator on the idle row ────────────────────────────────
+  // Briefly visible during mode transitions and during the window between
+  // hitting a shortcut and the body mounting. Also keeps the row readable if
+  // a tool fails to mount its body for some reason.
   function syncActiveState() {
     const mode = window.VellumState?.mode;
-    satEls.forEach(({ el, sat }) => {
-      if (!sat.mode) return;
-      const isActive = sat.id === 'marker'
+    for (const { btn, tool } of toolEls) {
+      if (!tool.mode) continue;
+      const isActive = tool.id === 'marker'
         ? MARKER_SUB_MODES.has(mode)
-        : mode === sat.mode;
-      el.classList.toggle('active', isActive);
-    });
+        : mode === tool.mode;
+      btn.classList.toggle('active', isActive);
+    }
   }
 
-  // ── Visibility icon swap (eye ↔ eye-off) ────────────────────────────────
+  if (window.VellumState?.subscribe) {
+    window.VellumState.subscribe(syncActiveState);
+  }
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area === 'local' && 'vellumActiveMode' in changes) {
+      setTimeout(syncActiveState, 50);
+    }
+  });
+
+  // ── Show/Hide icon swap (eye ↔ eye-off) ──────────────────────────────────
   function setVisibilityIcon(isHidden) {
-    const visSat = satEls.find(s => s.sat.id === 'vis');
-    if (!visSat) return;
-    visSat.el.innerHTML = isHidden ? icons.visibilityOff : icons.visibility;
-    visSat.el.setAttribute('data-tooltip', isHidden ? 'Show All' : 'Hide All');
+    const visEntry = toolEls.find(t => t.tool.id === 'vis');
+    if (!visEntry) return;
+    visEntry.btn.innerHTML = isHidden ? icons.visibilityOff : icons.visibility;
+    visEntry.btn.setAttribute('data-tooltip', isHidden ? 'Show All' : 'Hide All');
   }
 
   if (window.VellumVisibility?.subscribe) {
@@ -356,66 +273,30 @@
     setVisibilityIcon(false);
   }
 
-  // All tools mount their controls into the dock body — it's the only Vellum
-  // chrome on the page, visible at all times.
-  if (window.VellumState?.subscribe) {
-    window.VellumState.subscribe(syncActiveState);
-  }
-
-  chrome.storage.onChanged.addListener((changes, area) => {
-    if (area === 'local' && 'vellumActiveMode' in changes) {
-      setTimeout(syncActiveState, 50);
-    }
-  });
-
-  // ── Public API ──────────────────────────────────────────────────────────
-  // A tool mounts its body fragment when it activates; unmount on exit.
-  // The dock owns the chrome (drag, logo, radial, accent); the tool owns
-  // its controls (info strip, swatches, trash, undo).
+  // ── Public API ────────────────────────────────────────────────────────────
   window.VellumDock = {
+    // Lock the dock to its current pixel coordinates BEFORE filling the
+    // body — otherwise the body's growth pushes the dock left/right (it's
+    // centered with translateX(-50%)) and hovering the active tool becomes
+    // a moving target as its info text changes width.
     mount(toolId, buildBodyFn) {
-      // Lock the dock to its current pixel coordinates BEFORE filling the
-      // body. Otherwise the body's content width pushes the dock left/right
-      // (it's centered with transform:translateX(-50%)), and any subsequent
-      // info-text changes inside the body will keep shifting the dock —
-      // which causes the cursor to keep falling on/off the dock's hover
-      // boundary, looping the :hover state.
       commitPositionIfCentered();
-
       body.replaceChildren();
       const frag = buildBodyFn?.();
       if (frag) body.appendChild(frag);
       dock.classList.add('vellum-dock-active');
       dock.setAttribute('data-accent', toolId);
-      // Swivel satellites to the active arc so they don't overlap the body.
-      reorbitIfOpen();
     },
-    // toolId is optional but recommended — when supplied, unmount no-ops if
-    // the dock is currently owned by a different tool. This avoids a race when
-    // switching tools: the outgoing tool's VellumState subscriber fires AFTER
-    // the incoming tool's (registration order), so an unconditional unmount
-    // would clear the body the new tool just installed.
+    // toolId gates unmount so the outgoing tool's subscriber (which fires
+    // after the incoming tool's when switching modes) doesn't clear the body
+    // the new tool just installed.
     unmount(toolId) {
       if (toolId && dock.getAttribute('data-accent') !== toolId) return;
       body.replaceChildren();
       dock.classList.remove('vellum-dock-active');
       dock.removeAttribute('data-accent');
-      // If the radial was still open (e.g. user hit Escape while hovering the
-      // logo, so the satellites were fanned to the active upper-left arc),
-      // collapse straight to the closed state — do NOT re-orbit to the idle
-      // arc first. Re-orbiting produces a confusing two-stage animation
-      // (satellites sweep to idle arc, then collapse) that makes Escape feel
-      // unresponsive. The exit translate in CSS gives a single consistent
-      // "down-and-left" swivel regardless of the arc they were on.
-      if (dock.classList.contains('vellum-dock-radial-open')) {
-        collapse();
-      }
     },
-    // Escape hatch — the dock element itself, for tools that need to attach
-    // extra listeners or measure (e.g. the eraser's iframe shield).
     element: dock,
     bodyElement: body,
-    logoElement: logo,
-    dragHandle,
   };
 })();

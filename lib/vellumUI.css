@@ -134,7 +134,7 @@
   position: relative;
 }
 
-[data-tooltip]:not(.vellum-dock-satellite):hover::after {
+[data-tooltip]:not(.vellum-dock-tool):hover::after {
   content: attr(data-tooltip);
   position: absolute;
   bottom: calc(100% + 8px);

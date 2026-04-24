@@ -1,12 +1,9 @@
 /* ── Vellum Dock ──────────────────────────────────────────────────────────
-   The unified, persistent widget. Replaces both the old radial menu and the
-   per-tool fixed HUD strips. One DOM surface, three visual states:
-     1. Idle           — drag handle + V logo chip
-     2. Radial open    — satellites fan out in a half-dome above the V
-     3. Tool active    — body slot grows out to the right with the tool's
-                         controls (info / swatches / trash / undo / etc.)
-   The drag handle + V logo never move during a state transition — the body
-   morphs in from width 0, and satellites fly out from the V's center.
+   The unified, persistent widget. One DOM surface, two visual states:
+     idle   — drag | V | tool row (vis, eraser, sticky, marker, resizer)
+     active — drag | ← back (tinted) | tool's HUD body
+   The drag handle never moves. The V ↔ back swap and the tool-row ↔ body
+   swap happen in place, so the dock's left edge stays pinned.
 ───────────────────────────────────────────────────────────────────────────── */
 
 #vellum-dock {
@@ -19,6 +16,10 @@
   display: flex;
   align-items: center;
   padding: 6px 10px;
+  /* Fixed outer height so the dock doesn't jump when activating a tool.
+     Matches body's min-height (30) + dock vertical padding (12). */
+  min-height: 42px;
+  box-sizing: border-box;
 
   background: rgba(15, 15, 15, 0.92);
   -webkit-backdrop-filter: blur(8px);
@@ -36,11 +37,10 @@
   white-space: nowrap;
   cursor: default;
 
-  /* Idle chip dims out of the way; hover / active / radial-open snap to full. */
+  /* Idle chip dims out of the way; hover / active snap to full. */
   opacity: 0.55;
-  /* Hide until the saved position has been read from storage. The JS adds
-     .vellum-dock-ready after chrome.storage.local.get resolves (even on
-     failure) so we never flash the default center position first. */
+  /* Hidden until .vellum-dock-ready — JS adds it after the saved position
+     has been read from storage so we never flash at the default center. */
   visibility: hidden;
   transition: border-color 0.3s ease, opacity 0.2s ease;
 }
@@ -50,30 +50,18 @@
 }
 
 #vellum-dock:hover,
-#vellum-dock.vellum-dock-radial-open,
 #vellum-dock.vellum-dock-active {
   opacity: 1;
 }
 
-/* ── Anchor: drag handle + V logo + satellite overlay ─────────────────── */
-.vellum-dock-anchor {
-  position: relative;
+/* ── Home slot: V logo (idle) OR back arrow (active) ───────────────────── */
+.vellum-dock-home {
   display: inline-flex;
   align-items: center;
   flex-shrink: 0;
 }
 
-/* Zero the base .vellum-toolbar-drag margins inside the dock so the handle
-   sits flush with the logo. */
-.vellum-dock-anchor .vellum-toolbar-drag {
-  margin: 0 6px 0 0;
-  padding: 0 2px;
-  font-size: 16px;
-}
-
-/* ── V logo: the radial anchor ─────────────────────────────────────────── */
 .vellum-dock-logo {
-  position: relative;      /* so satellites can be positioned off of it */
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -85,90 +73,86 @@
   font-weight: 700;
   font-size: 13px;
   letter-spacing: -0.5px;
+  flex-shrink: 0;
+  user-select: none;
+  cursor: pointer;
+  transition: background 0.2s ease, color 0.2s ease;
+}
+
+.vellum-dock-logo:hover {
+  background: rgba(124, 58, 237, 0.45);
+  color: #e9d5ff;
+}
+
+.vellum-dock-back {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: none;
+  padding: 0;
+  background: rgba(124, 58, 237, 0.28);
+  color: #c084fc;
   cursor: pointer;
   flex-shrink: 0;
   user-select: none;
-  /* No transform on hover — anything that changes the logo's hit area can
-     create open/close flicker when the cursor sits near the edge. Background
-     and shadow are visual-only and safe. */
-  transition: background 0.2s ease,
-              color 0.2s ease,
-              box-shadow 0.2s ease;
+  transition: background 0.2s ease, color 0.2s ease;
 }
 
-.vellum-dock-logo:hover,
-#vellum-dock.vellum-dock-radial-open .vellum-dock-logo {
-  box-shadow: 0 0 10px rgba(124, 58, 237, 0.3);
+.vellum-dock-back svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  /* Optical centering: a left-pointing chevron reads visually right-heavy
+     when geometrically centered. Nudge 1px left so it looks centered. */
+  transform: translateX(-1px);
 }
 
-/* ── Body slot — morphs in from width 0 when a tool mounts ────────────── */
-/* Two transitions: a punchy spring-in for open (matches radial cascade),
-   a faster ease-out for close so Escape feels instant. */
-.vellum-dock-body {
+.vellum-dock-back:hover {
+  background: rgba(124, 58, 237, 0.45);
+}
+
+#vellum-dock.vellum-dock-active .vellum-dock-logo { display: none; }
+#vellum-dock.vellum-dock-active .vellum-dock-back { display: inline-flex; }
+
+/* ── Tool row (idle) ───────────────────────────────────────────────────── */
+/* Instant swap, no width animation: the body's grow animation is the ONLY
+   thing the eye tracks during a state change. Animating both at once made
+   the body look like it slid in from the right as the tools collapsed. */
+.vellum-dock-tools {
   display: inline-flex;
   align-items: center;
-  max-width: 0;
-  opacity: 0;
-  overflow: hidden;
-  margin-left: 0;
-  transition: max-width 0.16s ease-in,
-              opacity 0.1s ease,
-              margin-left 0.16s ease-in;
-}
-
-#vellum-dock.vellum-dock-active .vellum-dock-body {
-  max-width: 1200px;   /* generous cap — marker HUD is the widest */
-  opacity: 1;
+  gap: 4px;
   margin-left: 8px;
-  transition: max-width 0.32s cubic-bezier(0.34, 1.56, 0.64, 1),
-              opacity 0.2s ease,
-              margin-left 0.22s ease;
 }
 
-/* ── Satellites ─────────────────────────────────────────────────────────── */
-.vellum-dock-satellite {
-  position: absolute;
-  width: 30px;
-  height: 30px;
-  border-radius: 50%;
-  background: rgba(15, 15, 15, 0.92);
-  -webkit-backdrop-filter: blur(8px);
-  backdrop-filter: blur(8px);
-  border: 1px solid rgba(124, 58, 237, 0.35);
-  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.25);
-  display: flex;
+#vellum-dock.vellum-dock-active .vellum-dock-tools {
+  display: none;
+}
+
+.vellum-dock-tool {
+  display: inline-flex;
   align-items: center;
   justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid transparent;
+  border-radius: 50%;
+  background: transparent;
+  padding: 0;
   cursor: pointer;
-  /* When collapsed, satellites stack invisibly on top of the logo. They must
-     not catch clicks meant for the V (otherwise show/hide and other satellite
-     buttons can be silently swallowed by an invisible neighbor). */
-  pointer-events: none;
-  opacity: 0;
-  /* Collapsed state is shifted down-and-left via translate so that every
-     satellite — regardless of its destination arc angle — enters by sweeping
-     up-and-right and exits by sweeping down-and-left. The translate is
-     animated in tandem with left/top so the combined motion is a straight
-     line from (~ -16, +12) toward the target arc position. */
-  transform: scale(0.35) translate(-14px, 14px);
-  /* Centered on the logo (logo is 26px, sat is 30px → -2px offset). */
-  left: -2px;
-  top: -2px;
+  flex-shrink: 0;
   user-select: none;
-  transition: transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1),
-              opacity 0.25s ease,
-              left 0.35s cubic-bezier(0.34, 1.56, 0.64, 1),
-              top 0.35s cubic-bezier(0.34, 1.56, 0.64, 1),
-              background 0.15s ease,
-              border-color 0.15s ease,
-              box-shadow 0.15s ease;
+  transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
-#vellum-dock.vellum-dock-radial-open .vellum-dock-satellite {
-  pointer-events: auto;
-}
-
-.vellum-dock-satellite svg {
+.vellum-dock-tool svg {
   width: 14px;
   height: 14px;
   fill: none;
@@ -179,111 +163,85 @@
   transition: stroke 0.15s ease;
 }
 
-.vellum-dock-satellite:hover {
-  border-color: var(--sat-color, rgba(124, 58, 237, 0.7));
-  background: rgba(25, 25, 30, 0.95);
-  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.25),
-              0 0 8px var(--sat-glow, rgba(124, 58, 237, 0.2));
+.vellum-dock-tool:hover {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: var(--tool-color, rgba(124, 58, 237, 0.6));
+}
+.vellum-dock-tool:hover svg {
+  stroke: var(--tool-color, #c084fc);
 }
 
-.vellum-dock-satellite:hover svg {
-  stroke: var(--sat-color, #c084fc);
+.vellum-dock-tool.active {
+  border-color: var(--tool-color, rgba(124, 58, 237, 0.7));
+  box-shadow: 0 0 8px var(--tool-glow, rgba(124, 58, 237, 0.25));
+}
+.vellum-dock-tool.active svg {
+  stroke: var(--tool-color, #c084fc);
 }
 
-/* Tooltip — positioned above satellites since they already sit above the
-   logo and the page is below. */
-.vellum-dock-satellite::after {
+/* Per-tool accent for the idle row buttons */
+.vellum-dock-tool[data-accent="eraser"]    { --tool-color: #ef4444; --tool-glow: rgba(239, 68, 68, 0.3); }
+.vellum-dock-tool[data-accent="sticky"]    { --tool-color: #f59e0b; --tool-glow: rgba(245, 158, 11, 0.3); }
+.vellum-dock-tool[data-accent="highlight"] { --tool-color: #7c3aed; --tool-glow: rgba(124, 58, 237, 0.3); }
+.vellum-dock-tool[data-accent="resizer"]   { --tool-color: #3b82f6; --tool-glow: rgba(59, 130, 246, 0.3); }
+
+/* Tool-button tooltip — positioned above since the dock sits near the bottom
+   of the page. Matches the shared [data-tooltip] styling in vellumUI.css. */
+.vellum-dock-tool[data-tooltip]:hover::after {
   content: attr(data-tooltip);
   position: absolute;
-  bottom: calc(100% + 6px);
+  bottom: calc(100% + 8px);
   left: 50%;
   transform: translateX(-50%);
   background: rgba(15, 15, 15, 0.95);
   color: #e4e4e7;
   font-size: 11px;
   font-weight: 500;
-  padding: 4px 9px;
-  border-radius: 5px;
+  padding: 3px 8px;
+  border-radius: 4px;
   white-space: nowrap;
   pointer-events: none;
+  border: 1px solid var(--tool-color, rgba(124, 58, 237, 0.35));
+  z-index: 2147483647;
+}
+.vellum-dock-tool { position: relative; }
+
+/* ── Tool body (active) ────────────────────────────────────────────────── */
+/* Grows left-to-right from width 0 when a tool mounts. The min-height gives
+   child shadows (active swatch rings, button glows) a few px of vertical
+   breathing room so they don't clip against the body's overflow. */
+.vellum-dock-body {
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  max-width: 0;
   opacity: 0;
-  transition: opacity 0.15s ease;
+  overflow: hidden;
+  margin-left: 0;
+  transition: max-width 0.18s ease-out,
+              opacity 0.12s ease-out,
+              margin-left 0.18s ease-out;
 }
 
-.vellum-dock-satellite:hover::after {
+#vellum-dock.vellum-dock-active .vellum-dock-body {
+  max-width: 1200px;   /* generous cap — marker HUD is the widest */
   opacity: 1;
+  margin-left: 8px;
 }
 
-/* ── Expanded state: satellites fan out ──────────────────────────────── */
-#vellum-dock.vellum-dock-radial-open .vellum-dock-satellite {
-  opacity: 1;
-  transform: scale(1) translate(0, 0);
-}
-
-/* Staggered delay — left-to-right cascade. Satellites are at child indices
-   2..7 of .vellum-dock-anchor (dragHandle=1, logo=2 if logo first; adjust
-   based on actual DOM order; we use nth-of-type on .vellum-dock-satellite). */
-#vellum-dock.vellum-dock-radial-open .vellum-dock-satellite:nth-of-type(1) { transition-delay: 0s; }
-#vellum-dock.vellum-dock-radial-open .vellum-dock-satellite:nth-of-type(2) { transition-delay: 0.03s; }
-#vellum-dock.vellum-dock-radial-open .vellum-dock-satellite:nth-of-type(3) { transition-delay: 0.06s; }
-#vellum-dock.vellum-dock-radial-open .vellum-dock-satellite:nth-of-type(4) { transition-delay: 0.09s; }
-#vellum-dock.vellum-dock-radial-open .vellum-dock-satellite:nth-of-type(5) { transition-delay: 0.12s; }
-#vellum-dock.vellum-dock-radial-open .vellum-dock-satellite:nth-of-type(6) { transition-delay: 0.15s; }
-
-#vellum-dock:not(.vellum-dock-radial-open) .vellum-dock-satellite:nth-of-type(6) { transition-delay: 0s; }
-#vellum-dock:not(.vellum-dock-radial-open) .vellum-dock-satellite:nth-of-type(5) { transition-delay: 0.03s; }
-#vellum-dock:not(.vellum-dock-radial-open) .vellum-dock-satellite:nth-of-type(4) { transition-delay: 0.06s; }
-#vellum-dock:not(.vellum-dock-radial-open) .vellum-dock-satellite:nth-of-type(3) { transition-delay: 0.09s; }
-#vellum-dock:not(.vellum-dock-radial-open) .vellum-dock-satellite:nth-of-type(2) { transition-delay: 0.12s; }
-#vellum-dock:not(.vellum-dock-radial-open) .vellum-dock-satellite:nth-of-type(1) { transition-delay: 0.15s; }
-
-/* Active-tool indicator on satellite (synced with current VellumState.mode). */
-.vellum-dock-satellite.active {
-  border-color: var(--sat-color, rgba(124, 58, 237, 0.7));
-  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.25),
-              0 0 8px var(--sat-glow, rgba(124, 58, 237, 0.2));
-}
-
-.vellum-dock-satellite.active svg {
-  stroke: var(--sat-color, #c084fc);
-}
-
-/* ── Hit zone — invisible rectangle around the satellite cluster so the
-     radial doesn't collapse while the cursor crosses the empty space between
-     the V and a satellite. The hitzone is a child of .vellum-dock-logo so
-     its coordinates are local to the logo's box (logo is 26×26).
-     IDLE  — symmetric cluster spans both sides above the V, so the hitzone
-             is wide.
-     ACTIVE — cluster has rotated upper-LEFT and the body is open to the
-             right, so we trim the hitzone's right edge to avoid covering
-             body controls. */
-.vellum-dock-hitzone {
-  position: absolute;
-  left: -82px;
-  top: -93px;
-  width: 185px;
-  height: 105px;
-  pointer-events: none;
-}
-
-#vellum-dock.vellum-dock-active .vellum-dock-hitzone {
-  width: 115px;   /* trim right side so we don't sit over body buttons */
-}
-
-/* Only active while radial is open — never swallow page clicks otherwise. */
-#vellum-dock.vellum-dock-radial-open .vellum-dock-hitzone {
-  pointer-events: auto;
-}
-
-/* ── Per-tool accent: logo + border pick up the active tool's color ──── */
+/* ── Per-tool accent: border + back arrow pick up the active tool's color ── */
 #vellum-dock[data-accent="eraser"]    { --dock-accent-border: rgba(239, 68, 68, 0.55); }
-#vellum-dock[data-accent="eraser"]    .vellum-dock-logo { background: rgba(239, 68, 68, 0.35); color: #fca5a5; }
+#vellum-dock[data-accent="eraser"]    .vellum-dock-back { background: rgba(239, 68, 68, 0.35); color: #fca5a5; }
+#vellum-dock[data-accent="eraser"]    .vellum-dock-back:hover { background: rgba(239, 68, 68, 0.55); }
 
 #vellum-dock[data-accent="sticky"]    { --dock-accent-border: rgba(245, 158, 11, 0.55); }
-#vellum-dock[data-accent="sticky"]    .vellum-dock-logo { background: rgba(245, 158, 11, 0.35); color: #fcd34d; }
+#vellum-dock[data-accent="sticky"]    .vellum-dock-back { background: rgba(245, 158, 11, 0.35); color: #fcd34d; }
+#vellum-dock[data-accent="sticky"]    .vellum-dock-back:hover { background: rgba(245, 158, 11, 0.55); }
 
 #vellum-dock[data-accent="highlight"] { --dock-accent-border: rgba(124, 58, 237, 0.55); }
-#vellum-dock[data-accent="highlight"] .vellum-dock-logo { background: rgba(124, 58, 237, 0.35); color: #c084fc; }
+#vellum-dock[data-accent="highlight"] .vellum-dock-back { background: rgba(124, 58, 237, 0.35); color: #c084fc; }
+#vellum-dock[data-accent="highlight"] .vellum-dock-back:hover { background: rgba(124, 58, 237, 0.55); }
 
 #vellum-dock[data-accent="resizer"]   { --dock-accent-border: rgba(59, 130, 246, 0.55); }
-#vellum-dock[data-accent="resizer"]   .vellum-dock-logo { background: rgba(59, 130, 246, 0.35); color: #93c5fd; }
+#vellum-dock[data-accent="resizer"]   .vellum-dock-back { background: rgba(59, 130, 246, 0.35); color: #93c5fd; }
+#vellum-dock[data-accent="resizer"]   .vellum-dock-back:hover { background: rgba(59, 130, 246, 0.55); }
