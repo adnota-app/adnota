@@ -134,7 +134,7 @@
   position: relative;
 }
 
-[data-tooltip]:not(.vellum-radial-satellite):hover::after {
+[data-tooltip]:not(.vellum-dock-satellite):hover::after {
   content: attr(data-tooltip);
   position: absolute;
   bottom: calc(100% + 8px);
@@ -156,6 +156,12 @@
 #vellum-eraser-hud   { --vellum-tooltip-border: rgba(239, 68, 68, 0.35); }
 #vellum-sticky-toolbar { --vellum-tooltip-border: rgba(245, 158, 11, 0.35); }
 #vellum-resizer-hud  { --vellum-tooltip-border: rgba(59, 130, 246, 0.3); }
+
+/* Dock picks up the active tool's tooltip accent via data-accent. */
+#vellum-dock[data-accent="eraser"]    { --vellum-tooltip-border: rgba(239, 68, 68, 0.35); }
+#vellum-dock[data-accent="sticky"]    { --vellum-tooltip-border: rgba(245, 158, 11, 0.35); }
+#vellum-dock[data-accent="highlight"] { --vellum-tooltip-border: rgba(124, 58, 237, 0.35); }
+#vellum-dock[data-accent="resizer"]   { --vellum-tooltip-border: rgba(59, 130, 246, 0.3); }
 
 /* Base drag handle */
 .vellum-toolbar-drag {
