@@ -158,6 +158,19 @@ Fix mouse cursors when using tools (make it obvious you are in TOOL mode!!! e.g.
 
 TOOLS NEED TO HAVE CUSTOM CURSORS
 
+ Read README.md to get up to speed. I want to redesign the Home page         
+ (pages/sites.html) to not just be a per-domain bookmark browser but also include a main content view — concisely show actual highlighted text, and sticky note text with a global text search across all data. This page is a crucial part that ties together EVERYTHING of this extension. Tags already exist and filter the domain list — this builds on top of that.
+
+ In my head, a major point of using this app is collecting data across the internet. A big part of that collecting is being able to consume it on the HOME page in a user friendly way. In my head I want to be able to cut (aka highlight) a bunch of inspiring quotes from a website, and then later be able to go to the HOME page and see all my highlights from that site, and be able to click on them and go back to the exact spot on the page where I highlighted them. What might be even cooler too, that would make this data even more REUSABLE is being able to provide these quotes in a way where it just displays the RAW DATA (e.g. the text itself) and not the entire webpage, so you could just select and copy that data to paste it somewhere else? I feel like if we could land that vector right, this app could be a serious contender for a productivity tool.  Perhaps there's a checkmark to show sources or additional info (or it's just clickable), but I feel like in the age of AI, being able to quickly capture just your raw text data to pass on to another system could be really powerful? I don't know. PErhaps users wouldn't get that, but I feel like it's worth exploring. But sometimes I may not want that, I may want a more classic view? That's a main point i want to discuss. I also don't want to just recreate another already existing solution, I want to make something that's actually useful, esp given the new AI landscape. Thoughts? Concerns? Suggestions? 
+
+ I want to be able to open 10 tabs on a research topic, and then be able to go to the HOME page and see all my highlights from all 10 tabs in one single location. What is the best way to achieve this that aligns with the current tool and brand? Thoughts? 
+ 
+ One example: my daughter 
+ highlighted her two favorite Lego sets on Amazon; I want the Home page to
+ make those findable by scanning content, not just clicking into a domain
+ card. 
+
+
 Consider making tags like in GMAIL. Each color of sticky note/highlighter/etc could be a tag defined by the user. Then they could filter all their saved highlights, notes, etc. by tag. Maybe you don't even need text tags at all, maybe color would be sufficient. If people understood they could filter their sites by color, then they'd get the idea that each color represented whatever they wanted? 
 
 I already have sticky notes for writing text, should I focus on replacing the text tool with a TAGGING system instead? (e.g. you could tag and categorize highlights, sticky's, element selections etc to organize data across the web for a specific theme and then be able to search by all data in that category on the HOME page to quickly see all that data from multiple location in one single location!) Is that a good idea? Does that exist already anywhere?
