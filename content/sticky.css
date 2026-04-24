@@ -162,16 +162,18 @@ html.vellum-hidden .vellum-sticky-container {
   opacity: 0.6;
 }
 
-/* Tag row — one thin line at the bottom of each note. Autocomplete dropdown
-   is positioned by JS (lib/tagIndex.js) and styled by lib/vellumUI.css. */
+/* Tag row — one thin line at the bottom of each note. Matches the header's
+   28px height for top/bottom symmetry around the textarea. Autocomplete
+   dropdown is positioned by JS (lib/tagIndex.js) and styled by
+   lib/vellumUI.css. */
 .vellum-sticky-tag-row {
   display: flex;
   align-items: center;
   gap: 4px;
-  padding: 4px 10px 6px;
+  padding: 0 10px;
   border-top: 1px solid var(--line);
   flex-shrink: 0;
-  min-height: 22px;
+  height: 28px;
 }
 
 .vellum-sticky-tag-icon {
