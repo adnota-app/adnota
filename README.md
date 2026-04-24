@@ -267,6 +267,7 @@ Dedicated extension page (opened as a new tab via `chrome.runtime.getURL`). Aggr
 | `Alt+V` | Show / Hide all annotations |
 | `Ctrl+Z` / `Cmd+Z` | Undo last action (any tool) |
 | `Escape` | Deactivate active tool (universal — works from any tool, any state) / cancel text input |
+| `Shift` (hold) | Paint annotations become first-class objects — click to select, drag to move, Delete to remove. Drawing tools (pen/arrow/rect/ellipse/text) are suspended while Shift is held, so there's no overlap between drawing and selecting. Links/buttons under empty canvas still behave normally — only paint items are hijacked |
 | `Shift+Click` | (Eraser only) Domain-wide deletion |
 | `Enter` | (Text tool) Commit text |
 | `Shift+Enter` | (Text tool) Insert newline |
