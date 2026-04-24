@@ -96,13 +96,13 @@ html.vellum-hidden .vellum-highlight-fallback {
   border-radius: 50%;
   cursor: pointer;
   border: 2px solid transparent;
-  transition: transform 0.15s, box-shadow 0.15s;
+  transition: box-shadow 0.15s, border-color 0.15s;
   margin: 0 2px;
   flex-shrink: 0;
 }
 
 .vellum-color-swatch:hover {
-  transform: scale(1.15);
+  border-color: rgba(255, 255, 255, 0.3);
 }
 
 .vellum-color-swatch.active {
