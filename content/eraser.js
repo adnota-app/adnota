@@ -23,50 +23,13 @@ Object.assign(dimensionBadge.style, {
 });
 highlightOverlay.appendChild(dimensionBadge);
 
-// ─── HUD strip (fixed bottom bar, draggable) ────────────────────────────────
-// Persistent chrome: drag handle + logo + info section + trash + undo.
-// Only the info section's contents update on hover — the buttons stay mounted
-// so the user can undo or clear erasures without a target hovered.
-const eraserHud = document.createElement('div');
-eraserHud.id = 'vellum-eraser-hud';
-eraserHud.setAttribute('data-vellum-ui', '1');
-Object.assign(eraserHud.style, {
-  position: 'fixed',
-  bottom: '20px',
-  left: '50%',
-  transform: 'translateX(-50%)',
-  background: 'rgba(15, 15, 15, 0.92)',
-  backdropFilter: 'blur(8px)',
-  color: '#e4e4e7',
-  fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
-  fontSize: '12.5px',
-  lineHeight: '1',
-  padding: '6px 10px',
-  borderRadius: '10px',
-  border: '1px solid rgba(239, 68, 68, 0.45)',
-  boxShadow: '0 4px 24px rgba(0,0,0,0.5)',
-  zIndex: '2147483646',
-  pointerEvents: 'auto',
-  display: 'none',
-  alignItems: 'center',
-  whiteSpace: 'nowrap',
-  opacity: '0',
-  transition: 'opacity 0.15s ease',
-});
-document.documentElement.appendChild(eraserHud);
-
-// Drag handle
-const eraserDragHandle = document.createElement('span');
-eraserDragHandle.className = 'vellum-toolbar-drag';
-eraserDragHandle.textContent = '\u2847';
-eraserDragHandle.setAttribute('data-tooltip', 'Drag to reposition');
-eraserHud.appendChild(eraserDragHandle);
-
-// Logo chip
-const eraserLogo = document.createElement('span');
-eraserLogo.className = 'vellum-toolbar-logo vellum-toolbar-logo-red';
-eraserLogo.textContent = 'V';
-eraserHud.appendChild(eraserLogo);
+// ─── HUD body (mounts into the unified VellumDock on activation) ───────────
+// The dock owns the chrome (drag handle, V logo, radial menu, position).
+// The eraser owns its controls — info strip + trash + undo — built once
+// and mounted into the dock body slot when the tool is active.
+const eraserBody = document.createElement('div');
+eraserBody.style.display = 'inline-flex';
+eraserBody.style.alignItems = 'center';
 
 // Info section (dynamic — updated on hover)
 const eraserHudInfo = document.createElement('span');
@@ -74,10 +37,12 @@ eraserHudInfo.id = 'vellum-eraser-hud-info';
 eraserHudInfo.style.display = 'inline-flex';
 eraserHudInfo.style.alignItems = 'center';
 eraserHudInfo.style.minWidth = '220px';
-eraserHud.appendChild(eraserHudInfo);
+eraserBody.appendChild(eraserHudInfo);
 
 // Divider
-eraserHud.appendChild(Object.assign(document.createElement('div'), { className: 'vellum-toolbar-divider vellum-toolbar-divider-red' }));
+eraserBody.appendChild(Object.assign(document.createElement('div'), {
+  className: 'vellum-toolbar-divider vellum-toolbar-divider-red',
+}));
 
 // Trash — clears all erasures on this page
 const eraserTrashBtn = window.VellumUI.createTrashButton({
@@ -86,15 +51,12 @@ const eraserTrashBtn = window.VellumUI.createTrashButton({
   actionTypes: ['ERASE'],
 });
 eraserTrashBtn.classList.add('vellum-undo-btn-red');
-eraserHud.appendChild(eraserTrashBtn);
+eraserBody.appendChild(eraserTrashBtn);
 
 // Undo
 const eraserUndoBtn = window.VellumUI.createUndoButton();
 eraserUndoBtn.classList.add('vellum-undo-btn-red');
-eraserHud.appendChild(eraserUndoBtn);
-
-// ─── HUD drag logic ─────────────────────────────────────────────────────────
-window.VellumUI.makeDraggable(eraserHud, eraserDragHandle);
+eraserBody.appendChild(eraserUndoBtn);
 
 // ─── Rotating help tips ─────────────────────────────────────────────────────
 const hudTips = [
@@ -366,12 +328,6 @@ function stopHudTips() {
   if (hudTipInterval) { clearInterval(hudTipInterval); hudTipInterval = null; }
 }
 
-function resetHudPosition() {
-  eraserHud.style.left = '50%';
-  eraserHud.style.top = '';
-  eraserHud.style.bottom = '32px';
-  eraserHud.style.transform = 'translateX(-50%)';
-}
 
 function updateHUD(target) {
   if (!target) {
@@ -456,13 +412,9 @@ function ensureTipRotation() {
 // the trash/undo buttons stay reachable even when no element is hovered.
 function setHudVisible(visible) {
   if (visible) {
-    eraserHud.style.display = 'flex';
-    // Force reflow then fade in
-    eraserHud.offsetHeight;
-    eraserHud.style.opacity = '1';
+    window.VellumDock.mount('eraser', () => eraserBody);
   } else {
-    eraserHud.style.display = 'none';
-    eraserHud.style.opacity = '0';
+    window.VellumDock.unmount();
   }
 }
 
@@ -629,7 +581,6 @@ window.VellumState.subscribe(state => {
     highlightOverlay.style.display = 'none';
     setHudVisible(false);
     stopHudTips();
-    resetHudPosition();
     hudTipIndex = 0;
     hoveredElement = null;
     rawHoveredEl = null;
