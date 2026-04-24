@@ -14,6 +14,8 @@ Annotate your web, your way.
 
 Adnota: Annotate the web.
 
+My read on the product North Star: Vellum today is "make any webpage yours" (destructive + additive edits on a specific page)
+
 ---
 
 ## Shipped: Current Architecture
