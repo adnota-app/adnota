@@ -59,7 +59,7 @@
 
   const logo = document.createElement('span');
   logo.className = 'vellum-dock-logo';
-  logo.textContent = 'V';
+  logo.textContent = 'A';
   logo.setAttribute('data-tooltip', 'My Edited Sites');
   logo.addEventListener('click', (e) => {
     e.stopPropagation();

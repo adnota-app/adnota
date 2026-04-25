@@ -688,7 +688,7 @@ async function createHighlightFromRange(range, color, tag = '') {
           range: clonedRange,
         });
       } catch (err) {
-        console.warn("Vellum: CSS Highlight API rejected range, likely crossing a Shadow DOM boundary. Range:", range);
+        console.warn("Adnota: CSS Highlight API rejected range, likely crossing a Shadow DOM boundary. Range:", range);
         payload.isFallback = true;
         const box = blockElement.getBoundingClientRect();
         payload.fallbackRects = Array.from(range.getClientRects()).map(r => ({
