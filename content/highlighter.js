@@ -68,8 +68,13 @@ const toolLabels = { pen: 'Pencil', highlight: 'Highlight', arrow: 'Arrow', rect
 const toolIconMap = { pen: 'pencil', highlight: 'highlight', arrow: 'arrow', rect: 'rect', ellipse: 'ellipse', text: 'text', select: 'select' };
 const toolBtns = {};
 
-// select goes first
-for (const mode of ['select', 'pen', 'highlight', 'arrow', 'rect', 'ellipse', 'text']) {
+// select goes first.
+// 'highlight' is intentionally omitted from the toolbar — the quick-highlight
+// popup (content/quickHighlight.js) covers text highlighting with tag support,
+// which the toolbar button doesn't have. The mode itself, keyboard shortcut,
+// and rendering codepath are all preserved in case we bring the button back;
+// remove the rest of the highlight-mode plumbing if we decide to drop it.
+for (const mode of ['select', 'pen', 'arrow', 'rect', 'ellipse', 'text']) {
   const btn = makeToolBtn(toolIconMap[mode], toolLabels[mode], mode);
   toolBtns[mode] = btn;
   highlightToolbar.appendChild(btn);
