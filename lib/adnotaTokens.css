@@ -1,41 +1,49 @@
-/* lib/adnotaTokens.css — Adnota design tokens.
+/* lib/adnotaTokens.css — Adnota design tokens (light theme).
    Single source of truth for the extension's visual language. Loaded first
    by every entry point (popup, pages, content scripts) so every other CSS
    file consumes vars instead of hardcoded values.
 
-   Mirrors /Users/saunders/dev/adnota/styles.css :root so the extension and
-   marketing site stay visually aligned. Add tokens here, not in component
-   stylesheets. */
+   Design intent: the extension's chrome (popup + dashboard) stays out of
+   the user's way — light surfaces that blend with the rest of their browser.
+   Brand identity travels via typography, the gradient monogram, and
+   restrained purple accents — NOT via dark surfaces. The marketing site
+   stays dark because that's a sales context; this isn't.
+
+   In-page overlays (HUD, dock, sticky notes, tag suggest) remain dark
+   frosted-glass — they need contrast against arbitrary host pages and are
+   tokenized separately under --hud-*. */
 
 :root {
-  /* ── Surfaces ── */
-  --bg:        #08080f;
-  --surface:   #0f0f1a;
-  --surface-2: #16162a;
-  --surface-3: #1d1d35;
+  /* ── Surfaces (light) ── */
+  --bg:        #f5f5f7;
+  --surface:   #ffffff;
+  --surface-2: #fafafa;
+  --surface-3: #f0f0f5;
 
   /* ── Borders ── */
-  --border:        rgba(124, 58, 237, 0.18);
-  --border-strong: rgba(124, 58, 237, 0.32);
-  --border-soft:   rgba(255, 255, 255, 0.06);
+  --border:        rgba(0, 0, 0, 0.07);
+  --border-strong: rgba(0, 0, 0, 0.12);
+  --border-soft:   rgba(0, 0, 0, 0.04);
 
   /* ── Text ── */
-  --text:       oklch(0.96 0.01 290);
-  --text-muted: oklch(0.65 0.02 290);
-  --text-dim:   oklch(0.45 0.02 290);
+  --text:       #111827;
+  --text-muted: #6b7280;
+  --text-dim:   #9ca3af;
 
   /* ── Accent (brand) ── */
   --accent:        #7c3aed;
-  --accent-hover:  oklch(0.58 0.22 290);
-  --accent-soft:   rgba(124, 58, 237, 0.12);
-  --accent-glow:   rgba(124, 58, 237, 0.35);
+  --accent-hover:  #6d28d9;
+  --accent-soft:   rgba(124, 58, 237, 0.08);
+  --accent-glow:   rgba(124, 58, 237, 0.30);
 
-  /* ── Semantic colors (tool identity & status) ── */
-  --red:   #e74c3c;  --red-soft:   rgba(231, 76, 60, 0.12);  --red-border:   rgba(231, 76, 60, 0.25);
-  --amber: #f59e0b;  --amber-soft: rgba(245, 158, 11, 0.12); --amber-border: rgba(245, 158, 11, 0.25);
-  --blue:  #3b82f6;  --blue-soft:  rgba(59, 130, 246, 0.12); --blue-border:  rgba(59, 130, 246, 0.25);
-  --green: #22c55e;  --green-soft: rgba(34, 197, 94, 0.12);  --green-border: rgba(34, 197, 94, 0.25);
-  --pink:  #ec4899;  --pink-soft:  rgba(236, 72, 153, 0.12); --pink-border:  rgba(236, 72, 153, 0.25);
+  /* ── Semantic colors (tool identity & status) ──
+     Calibrated to read on white surfaces — slightly deeper than the
+     marketing-site values so they have enough contrast for small text. */
+  --red:   #dc2626;  --red-soft:   rgba(239, 68, 68, 0.10);  --red-border:   rgba(239, 68, 68, 0.25);
+  --amber: #d97706;  --amber-soft: rgba(245, 158, 11, 0.12); --amber-border: rgba(245, 158, 11, 0.25);
+  --blue:  #2563eb;  --blue-soft:  rgba(59, 130, 246, 0.10); --blue-border:  rgba(59, 130, 246, 0.25);
+  --green: #059669;  --green-soft: rgba(16, 185, 129, 0.10); --green-border: rgba(16, 185, 129, 0.25);
+  --pink:  #db2777;  --pink-soft:  rgba(236, 72, 153, 0.10); --pink-border:  rgba(236, 72, 153, 0.25);
 
   /* Tool palette aliases — same colors, named for in-extension semantics so
      authors don't have to remember which semantic maps to which tool. */
@@ -46,9 +54,9 @@
   --tool-stroke:    var(--green);
 
   /* ── Typography ── */
-  --font-display: 'Lato', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  --font-body:    'Lato', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  --font-mono:    'DM Mono', 'SFMono-Regular', ui-monospace, Menlo, monospace;
+  --font-display: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-body:    'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-mono:    ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 
   /* ── Radii ── */
   --r-xs: 6px;
@@ -56,11 +64,11 @@
   --r:    12px;
   --r-lg: 16px;
 
-  /* ── Shadows ── */
-  --shadow-card:  0 1px 3px rgba(0, 0, 0, 0.4), 0 1px 2px rgba(0, 0, 0, 0.3);
-  --shadow-hover: 0 8px 24px rgba(0, 0, 0, 0.5), 0 2px 6px rgba(0, 0, 0, 0.35);
-  --shadow-raise: 0 20px 60px rgba(0, 0, 0, 0.6);
-  --shadow-glow:  0 0 30px var(--accent-glow);
+  /* ── Shadows (light theme — softer, less weighty) ── */
+  --shadow-card:  0 1px 3px rgba(0, 0, 0, 0.07), 0 1px 2px rgba(0, 0, 0, 0.04);
+  --shadow-hover: 0 4px 14px rgba(0, 0, 0, 0.10), 0 2px 4px rgba(0, 0, 0, 0.06);
+  --shadow-raise: 0 8px 32px rgba(0, 0, 0, 0.13), 0 2px 8px rgba(0, 0, 0, 0.07);
+  --shadow-glow:  0 0 24px var(--accent-glow);
 
   /* ── Motion ── */
   --t-fast:   0.14s;
@@ -80,8 +88,14 @@
 
   /* ── Brand monogram gradient ──
      Used for every "A" logo across popup, sites page, modal, content scripts.
-     Keeps a single source for the brand mark. */
-  --brand-gradient: linear-gradient(135deg, var(--accent), oklch(0.55 0.25 315));
+     Reads as the one colorful element on light surfaces — that's the point. */
+  --brand-gradient: linear-gradient(135deg, var(--accent) 0%, #4f46e5 100%);
+
+  /* ── Header strip ──
+     The popup and dashboard both use a dark gradient strip for the header
+     (where the brand block sits). This keeps the brand "punchy" against an
+     otherwise calm light body. */
+  --header-strip: linear-gradient(135deg, #151515 0%, #2a1658 100%);
 }
 
 /* ── Global focus ring ──
@@ -103,27 +117,30 @@ button:focus-visible {
 }
 
 /* ── Scrollbars ──
-   Webkit (Chrome) only — Firefox uses the OS bar. Sized to feel like part
-   of the dark surface, not a default OS scrollbar. */
+   Webkit (Chrome) only — Firefox uses the OS bar. Subtle on light surfaces
+   so they recede unless engaged. */
 ::-webkit-scrollbar {
   width: 10px;
   height: 10px;
 }
 
 ::-webkit-scrollbar-track {
-  background: var(--bg);
+  background: transparent;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: var(--surface-2);
+  background: rgba(0, 0, 0, 0.15);
   border-radius: 5px;
-  border: 2px solid var(--bg);
+  border: 2px solid transparent;
+  background-clip: padding-box;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--surface-3);
+  background: rgba(0, 0, 0, 0.25);
+  background-clip: padding-box;
+  border: 2px solid transparent;
 }
 
 ::-webkit-scrollbar-corner {
-  background: var(--bg);
+  background: transparent;
 }

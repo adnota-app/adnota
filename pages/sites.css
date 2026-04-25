@@ -1,11 +1,33 @@
-/* pages/sites.css — full-page dashboard (Snippets feed + Sites browser).
-   Consumes tokens from lib/adnotaTokens.css; brand block + search live in
-   lib/vellumUI.css. */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 
 *, *::before, *::after {
   box-sizing: border-box;
   margin: 0;
   padding: 0;
+}
+
+:root {
+  --bg: #f0f0f5;
+  --surface: #ffffff;
+  --surface-2: #f9f9fc;
+  --border: rgba(0, 0, 0, 0.07);
+  --border-strong: rgba(0, 0, 0, 0.11);
+  --text-1: #111827;
+  --text-2: #6b7280;
+  --text-3: #9ca3af;
+  --shadow-card: 0 1px 3px rgba(0,0,0,0.07), 0 1px 2px rgba(0,0,0,0.04);
+  --shadow-hover: 0 4px 20px rgba(0,0,0,0.10), 0 2px 6px rgba(0,0,0,0.06);
+  --shadow-raise: 0 8px 32px rgba(0,0,0,0.13), 0 2px 8px rgba(0,0,0,0.07);
+  --radius: 14px;
+  --radius-sm: 9px;
+  --radius-xs: 6px;
+  --header-dark: linear-gradient(135deg, #151515 0%, #2a1658 100%);
+
+  /* Tool accent colors */
+  --c-erase:     #ef4444;
+  --c-note:      #f59e0b;
+  --c-highlight: #7c3aed;
+  --c-stroke:    #10b981;
 }
 
 html {
@@ -14,49 +36,47 @@ html {
 }
 
 body {
-  font-family: var(--font-body);
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   background: var(--bg);
-  color: var(--text);
+  color: var(--text-1);
   min-height: 100vh;
-  font-size: 14px;
-  line-height: 1.5;
 }
 
 /* ═══════════════════════════════════════════════
    HEADER
 ═══════════════════════════════════════════════ */
 .header {
-  background:
-    linear-gradient(135deg, rgba(124, 58, 237, 0.20), rgba(147, 51, 234, 0.04)),
-    var(--surface);
+  background: var(--header-dark);
   padding: 0;
   position: sticky;
   top: 0;
   z-index: 100;
-  border-bottom: 1px solid var(--border);
-  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.35);
+  /* Soft shadow now that the filter bar sits inside the header — the old
+     heavy drop shadow was tuned for a dark block ending at the gradient,
+     and bled into the light filter strip as a visible band. */
+  box-shadow: 0 1px 2px rgba(0,0,0,0.08), 0 4px 16px rgba(0,0,0,0.06);
 }
 
-/* Decorative orbs — warm purple top-right, cool accent bottom-left.
-   Pointer-events:none so they never eat clicks. */
+/* Decorative orbs — purple top-right, green bottom-left. Kept as a hint of
+   brand warmth, not a spotlight (earlier iteration was too hot in the
+   corner). Pointer-events:none so they never eat clicks. */
 .header::before {
   content: '';
   position: absolute;
   top: -60px; right: -40px;
-  width: 200px; height: 200px;
+  width: 160px; height: 160px;
   border-radius: 50%;
-  background: radial-gradient(circle, var(--accent-glow) 0%, transparent 70%);
+  background: radial-gradient(circle, rgba(124,58,237,0.18) 0%, transparent 70%);
   pointer-events: none;
-  opacity: 0.6;
 }
 
 .header::after {
   content: '';
   position: absolute;
   bottom: -30px; left: 60px;
-  width: 140px; height: 140px;
+  width: 120px; height: 120px;
   border-radius: 50%;
-  background: radial-gradient(circle, rgba(236, 72, 153, 0.10) 0%, transparent 70%);
+  background: radial-gradient(circle, rgba(16,185,129,0.08) 0%, transparent 70%);
   pointer-events: none;
 }
 
@@ -73,9 +93,36 @@ body {
   z-index: 1;
 }
 
-.header-inner > .brand          { justify-self: start; }
-.header-inner > .view-tabs      { justify-self: center; }
+.header-inner > .brand         { justify-self: start; }
+.header-inner > .view-tabs     { justify-self: center; }
 .header-inner > .header-actions { justify-self: end; }
+
+/* Brand */
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+}
+
+.brand-monogram {
+  width: 40px; height: 40px;
+  border-radius: 11px;
+  background: linear-gradient(135deg, #7c3aed 0%, #4f46e5 100%);
+  display: flex; align-items: center; justify-content: center;
+  font-weight: 700; font-size: 18px; color: #fff; letter-spacing: -0.5px;
+  box-shadow: 0 2px 12px rgba(124,58,237,0.45);
+  flex-shrink: 0;
+}
+
+.brand-name {
+  font-size: 16px; font-weight: 700; color: #fff;
+  letter-spacing: -0.3px; line-height: 1.1;
+}
+
+.brand-sub {
+  font-size: 11px; color: rgba(255,255,255,0.35); margin-top: 2px;
+}
 
 /* Header actions: search + sort */
 .header-actions {
@@ -86,6 +133,60 @@ body {
   justify-content: flex-end;
 }
 
+/* Search */
+.search-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.search-icon {
+  position: absolute;
+  left: 11px;
+  color: rgba(255,255,255,0.35);
+  pointer-events: none;
+  flex-shrink: 0;
+}
+
+.search-input {
+  background: rgba(255,255,255,0.08);
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 9px;
+  color: #fff;
+  font-family: 'Inter', sans-serif;
+  font-size: 13px;
+  padding: 8px 34px 8px 33px;
+  width: 230px;
+  outline: none;
+  transition: background 0.15s, border-color 0.15s, box-shadow 0.15s;
+}
+
+.search-input::placeholder { color: rgba(255,255,255,0.3); }
+
+.search-input:focus {
+  background: rgba(255,255,255,0.13);
+  border-color: rgba(124,58,237,0.6);
+  box-shadow: 0 0 0 3px rgba(124,58,237,0.18);
+}
+
+.search-clear {
+  position: absolute;
+  right: 9px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: rgba(255,255,255,0.35);
+  display: flex;
+  align-items: center;
+  padding: 2px;
+  border-radius: 4px;
+  transition: color 0.15s;
+}
+
+.search-clear:hover { color: rgba(255,255,255,0.75); }
+.search-clear[hidden] { display: none; }
+
 /* Sort */
 .sort-wrap {
   display: flex;
@@ -94,55 +195,38 @@ body {
 }
 
 .sort-label {
-  font-family: var(--font-mono);
-  font-size: 11px;
-  color: var(--text-dim);
+  font-size: 11.5px;
+  color: rgba(255,255,255,0.35);
   font-weight: 500;
   white-space: nowrap;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+  letter-spacing: 0.01em;
 }
 
 .sort-select {
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  border-radius: var(--r-sm);
-  color: var(--text);
-  font-family: var(--font-mono);
-  font-size: 12px;
+  background: rgba(255,255,255,0.08);
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 8px;
+  color: rgba(255,255,255,0.75);
+  font-family: 'Inter', sans-serif;
+  font-size: 12.5px;
   font-weight: 500;
-  padding: 7px 28px 7px 10px;
+  padding: 7px 10px;
   cursor: pointer;
   outline: none;
-  transition: background var(--t-fast), border-color var(--t-fast);
+  transition: background 0.15s, border-color 0.15s;
   -webkit-appearance: none;
   appearance: none;
-  /* Caret arrow as inline SVG so we don't depend on the OS dropdown chevron,
-     which renders inconsistently on dark surfaces. */
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6' fill='none' stroke='%23a8a8b8' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M1 1l4 4 4-4'/%3E%3C/svg%3E");
-  background-repeat: no-repeat;
-  background-position: right 10px center;
-}
-
-.sort-select:hover {
-  background-color: var(--surface-3);
-  border-color: var(--border-strong);
 }
 
 .sort-select:focus {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--accent-soft);
+  border-color: rgba(124,58,237,0.5);
+  background: rgba(255,255,255,0.13);
 }
 
-.sort-select option {
-  background: var(--surface);
-  color: var(--text);
-}
-
-/* ═══════════════════════════════════════════════
-   SUMMARY BAR — top of Sites pane. Site-level aggregates make no sense on
-   the Snippets feed (the tab-count badges carry that role there).
-═══════════════════════════════════════════════ */
+/* Summary bar — now lives at the top of the By Site pane on a light
+   background (site-level aggregates make no sense on the Snippets feed,
+   so we let the tab-count badges (`Snippets (N)`) carry the summary
+   role there). Muted text tokens match the rest of the light surface. */
 .summary-bar {
   display: flex;
   align-items: center;
@@ -151,7 +235,8 @@ body {
   margin-bottom: 18px;
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: var(--r);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-card);
   flex-wrap: wrap;
   row-gap: 10px;
 }
@@ -168,32 +253,29 @@ body {
 }
 
 .summary-num {
-  font-family: var(--font-display);
-  font-size: 16px;
-  font-weight: 800;
-  color: var(--text);
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text-1);
   letter-spacing: -0.3px;
-  font-variant-numeric: tabular-nums;
-  transition: opacity var(--t);
+  transition: opacity 0.2s;
 }
 
 .summary-lbl {
-  font-family: var(--font-mono);
-  font-size: 10.5px;
-  color: var(--text-dim);
+  font-size: 11px;
+  color: var(--text-3);
   font-weight: 500;
   text-transform: uppercase;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.05em;
 }
 
 .summary-divider {
   width: 1px;
   height: 14px;
-  background: var(--border);
+  background: var(--border-strong);
   margin: 0 18px;
 }
 
-/* Storage meter */
+/* Storage meter — stays in the summary bar; same colors, light surface. */
 .storage-meter {
   display: flex;
   flex-direction: column;
@@ -208,18 +290,17 @@ body {
 }
 
 .storage-text {
-  font-family: var(--font-mono);
-  font-size: 11px;
-  color: var(--text);
-  font-weight: 500;
-  letter-spacing: 0.02em;
+  font-size: 11.5px;
+  color: var(--text-1);
+  font-weight: 600;
+  letter-spacing: -0.2px;
   font-variant-numeric: tabular-nums;
 }
 
 .storage-bar {
   width: 100%;
   height: 5px;
-  background: var(--surface-3);
+  background: rgba(0, 0, 0, 0.06);
   border-radius: 3px;
   overflow: hidden;
 }
@@ -227,25 +308,25 @@ body {
 .storage-bar-fill {
   height: 100%;
   width: 0%;
-  background: linear-gradient(90deg, var(--green), #16a34a);
+  background: linear-gradient(90deg, #10b981, #059669);
   border-radius: 3px;
-  transition: width 0.35s var(--ease-out), background var(--t);
+  transition: width 0.35s cubic-bezier(0.4,0,0.2,1), background 0.2s;
 }
 
 .storage-meter.warn .storage-bar-fill {
-  background: linear-gradient(90deg, var(--amber), #d97706);
+  background: linear-gradient(90deg, #f59e0b, #d97706);
 }
 
 .storage-meter.warn .storage-text {
-  color: var(--amber);
+  color: #b45309;
 }
 
 .storage-meter.crit .storage-bar-fill {
-  background: linear-gradient(90deg, var(--red), #dc2626);
+  background: linear-gradient(90deg, #ef4444, #dc2626);
 }
 
 .storage-meter.crit .storage-text {
-  color: var(--red);
+  color: #b91c1c;
 }
 
 /* ═══════════════════════════════════════════════
@@ -274,15 +355,14 @@ body {
 
 .state-text {
   font-size: 13.5px;
-  color: var(--text-muted);
-  font-weight: 300;
+  color: var(--text-3);
 }
 
 /* Loading spinner */
 .spinner {
   width: 32px; height: 32px;
-  border: 2.5px solid var(--surface-2);
-  border-top-color: var(--accent);
+  border: 2.5px solid var(--border-strong);
+  border-top-color: #7c3aed;
   border-radius: 50%;
   animation: spin 0.7s linear infinite;
 }
@@ -298,23 +378,22 @@ body {
   background: var(--surface);
   border: 1px solid var(--border);
   display: flex; align-items: center; justify-content: center;
-  color: var(--text-dim);
+  color: var(--text-3);
+  box-shadow: var(--shadow-card);
 }
 
 .empty-title {
-  font-family: var(--font-display);
-  font-size: 20px;
-  font-weight: 800;
-  color: var(--text);
-  letter-spacing: -0.5px;
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--text-1);
+  letter-spacing: -0.3px;
 }
 
 .empty-body {
-  font-size: 14px;
-  color: var(--text-muted);
+  font-size: 13.5px;
+  color: var(--text-2);
   max-width: 400px;
-  line-height: 1.7;
-  font-weight: 300;
+  line-height: 1.6;
 }
 
 /* ═══════════════════════════════════════════════
@@ -332,27 +411,27 @@ body {
 .site-card {
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: var(--r);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-card);
   overflow: hidden;
-  transition: background var(--t), border-color var(--t), transform var(--t);
+  transition: box-shadow 0.2s, transform 0.2s, border-color 0.2s;
   position: relative;
 }
 
 .site-card:hover {
-  background: var(--surface-2);
-  border-color: var(--border-strong);
+  box-shadow: var(--shadow-hover);
   transform: translateY(-1px);
+  border-color: var(--border-strong);
 }
 
-/* Left accent line — flat accent (not the brand gradient, whose magenta end
-   reads almost cyan-blue against dark surfaces and pulls the eye too hard). */
+/* Left accent line (colored) */
 .site-card-accent {
   position: absolute;
   left: 0; top: 0; bottom: 0; width: 3px;
-  background: var(--accent);
-  border-radius: var(--r) 0 0 var(--r);
+  background: linear-gradient(180deg, #7c3aed, #4f46e5);
+  border-radius: 14px 0 0 14px;
   opacity: 0;
-  transition: opacity var(--t);
+  transition: opacity 0.2s;
 }
 
 .site-card:hover .site-card-accent { opacity: 1; }
@@ -362,7 +441,7 @@ body {
   display: flex;
   align-items: center;
   gap: 14px;
-  padding: 14px 18px;
+  padding: 16px 18px;
 }
 
 .site-card-body-expandable {
@@ -371,29 +450,24 @@ body {
 
 /* Favicon */
 .favicon-wrap {
-  width: 32px; height: 32px;
-  border-radius: var(--r-xs);
+  width: 40px; height: 40px;
+  border-radius: 10px;
   background: var(--surface-2);
-  border: 1px solid var(--border-soft);
+  border: 1px solid var(--border);
   display: flex; align-items: center; justify-content: center;
   flex-shrink: 0;
   overflow: hidden;
 }
 
-.site-card:hover .favicon-wrap {
-  background: var(--surface-3);
-}
-
 .favicon-img {
-  width: 18px; height: 18px;
+  width: 22px; height: 22px;
   object-fit: contain;
 }
 
 .favicon-fallback {
-  font-family: var(--font-display);
-  font-size: 13px;
-  font-weight: 800;
-  color: var(--text-dim);
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text-3);
   line-height: 1;
 }
 
@@ -404,10 +478,9 @@ body {
 }
 
 .site-host {
-  font-family: var(--font-display);
   font-size: 14px;
-  font-weight: 700;
-  color: var(--text);
+  font-weight: 600;
+  color: var(--text-1);
   letter-spacing: -0.2px;
   line-height: 1.2;
   white-space: nowrap;
@@ -418,33 +491,37 @@ body {
 .site-meta {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   margin-top: 4px;
 }
 
-.site-page-count,
-.site-last-edit,
-.site-size {
-  font-family: var(--font-mono);
-  font-size: 10.5px;
-  color: var(--text-dim);
+.site-page-count {
+  font-size: 11.5px;
+  color: var(--text-3);
+  font-weight: 500;
+}
+
+.site-last-edit {
+  font-size: 11.5px;
+  color: var(--text-3);
   font-weight: 400;
-  letter-spacing: 0.02em;
 }
 
 .site-size {
+  font-size: 11.5px;
+  color: var(--text-3);
+  font-weight: 500;
   font-variant-numeric: tabular-nums;
 }
 
 .site-meta-dot {
   width: 3px; height: 3px;
   border-radius: 50%;
-  background: var(--text-dim);
+  background: var(--text-3);
   flex-shrink: 0;
 }
 
-/* ─── Annotation type pills ─── */
-/* Adnota pattern: color-soft bg + color-border + color text + mono font. */
+/* Annotation type pills */
 .site-pills {
   display: flex;
   gap: 5px;
@@ -452,63 +529,63 @@ body {
   align-items: center;
 }
 
-/* Pills are read-only labels, not interactive controls — no border. The
-   color-soft background + colored text + dot already do the identity work,
-   and dropping the border keeps a long row of pills from reading as LED bars. */
 .pill {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  font-family: var(--font-mono);
-  font-size: 10px;
-  font-weight: 500;
-  border-radius: 999px;
-  padding: 3px 9px;
+  font-size: 10.5px;
+  font-weight: 600;
+  border-radius: 20px;
+  padding: 3px 8px 3px 6px;
   letter-spacing: 0.02em;
   flex-shrink: 0;
   line-height: 1.4;
 }
 
-.pill-erase     { background: var(--red-soft);    color: var(--red); }
-.pill-note      { background: var(--amber-soft);  color: var(--amber); }
-.pill-highlight { background: var(--accent-soft); color: var(--accent); }
-.pill-stroke    { background: var(--green-soft);  color: var(--green); }
-.pill-resize    { background: var(--blue-soft);   color: var(--blue); }
-.pill-tag       { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+.pill-erase     { background: rgba(239,68,68,0.10);  color: #dc2626; }
+.pill-note      { background: rgba(245,158,11,0.12); color: #d97706; }
+.pill-highlight { background: rgba(124,58,237,0.10); color: #7c3aed; }
+.pill-stroke    { background: rgba(16,185,129,0.10); color: #059669; }
+.pill-resize     { background: rgba(59,130,246,0.10); color: #2563eb; }
+.pill-tag        { background: rgba(124,58,237,0.14); color: #6d28d9; font-weight: 700; }
 
 .pill-dot {
   width: 5px; height: 5px;
   border-radius: 50%;
   flex-shrink: 0;
 }
-.pill-erase     .pill-dot { background: var(--red); }
-.pill-note      .pill-dot { background: var(--amber); }
-.pill-highlight .pill-dot { background: var(--accent); }
-.pill-stroke    .pill-dot { background: var(--green); }
-.pill-resize    .pill-dot { background: var(--blue); }
-.pill-tag       .pill-dot { background: var(--accent); }
+.pill-erase .pill-dot     { background: #ef4444; }
+.pill-note .pill-dot      { background: #f59e0b; }
+.pill-highlight .pill-dot { background: #7c3aed; }
+.pill-stroke .pill-dot    { background: #10b981; }
+.pill-resize .pill-dot     { background: #3b82f6; }
+.pill-tag .pill-dot        { background: #7c3aed; }
 
 /* ═══════════════════════════════════════════════
-   TAG FILTER BAR — sits inside the sticky header below the main row.
-   Hides itself entirely when no tags exist.
+   TAG FILTER BAR — sits between the header and the sites list when any
+   tagged item exists. Clicking a chip filters the whole view. The row hides
+   itself entirely when no tags exist, so untagged users see the original UI.
 ═══════════════════════════════════════════════ */
+/* Lives inside the sticky <header> — no separate position:sticky needed.
+   Staying pinned while scrolling means the user can always click a chip to
+   narrow the feed, no matter how far down they are. */
 .tag-filter-bar {
   display: flex;
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
   padding: 10px 28px;
-  background: rgba(0, 0, 0, 0.25);
+  background: var(--surface-2);
+  border-top: 1px solid rgba(255, 255, 255, 0.04);
   position: relative;
   z-index: 1;
 }
 
 .tag-filter-label {
-  font-family: var(--font-mono);
-  font-size: 10.5px;
-  font-weight: 500;
-  color: var(--text-dim);
-  letter-spacing: 0.08em;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-3);
+  letter-spacing: 0.04em;
   text-transform: uppercase;
   margin-right: 2px;
 }
@@ -518,30 +595,29 @@ body {
   align-items: center;
   gap: 4px;
   padding: 4px 10px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-strong);
   background: var(--surface);
-  color: var(--text-muted);
+  color: var(--text-2);
   border-radius: 999px;
-  font-family: var(--font-mono);
-  font-size: 11.5px;
+  font-family: inherit;
+  font-size: 12px;
   font-weight: 500;
   cursor: pointer;
-  transition: background var(--t-fast), color var(--t-fast), border-color var(--t-fast);
+  transition: background 0.12s, color 0.12s, border-color 0.12s, transform 0.12s;
   line-height: 1.2;
 }
 
 .tag-chip:hover {
-  background: var(--accent-soft);
-  border-color: var(--border-strong);
-  color: var(--text);
+  background: rgba(124, 58, 237, 0.06);
+  border-color: rgba(124, 58, 237, 0.4);
+  color: #6d28d9;
 }
 
 .tag-chip.active {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: #fff;
+  background: #7c3aed;
+  border-color: #7c3aed;
+  color: #ffffff;
   font-weight: 600;
-  box-shadow: 0 0 16px var(--accent-glow);
 }
 
 .tag-chip-hash {
@@ -550,18 +626,18 @@ body {
 }
 
 .tag-chip-count {
-  font-size: 10px;
+  font-size: 10.5px;
   font-weight: 600;
   padding: 1px 6px;
   border-radius: 999px;
-  background: var(--accent-soft);
-  color: var(--accent);
+  background: rgba(124, 58, 237, 0.12);
+  color: #6d28d9;
   margin-left: 2px;
 }
 
 .tag-chip.active .tag-chip-count {
   background: rgba(255, 255, 255, 0.22);
-  color: #fff;
+  color: #ffffff;
 }
 
 /* Actions */
@@ -576,66 +652,81 @@ body {
   display: flex;
   align-items: center;
   gap: 6px;
-  background: var(--accent);
+  background: #7c3aed;
   color: #fff;
-  font-family: var(--font-body);
-  font-size: 11.5px;
+  font-size: 12px;
   font-weight: 600;
+  font-family: 'Inter', sans-serif;
   border: none;
-  border-radius: var(--r-sm);
-  padding: 7px 14px;
+  border-radius: 8px;
+  padding: 8px 14px;
   cursor: pointer;
-  transition: background var(--t-fast), transform var(--t-fast), box-shadow var(--t-fast);
+  transition: background 0.15s, transform 0.12s, box-shadow 0.15s;
   white-space: nowrap;
-  letter-spacing: 0.02em;
-  box-shadow: 0 0 16px rgba(124, 58, 237, 0.35);
+  letter-spacing: 0.01em;
+  box-shadow: 0 2px 8px rgba(124,58,237,0.3);
 }
 
 .btn-visit:hover {
-  background: var(--accent-hover);
-  box-shadow: 0 0 24px var(--accent-glow);
+  background: #6d28d9;
+  box-shadow: 0 4px 14px rgba(124,58,237,0.38);
   transform: translateY(-1px);
 }
 
 .btn-visit:active {
   transform: translateY(0);
+  box-shadow: 0 2px 6px rgba(124,58,237,0.25);
 }
 
 .btn-visit svg { flex-shrink: 0; }
 
 /* Delete-domain button */
-.btn-delete-domain,
-.btn-expand {
+.btn-delete-domain {
   background: transparent;
   border: 1px solid var(--border);
-  border-radius: var(--r-sm);
-  color: var(--text-dim);
+  border-radius: 8px;
+  color: var(--text-3);
   cursor: pointer;
   padding: 7px;
   display: flex; align-items: center; justify-content: center;
-  transition: background var(--t-fast), color var(--t-fast), border-color var(--t-fast);
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
   flex-shrink: 0;
 }
 
 .btn-delete-domain:hover {
-  background: var(--red-soft);
-  border-color: var(--red-border);
-  color: var(--red);
+  background: rgba(239,68,68,0.08);
+  border-color: rgba(239,68,68,0.4);
+  color: #dc2626;
+}
+
+/* Expand toggle */
+.btn-expand {
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text-3);
+  cursor: pointer;
+  padding: 7px;
+  display: flex; align-items: center; justify-content: center;
+  transition: background 0.15s, color 0.15s, border-color 0.15s, transform 0.2s;
+  flex-shrink: 0;
 }
 
 .btn-expand:hover {
-  background: var(--surface-3);
+  background: var(--surface-2);
   border-color: var(--border-strong);
-  color: var(--text);
+  color: var(--text-2);
 }
 
 .btn-expand .chevron {
-  transition: transform 0.25s var(--ease-out);
+  transition: transform 0.25s cubic-bezier(0.4,0,0.2,1);
 }
 
-.site-card.expanded .btn-expand { border-color: var(--border-strong); color: var(--text); }
+.site-card.expanded .btn-expand { border-color: var(--border-strong); color: var(--text-2); }
 .site-card.expanded .chevron { transform: rotate(180deg); }
 
+/* Invisible placeholder — reserves the expand-toggle slot on cards with only
+   one sub-page, so Visit/trash align vertically across every row. */
 .btn-expand-placeholder {
   visibility: hidden;
   pointer-events: none;
@@ -644,14 +735,14 @@ body {
 /* ─── Pages Drawer ─── */
 .pages-drawer {
   border-top: 1px solid var(--border);
-  background: rgba(0, 0, 0, 0.25);
+  background: var(--surface-2);
   overflow: hidden;
   max-height: 0;
-  transition: max-height var(--t-slow) var(--ease-out);
+  transition: max-height 0.3s cubic-bezier(0.4,0,0.2,1);
 }
 
 .site-card.expanded .pages-drawer {
-  max-height: 600px;
+  max-height: 600px; /* generous cap; scroll handles overflow */
 }
 
 .pages-drawer-inner {
@@ -662,11 +753,10 @@ body {
 }
 
 .drawer-label {
-  font-family: var(--font-mono);
   font-size: 10px;
-  font-weight: 500;
-  color: var(--text-dim);
-  letter-spacing: 0.08em;
+  font-weight: 600;
+  color: var(--text-3);
+  letter-spacing: 0.07em;
   text-transform: uppercase;
   padding: 4px 2px 8px;
 }
@@ -676,27 +766,26 @@ body {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 8px 12px;
-  border-radius: var(--r-xs);
-  transition: background var(--t-fast);
+  padding: 9px 12px;
+  border-radius: var(--radius-sm);
+  transition: background 0.14s;
   cursor: default;
 }
 
 .page-row:hover {
-  background: var(--surface-2);
+  background: rgba(0,0,0,0.035);
 }
 
 .page-path {
   flex: 1;
   min-width: 0;
-  font-family: var(--font-mono);
-  font-size: 11.5px;
-  color: var(--text-muted);
-  font-weight: 400;
+  font-size: 12.5px;
+  color: var(--text-2);
+  font-weight: 500;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  letter-spacing: 0;
+  letter-spacing: -0.1px;
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -711,22 +800,27 @@ body {
 }
 
 a.page-path {
-  color: var(--accent);
+  color: #5b21b6;
   cursor: pointer;
   border-radius: 4px;
-  transition: color var(--t-fast);
+  transition: color 0.14s;
 }
 
 a.page-path:hover {
-  color: #c084fc;
+  color: #7c3aed;
   text-decoration: underline;
   text-underline-offset: 2px;
+}
+
+a.page-path:focus-visible {
+  outline: 2px solid rgba(124,58,237,0.55);
+  outline-offset: 2px;
 }
 
 .page-path-icon {
   flex-shrink: 0;
   opacity: 0.55;
-  transition: opacity var(--t-fast), transform var(--t-fast);
+  transition: opacity 0.14s, transform 0.14s;
 }
 
 a.page-path:hover .page-path-icon {
@@ -734,7 +828,7 @@ a.page-path:hover .page-path-icon {
   transform: translate(1px, -1px);
 }
 
-.page-path-root { color: var(--text-dim); font-weight: 400; }
+.page-path-root { color: var(--text-3); font-weight: 400; }
 
 .page-pills {
   display: flex;
@@ -743,59 +837,54 @@ a.page-path:hover .page-path-icon {
 }
 
 .page-pills .pill {
-  font-size: 9.5px;
-  padding: 2px 7px;
+  font-size: 10px;
+  padding: 2px 6px 2px 5px;
 }
 
 /* ═══════════════════════════════════════════════
-   VIEW TABS — primary nav inline in the header.
+   VIEW TABS — primary nav, sits inline in the dark header between brand
+   and search. Snippets (prose feed) vs Sites (domain browser).
 ═══════════════════════════════════════════════ */
 .view-tabs {
   display: flex;
   align-items: center;
   gap: 4px;
   flex-shrink: 0;
-  background: rgba(0, 0, 0, 0.3);
-  border: 1px solid var(--border);
-  border-radius: var(--r-sm);
-  padding: 3px;
 }
 
 .view-tab {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  padding: 6px 14px;
+  padding: 8px 14px;
   background: transparent;
-  border: none;
-  border-radius: var(--r-xs);
-  color: var(--text-muted);
-  font-family: var(--font-body);
-  font-size: 13px;
-  font-weight: 600;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  color: rgba(255, 255, 255, 0.55);
+  font: 600 13px 'Inter', sans-serif;
   letter-spacing: -0.1px;
   cursor: pointer;
-  transition: color var(--t-fast), background var(--t-fast);
+  transition: color 0.14s, background 0.14s, border-color 0.14s;
 }
 
 .view-tab:hover {
-  color: var(--text);
+  color: rgba(255, 255, 255, 0.85);
+  background: rgba(255, 255, 255, 0.06);
 }
 
 .view-tab.active {
-  color: #fff;
-  background: var(--accent);
-  box-shadow: 0 0 16px var(--accent-glow);
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.10);
+  border-color: rgba(255, 255, 255, 0.14);
 }
 
 .view-tab-count {
-  font-family: var(--font-mono);
-  font-size: 10.5px;
+  font-size: 11px;
   font-weight: 600;
   padding: 1px 7px;
   border-radius: 999px;
-  background: var(--surface-3);
-  color: var(--text-muted);
+  background: rgba(255, 255, 255, 0.10);
+  color: rgba(255, 255, 255, 0.65);
   font-variant-numeric: tabular-nums;
   min-width: 18px;
   text-align: center;
@@ -803,7 +892,7 @@ a.page-path:hover .page-path-icon {
 }
 
 .view-tab.active .view-tab-count {
-  background: rgba(255, 255, 255, 0.22);
+  background: #7c3aed;
   color: #fff;
 }
 
@@ -811,11 +900,13 @@ a.page-path:hover .page-path-icon {
 
 /* ═══════════════════════════════════════════════
    FEED TYPE FILTER — segmented control (All / Highlights / Notes).
+   Snippets tab only; centered above the prose feed so it visually ties
+   to the content it filters rather than floating detached on one side.
 ═══════════════════════════════════════════════ */
 .feed-type-filter {
   display: flex;
   gap: 2px;
-  background: var(--surface);
+  background: var(--surface-2);
   border: 1px solid var(--border);
   border-radius: 999px;
   padding: 3px;
@@ -826,28 +917,27 @@ a.page-path:hover .page-path-icon {
 .feed-type-chip {
   background: transparent;
   border: none;
-  color: var(--text-muted);
-  padding: 6px 16px;
+  color: var(--text-2);
+  padding: 5px 14px;
   border-radius: 999px;
-  font-family: var(--font-body);
-  font-size: 12px;
-  font-weight: 500;
+  font: 500 12px 'Inter', sans-serif;
   cursor: pointer;
   letter-spacing: 0.01em;
-  transition: background var(--t-fast), color var(--t-fast);
+  transition: background 0.14s, color 0.14s, box-shadow 0.14s;
 }
 
-.feed-type-chip:hover { color: var(--text); }
+.feed-type-chip:hover { color: var(--text-1); }
 
 .feed-type-chip.active {
-  background: var(--accent-soft);
-  color: var(--accent);
+  background: var(--surface);
+  color: #7c3aed;
   font-weight: 600;
-  border: 1px solid var(--border-strong);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.08);
 }
 
 /* ═══════════════════════════════════════════════
-   PROSE FEED — quote blocks (highlights) + thought blocks (sticky notes).
+   PROSE FEED — the hero view. Centered reading column, generous line
+   height, quote blocks + thought blocks as the only two item types.
 ═══════════════════════════════════════════════ */
 .prose-feed {
   display: flex;
@@ -857,53 +947,63 @@ a.page-path:hover .page-path-icon {
 
 .prose-feed[hidden] { display: none; }
 
+/* Shared feed-item frame — both quote and thought inherit. Padding and gap
+   tuned to match the Sites row density (site-card uses 16px 18px) so both
+   tabs read at the same rhythm rather than the feed feeling airy next to
+   the tight list. */
 .feed-item {
   position: relative;
-  padding: 12px 70px 10px 16px;
+  padding: 12px 70px 10px 16px; /* right pad reserves space for copy + trash */
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: var(--r);
+  border-radius: var(--radius);
   cursor: pointer;
-  transition: background var(--t-fast), border-color var(--t-fast), transform var(--t-fast);
+  transition: box-shadow 0.15s, border-color 0.15s, transform 0.15s;
 }
 
 .feed-item:hover {
-  background: var(--surface-2);
+  box-shadow: var(--shadow-hover);
   border-color: var(--border-strong);
   transform: translateY(-1px);
 }
 
-/* The actual cut text — body-text sized to match site-host (14px) so feed
-   items and site rows read at the same rhythm.
+/* The actual cut text — the whole point. Body-text sized to match the
+   site-host row on the Sites tab (14px) so snippets and sites feel like
+   one product. Still selectable prose.
 
    `white-space: pre-wrap` preserves the newlines that range.toString()
-   captures at block-element boundaries. */
+   captures at block-element boundaries in the source page, so a highlight
+   that spans several paragraphs renders as several paragraphs here too —
+   not one collapsed blob. The Copy button already writes the same raw
+   text to the clipboard, so visual + clipboard output stay in sync. */
 .feed-text {
   font-size: 14px;
-  line-height: 1.6;
-  color: var(--text);
+  line-height: 1.5;
+  color: var(--text-1);
   letter-spacing: -0.1px;
   margin-bottom: 6px;
   user-select: text;
   cursor: text;
   white-space: pre-wrap;
   word-break: break-word;
-  font-weight: 400;
 }
 
-/* Quote = highlighted text. 3px left border in the highlight color is the
-   only visual tie back to the annotation palette. */
+/* Quote block = highlighted text. 3px left border in the highlight color
+   is the only visual tie back to the annotation palette — the text itself
+   stays unstyled so it reads as prose. */
 .feed-quote {
-  border-left: 3px solid var(--quote-color, var(--text-dim));
+  border-left: 3px solid var(--quote-color, #cccccc);
   padding-left: 14px;
 }
 
-/* Black highlight = redaction. Render a monospace bar instead of the text. */
+/* Black highlight = redaction. Don't reproduce the underlying text — the
+   user asked for it to be hidden. Render a monospace black bar roughly
+   scaled to the original length. */
 .feed-quote-redaction .redaction-bar {
   display: inline-block;
   background: #1a1a1a;
   color: #1a1a1a;
-  font-family: var(--font-mono);
+  font-family: 'SFMono-Regular', ui-monospace, Menlo, monospace;
   font-size: 14px;
   line-height: 1.4;
   letter-spacing: 1px;
@@ -913,11 +1013,12 @@ a.page-path:hover .page-path-icon {
   user-select: all;
 }
 
-/* Thought = sticky note body. Theme-color left strip + faint tint
-   bleeding right from the edge. */
+/* Thought block = sticky note body. Theme-color left strip + faint tint
+   bleeding right from the edge. Preserve newlines the user typed. */
 .feed-thought {
   border-left: 3px solid var(--thought-color, #FBE6A1);
   padding-left: 14px;
+  background: var(--surface);
 }
 
 .feed-thought::before {
@@ -926,13 +1027,14 @@ a.page-path:hover .page-path-icon {
   left: 3px; top: 0; bottom: 0;
   width: 40px;
   background: linear-gradient(90deg, var(--thought-color, #FBE6A1) 0%, transparent 100%);
-  opacity: 0.10;
+  opacity: 0.18;
   pointer-events: none;
+  border-radius: 0;
 }
 
 .feed-thought .feed-text {
   white-space: pre-wrap;
-  position: relative;
+  position: relative; /* sits above the ::before tint */
 }
 
 .feed-thought .source-chip {
@@ -944,10 +1046,9 @@ a.page-path:hover .page-path-icon {
   display: inline-flex;
   align-items: center;
   gap: 7px;
-  font-family: var(--font-mono);
-  font-size: 11px;
-  color: var(--text-dim);
-  font-weight: 400;
+  font-size: 11.5px;
+  color: var(--text-3);
+  font-weight: 500;
   flex-wrap: wrap;
 }
 
@@ -956,15 +1057,15 @@ a.page-path:hover .page-path-icon {
   align-items: center;
   gap: 6px;
   text-decoration: none;
-  color: var(--text-muted);
+  color: var(--text-2);
   padding: 2px 7px 2px 3px;
   border-radius: 6px;
-  transition: background var(--t-fast), color var(--t-fast);
+  transition: background 0.12s, color 0.12s;
 }
 
 .source-link:hover {
-  background: var(--accent-soft);
-  color: var(--accent);
+  background: rgba(124, 58, 237, 0.08);
+  color: #7c3aed;
 }
 
 .source-favicon {
@@ -975,21 +1076,21 @@ a.page-path:hover .page-path-icon {
 }
 
 .source-host {
-  font-weight: 500;
-  letter-spacing: 0;
+  font-weight: 600;
+  letter-spacing: -0.05px;
 }
 
 .source-dot {
   width: 2px; height: 2px;
   border-radius: 50%;
-  background: var(--text-dim);
+  background: var(--text-3);
   flex-shrink: 0;
 }
 
-.source-time { color: var(--text-dim); }
+.source-time { color: var(--text-3); }
 
 .source-tag {
-  color: var(--accent);
+  color: #6d28d9;
   font-weight: 600;
 }
 
@@ -1001,7 +1102,7 @@ a.page-path:hover .page-path-icon {
   display: flex;
   gap: 3px;
   opacity: 0;
-  transition: opacity var(--t-fast);
+  transition: opacity 0.15s;
 }
 
 .feed-item:hover .feed-item-actions,
@@ -1013,54 +1114,52 @@ a.page-path:hover .page-path-icon {
   background: transparent;
   border: 1px solid transparent;
   border-radius: 7px;
-  color: var(--text-dim);
+  color: var(--text-3);
   padding: 5px;
   cursor: pointer;
   display: flex; align-items: center; justify-content: center;
-  transition: background var(--t-fast), color var(--t-fast), border-color var(--t-fast), transform var(--t-fast);
+  transition: background 0.15s, color 0.15s, border-color 0.15s, transform 0.12s;
 }
 
 .feed-item-copy:hover {
-  background: var(--accent-soft);
-  border-color: var(--border-strong);
-  color: var(--accent);
+  background: rgba(124, 58, 237, 0.08);
+  border-color: rgba(124, 58, 237, 0.35);
+  color: #7c3aed;
 }
 
-/* Green flash on successful copy. */
+/* Green flash on successful copy — fades back to default after ~1.4s so
+   repeat copies get their own confirmation rather than sticking. */
 .feed-item-copy.copied {
-  background: var(--green-soft);
-  border-color: var(--green-border);
-  color: var(--green);
+  background: rgba(16, 185, 129, 0.14);
+  border-color: rgba(16, 185, 129, 0.5);
+  color: #059669;
   transform: scale(1.05);
 }
 
 .feed-item-trash:hover {
-  background: var(--red-soft);
-  border-color: var(--red-border);
-  color: var(--red);
+  background: rgba(239, 68, 68, 0.08);
+  border-color: rgba(239, 68, 68, 0.35);
+  color: #dc2626;
 }
 
 /* ═══════════════════════════════════════════════
-   TOAST — frosted-glass HUD-family styling
+   TOAST
 ═══════════════════════════════════════════════ */
 .toast {
   position: fixed;
   bottom: 60px; left: 50%;
   transform: translateX(-50%) translateY(20px);
-  background: var(--hud-bg-strong);
-  -webkit-backdrop-filter: blur(10px);
-  backdrop-filter: blur(10px);
-  border: 1px solid var(--hud-border);
-  color: var(--text);
-  font-family: var(--font-body);
+  background: #1a1a2e;
+  color: #fff;
   font-size: 13px;
   font-weight: 500;
+  font-family: 'Inter', sans-serif;
   border-radius: 10px;
   padding: 10px 18px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.55);
+  box-shadow: 0 4px 20px rgba(0,0,0,0.3);
   opacity: 0;
   pointer-events: none;
-  transition: opacity var(--t) ease, transform var(--t) ease;
+  transition: opacity 0.2s ease, transform 0.2s ease;
   z-index: 999;
   white-space: nowrap;
 }
@@ -1068,9 +1167,17 @@ a.page-path:hover .page-path-icon {
 .toast.visible {
   opacity: 1;
   transform: translateX(-50%) translateY(0);
+  /* Base state uses pointer-events:none so a hidden toast never steals
+     clicks. Re-enable here so the Undo button inside the visible toast
+     can actually receive its own click — previously the click passed
+     through the toast to whatever card was underneath, opening the
+     source page instead of firing undo. */
   pointer-events: auto;
 }
 
+/* Undo variant — inline label + button. The base toast is plain text with
+   white-space:nowrap; when rendered with has-undo we become a flex row so
+   the button sits beside the message without wrapping. */
 .toast.has-undo {
   display: flex;
   align-items: center;
@@ -1081,37 +1188,33 @@ a.page-path:hover .page-path-icon {
 .toast-msg { font-size: 13px; }
 
 .toast-undo {
-  background: var(--accent);
+  background: rgba(124, 58, 237, 0.85);
   border: none;
   color: #fff;
-  font-family: var(--font-body);
-  font-size: 12px;
-  font-weight: 600;
+  font: 600 12px 'Inter', sans-serif;
   padding: 6px 14px;
   border-radius: 6px;
   cursor: pointer;
   letter-spacing: 0.02em;
-  transition: background var(--t-fast), box-shadow var(--t-fast);
+  transition: background 0.14s;
 }
 
-.toast-undo:hover {
-  background: var(--accent-hover);
-  box-shadow: var(--shadow-glow);
-}
+.toast-undo:hover { background: #7c3aed; }
 
 /* ═══════════════════════════════════════════════
    RESPONSIVE
 ═══════════════════════════════════════════════ */
 @media (max-width: 780px) {
+  /* Drop to 2 rows: brand + actions on top, tabs centered below. */
   .header-inner {
     grid-template-columns: auto 1fr;
     grid-template-rows: auto auto;
     gap: 12px;
     padding: 14px 16px;
   }
-  .header-inner > .brand          { grid-column: 1; grid-row: 1; }
+  .header-inner > .brand         { grid-column: 1; grid-row: 1; }
   .header-inner > .header-actions { grid-column: 2; grid-row: 1; justify-self: end; }
-  .header-inner > .view-tabs      { grid-column: 1 / -1; grid-row: 2; justify-self: center; }
+  .header-inner > .view-tabs     { grid-column: 1 / -1; grid-row: 2; justify-self: center; }
   .search-input { width: 200px; }
 }
 
@@ -1123,7 +1226,7 @@ a.page-path:hover .page-path-icon {
   .summary-bar { padding: 12px 14px; }
   .site-card-body { gap: 10px; padding: 14px 14px; }
   .btn-visit span { display: none; }
-  .view-tab { padding: 5px 12px; font-size: 12.5px; }
+  .view-tab { padding: 7px 12px; font-size: 12.5px; }
   .feed-text { font-size: 13.5px; }
   .feed-item { padding: 11px 64px 9px 14px; }
   .feed-quote, .feed-thought { padding-left: 12px; }
