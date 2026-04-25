@@ -1,0 +1,129 @@
+/* lib/adnotaTokens.css — Adnota design tokens.
+   Single source of truth for the extension's visual language. Loaded first
+   by every entry point (popup, pages, content scripts) so every other CSS
+   file consumes vars instead of hardcoded values.
+
+   Mirrors /Users/saunders/dev/adnota/styles.css :root so the extension and
+   marketing site stay visually aligned. Add tokens here, not in component
+   stylesheets. */
+
+:root {
+  /* ── Surfaces ── */
+  --bg:        #08080f;
+  --surface:   #0f0f1a;
+  --surface-2: #16162a;
+  --surface-3: #1d1d35;
+
+  /* ── Borders ── */
+  --border:        rgba(124, 58, 237, 0.18);
+  --border-strong: rgba(124, 58, 237, 0.32);
+  --border-soft:   rgba(255, 255, 255, 0.06);
+
+  /* ── Text ── */
+  --text:       oklch(0.96 0.01 290);
+  --text-muted: oklch(0.65 0.02 290);
+  --text-dim:   oklch(0.45 0.02 290);
+
+  /* ── Accent (brand) ── */
+  --accent:        #7c3aed;
+  --accent-hover:  oklch(0.58 0.22 290);
+  --accent-soft:   rgba(124, 58, 237, 0.12);
+  --accent-glow:   rgba(124, 58, 237, 0.35);
+
+  /* ── Semantic colors (tool identity & status) ── */
+  --red:   #e74c3c;  --red-soft:   rgba(231, 76, 60, 0.12);  --red-border:   rgba(231, 76, 60, 0.25);
+  --amber: #f59e0b;  --amber-soft: rgba(245, 158, 11, 0.12); --amber-border: rgba(245, 158, 11, 0.25);
+  --blue:  #3b82f6;  --blue-soft:  rgba(59, 130, 246, 0.12); --blue-border:  rgba(59, 130, 246, 0.25);
+  --green: #22c55e;  --green-soft: rgba(34, 197, 94, 0.12);  --green-border: rgba(34, 197, 94, 0.25);
+  --pink:  #ec4899;  --pink-soft:  rgba(236, 72, 153, 0.12); --pink-border:  rgba(236, 72, 153, 0.25);
+
+  /* Tool palette aliases — same colors, named for in-extension semantics so
+     authors don't have to remember which semantic maps to which tool. */
+  --tool-erase:     var(--red);
+  --tool-note:      var(--amber);
+  --tool-highlight: var(--accent);
+  --tool-resize:    var(--blue);
+  --tool-stroke:    var(--green);
+
+  /* ── Typography ── */
+  --font-display: 'Lato', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-body:    'Lato', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-mono:    'DM Mono', 'SFMono-Regular', ui-monospace, Menlo, monospace;
+
+  /* ── Radii ── */
+  --r-xs: 6px;
+  --r-sm: 8px;
+  --r:    12px;
+  --r-lg: 16px;
+
+  /* ── Shadows ── */
+  --shadow-card:  0 1px 3px rgba(0, 0, 0, 0.4), 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-hover: 0 8px 24px rgba(0, 0, 0, 0.5), 0 2px 6px rgba(0, 0, 0, 0.35);
+  --shadow-raise: 0 20px 60px rgba(0, 0, 0, 0.6);
+  --shadow-glow:  0 0 30px var(--accent-glow);
+
+  /* ── Motion ── */
+  --t-fast:   0.14s;
+  --t:        0.2s;
+  --t-slow:   0.3s;
+  --ease-out: cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* ── HUD (content-script overlays) ──
+     These surfaces sit on top of arbitrary host pages, so they need to be
+     more opaque and use a darker base than the dashboard --surface — they
+     can't trust the page's background color. Frosted-glass via backdrop-filter
+     with a near-black tint and a purple-accent border for brand recognition. */
+  --hud-bg:        rgba(15, 15, 15, 0.92);
+  --hud-bg-strong: rgba(15, 15, 15, 0.96);
+  --hud-border:    rgba(124, 58, 237, 0.45);
+  --hud-text:      #e4e4e7;
+
+  /* ── Brand monogram gradient ──
+     Used for every "A" logo across popup, sites page, modal, content scripts.
+     Keeps a single source for the brand mark. */
+  --brand-gradient: linear-gradient(135deg, var(--accent), oklch(0.55 0.25 315));
+}
+
+/* ── Global focus ring ──
+   Adnota's marketing site has no focus styles. A dashboard does — this is
+   the keyboard accessibility baseline. */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+
+/* Inputs and buttons get a softer ring that doesn't fight their own border. */
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+button:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--accent-soft), 0 0 0 1px var(--accent);
+}
+
+/* ── Scrollbars ──
+   Webkit (Chrome) only — Firefox uses the OS bar. Sized to feel like part
+   of the dark surface, not a default OS scrollbar. */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--bg);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--surface-2);
+  border-radius: 5px;
+  border: 2px solid var(--bg);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--surface-3);
+}
+
+::-webkit-scrollbar-corner {
+  background: var(--bg);
+}

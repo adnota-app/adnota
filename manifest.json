@@ -80,6 +80,7 @@
         "content/quickHighlight.js"
       ],
       "css": [
+        "lib/adnotaTokens.css",
         "lib/vellumUI.css",
         "content/dock.css",
         "content/sticky.css",
