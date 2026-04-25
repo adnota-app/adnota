@@ -122,11 +122,17 @@ document.addEventListener('DOMContentLoaded', async () => {
       }
     }
 
-    document.getElementById('count-erasures').textContent   = erasures;
-    document.getElementById('count-notes').textContent      = notes;
-    document.getElementById('count-highlights').textContent = highlights;
-    document.getElementById('count-strokes').textContent    = strokes;
-    document.getElementById('count-resizes').textContent    = resizes;
+    // Render counts and toggle a `zero` class on the parent card so CSS can
+    // dim the empty buckets — color is reserved for "you have something here."
+    const setStat = (countId, cardId, value) => {
+      document.getElementById(countId).textContent = value;
+      document.getElementById(cardId).classList.toggle('zero', value === 0);
+    };
+    setStat('count-erasures',   'clear-erasures',   erasures);
+    setStat('count-notes',      'clear-notes',      notes);
+    setStat('count-highlights', 'clear-highlights', highlights);
+    setStat('count-strokes',    'clear-strokes',    strokes);
+    setStat('count-resizes',    'clear-resizes',    resizes);
 
     // ── Per-class clear: each card dispatches a soft-delete to the content
     //    script, which handles confirm, toast, and 5s undo. The popup just

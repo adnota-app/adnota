@@ -309,6 +309,19 @@ kbd.shortcut {
   border-color: var(--border-strong);
 }
 
+/* Zero-count cards stay quiet — color is reserved for "you have something
+   here." Inline color="..." on the .stat-value is overridden via !important
+   because the colors live in popup/index.html as inline styles. */
+.stat-card.zero .stat-value { color: var(--text-dim) !important; }
+.stat-card.zero:hover {
+  background: var(--surface);
+  border-color: var(--border);
+  cursor: default;
+}
+.stat-card.zero:hover .stat-value { opacity: 1; transform: none; }
+.stat-card.zero:hover .stat-trash { opacity: 0; transform: scale(0.6); }
+.stat-card.zero:hover .stat-label { opacity: 1; }
+
 .stat-display {
   position: relative;
   height: 26px;
@@ -372,12 +385,14 @@ kbd.shortcut {
   background: var(--surface);
 }
 
+/* Primary CTA — the only colorful button at rest. The footer is otherwise
+   quiet so this read as the obvious next move. */
 .sites-btn {
   width: 100%;
-  background: var(--accent-soft);
-  border: 1px solid var(--border-strong);
+  background: var(--accent);
+  border: 1px solid var(--accent);
   border-radius: var(--r-sm);
-  color: var(--accent);
+  color: #fff;
   font-size: 12px;
   font-weight: 600;
   font-family: var(--font-body);
@@ -387,25 +402,26 @@ kbd.shortcut {
   align-items: center;
   justify-content: center;
   gap: 6px;
-  transition: background var(--t-fast), border-color var(--t-fast), color var(--t-fast);
+  transition: background var(--t-fast), box-shadow var(--t-fast);
   letter-spacing: 0.01em;
+  box-shadow: 0 0 16px var(--accent-glow);
 }
 
 .sites-btn:hover {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: #fff;
-  box-shadow: var(--shadow-glow);
+  background: var(--accent-hover);
+  box-shadow: 0 0 24px var(--accent-glow);
 }
 
+/* Destructive action — quiet by default, surfaces red only on hover so it
+   doesn't compete with the primary CTA above for attention at rest. */
 .danger-btn {
   width: 100%;
-  background: var(--red-soft);
-  border: 1px solid var(--red-border);
+  background: transparent;
+  border: 1px solid transparent;
   border-radius: var(--r-sm);
-  color: var(--red);
+  color: var(--text-dim);
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 500;
   font-family: var(--font-body);
   cursor: pointer;
   padding: 9px 14px;
@@ -418,7 +434,7 @@ kbd.shortcut {
 }
 
 .danger-btn:hover {
-  background: var(--red);
-  border-color: var(--red);
-  color: #fff;
+  background: var(--red-soft);
+  border-color: var(--red-border);
+  color: var(--red);
 }
