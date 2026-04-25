@@ -107,23 +107,6 @@ html.vellum-hidden .vellum-highlight-delete-btn {
   color: #c084fc;
 }
 
-.vellum-tool-btn[title]:hover::after {
-  content: attr(title);
-  position: absolute;
-  bottom: calc(100% + 6px);
-  left: 50%;
-  transform: translateX(-50%);
-  background: rgba(15, 15, 15, 0.95);
-  color: #e4e4e7;
-  font-size: 11px;
-  font-weight: 500;
-  padding: 3px 8px;
-  border-radius: 4px;
-  white-space: nowrap;
-  pointer-events: none;
-  border: 1px solid rgba(124, 58, 237, 0.3);
-}
-
 /* ── Color swatches ──────────────────────────────────────────────────────── */
 .vellum-color-swatch {
   width: 18px;

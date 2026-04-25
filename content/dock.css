@@ -199,7 +199,13 @@
   min-height: 30px;
   max-width: 0;
   opacity: 0;
-  overflow: hidden;
+  /* overflow-x: clip + overflow-y: visible is the one combination CSS allows
+     where vertical content escapes while horizontal content stays clipped.
+     We need horizontal clipping for the max-width slide-in; vertical escape
+     lets each HUD button's [data-tooltip]::after pseudo-element render
+     above the dock instead of getting cropped at the body's top edge. */
+  overflow-x: clip;
+  overflow-y: visible;
   margin-left: 0;
   transition: max-width 0.18s ease-out,
               opacity 0.12s ease-out,
