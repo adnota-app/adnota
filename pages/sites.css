@@ -21,7 +21,9 @@
   --radius: 14px;
   --radius-sm: 9px;
   --radius-xs: 6px;
-  --header-dark: linear-gradient(135deg, #151515 0%, #2a1658 100%);
+  --header-dark:
+    linear-gradient(135deg, rgba(124, 58, 237, 0.20), rgba(147, 51, 234, 0.04)),
+    #0f0f1a;
 
   /* Tool accent colors */
   --c-erase:     #ef4444;
@@ -47,14 +49,12 @@ body {
 ═══════════════════════════════════════════════ */
 .header {
   background: var(--header-dark);
+  border-bottom: 1px solid rgba(124, 58, 237, 0.18);
   padding: 0;
   position: sticky;
   top: 0;
   z-index: 100;
-  /* Soft shadow now that the filter bar sits inside the header — the old
-     heavy drop shadow was tuned for a dark block ending at the gradient,
-     and bled into the light filter strip as a visible band. */
-  box-shadow: 0 1px 2px rgba(0,0,0,0.08), 0 4px 16px rgba(0,0,0,0.06);
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.35);
 }
 
 /* Decorative orbs — purple top-right, green bottom-left. Kept as a hint of
@@ -64,19 +64,20 @@ body {
   content: '';
   position: absolute;
   top: -60px; right: -40px;
-  width: 160px; height: 160px;
+  width: 200px; height: 200px;
   border-radius: 50%;
-  background: radial-gradient(circle, rgba(124,58,237,0.18) 0%, transparent 70%);
+  background: radial-gradient(circle, rgba(124,58,237,0.30) 0%, transparent 70%);
   pointer-events: none;
+  opacity: 0.6;
 }
 
 .header::after {
   content: '';
   position: absolute;
   bottom: -30px; left: 60px;
-  width: 120px; height: 120px;
+  width: 140px; height: 140px;
   border-radius: 50%;
-  background: radial-gradient(circle, rgba(16,185,129,0.08) 0%, transparent 70%);
+  background: radial-gradient(circle, rgba(236,72,153,0.10) 0%, transparent 70%);
   pointer-events: none;
 }
 
@@ -108,10 +109,10 @@ body {
 .brand-monogram {
   width: 40px; height: 40px;
   border-radius: 11px;
-  background: linear-gradient(135deg, #7c3aed 0%, #4f46e5 100%);
+  background: linear-gradient(135deg, #7c3aed, #d946ef);
   display: flex; align-items: center; justify-content: center;
   font-weight: 700; font-size: 18px; color: #fff; letter-spacing: -0.5px;
-  box-shadow: 0 2px 12px rgba(124,58,237,0.45);
+  box-shadow: 0 0 30px rgba(124, 58, 237, 0.35);
   flex-shrink: 0;
 }
 
@@ -569,23 +570,26 @@ body {
 /* Lives inside the sticky <header> — no separate position:sticky needed.
    Staying pinned while scrolling means the user can always click a chip to
    narrow the feed, no matter how far down they are. */
+/* Sub-band of the dark header — adnota's literal treatment: a 25% black
+   overlay on top of the header. Looks darker than the header above it
+   but reads as the same family because it inherits the header's purple-
+   tinted base through the transparency. */
 .tag-filter-bar {
   display: flex;
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
   padding: 10px 28px;
-  background: var(--surface-2);
-  border-top: 1px solid rgba(255, 255, 255, 0.04);
+  background: rgba(0, 0, 0, 0.25);
   position: relative;
   z-index: 1;
 }
 
 .tag-filter-label {
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--text-3);
-  letter-spacing: 0.04em;
+  font-size: 10.5px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.5);
+  letter-spacing: 0.08em;
   text-transform: uppercase;
   margin-right: 2px;
 }
@@ -595,22 +599,22 @@ body {
   align-items: center;
   gap: 4px;
   padding: 4px 10px;
-  border: 1px solid var(--border-strong);
-  background: var(--surface);
-  color: var(--text-2);
+  border: 1px solid rgba(124, 58, 237, 0.18);
+  background: #0f0f1a;
+  color: rgba(220, 220, 230, 0.75);
   border-radius: 999px;
   font-family: inherit;
-  font-size: 12px;
+  font-size: 11.5px;
   font-weight: 500;
   cursor: pointer;
-  transition: background 0.12s, color 0.12s, border-color 0.12s, transform 0.12s;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
   line-height: 1.2;
 }
 
 .tag-chip:hover {
-  background: rgba(124, 58, 237, 0.06);
-  border-color: rgba(124, 58, 237, 0.4);
-  color: #6d28d9;
+  background: rgba(124, 58, 237, 0.12);
+  border-color: rgba(124, 58, 237, 0.32);
+  color: #ffffff;
 }
 
 .tag-chip.active {
@@ -618,6 +622,7 @@ body {
   border-color: #7c3aed;
   color: #ffffff;
   font-weight: 600;
+  box-shadow: 0 0 16px rgba(124, 58, 237, 0.5);
 }
 
 .tag-chip-hash {
@@ -630,8 +635,8 @@ body {
   font-weight: 600;
   padding: 1px 6px;
   border-radius: 999px;
-  background: rgba(124, 58, 237, 0.12);
-  color: #6d28d9;
+  background: rgba(124, 58, 237, 0.18);
+  color: #c084fc;
   margin-left: 2px;
 }
 
@@ -845,46 +850,52 @@ a.page-path:hover .page-path-icon {
    VIEW TABS — primary nav, sits inline in the dark header between brand
    and search. Snippets (prose feed) vs Sites (domain browser).
 ═══════════════════════════════════════════════ */
+/* Wrapping pill group sits the tabs in their own dark inset, so the active
+   tab can pop as a solid accent pellet inside it (instead of a faint white
+   wash). Same pattern as the dark theme. */
 .view-tabs {
   display: flex;
   align-items: center;
   gap: 4px;
   flex-shrink: 0;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 10px;
+  padding: 3px;
 }
 
 .view-tab {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  padding: 8px 14px;
+  padding: 6px 14px;
   background: transparent;
-  border: 1px solid transparent;
-  border-radius: 9px;
+  border: none;
+  border-radius: 7px;
   color: rgba(255, 255, 255, 0.55);
   font: 600 13px 'Inter', sans-serif;
   letter-spacing: -0.1px;
   cursor: pointer;
-  transition: color 0.14s, background 0.14s, border-color 0.14s;
+  transition: color 0.14s, background 0.14s, box-shadow 0.14s;
 }
 
 .view-tab:hover {
   color: rgba(255, 255, 255, 0.85);
-  background: rgba(255, 255, 255, 0.06);
 }
 
 .view-tab.active {
   color: #ffffff;
-  background: rgba(255, 255, 255, 0.10);
-  border-color: rgba(255, 255, 255, 0.14);
+  background: #7c3aed;
+  box-shadow: 0 0 16px rgba(124, 58, 237, 0.5);
 }
 
 .view-tab-count {
-  font-size: 11px;
+  font-size: 10.5px;
   font-weight: 600;
   padding: 1px 7px;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.10);
-  color: rgba(255, 255, 255, 0.65);
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.55);
   font-variant-numeric: tabular-nums;
   min-width: 18px;
   text-align: center;
@@ -892,7 +903,7 @@ a.page-path:hover .page-path-icon {
 }
 
 .view-tab.active .view-tab-count {
-  background: #7c3aed;
+  background: rgba(255, 255, 255, 0.22);
   color: #fff;
 }
 

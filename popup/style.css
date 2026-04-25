@@ -31,9 +31,15 @@ body {
 }
 
 /* ─── Header ─── */
+/* Dark base + purple-tinted gradient overlay — same pattern as the adnota
+   dashboard header. The overlay (not the base) carries the brand warmth, so
+   the surface reads as dark purple end-to-end rather than black-fading-to-purple. */
 .header {
-  background: linear-gradient(135deg, #151515 0%, #2a1658 100%);
-  padding: 18px;
+  background:
+    linear-gradient(135deg, rgba(124, 58, 237, 0.22), rgba(147, 51, 234, 0.06)),
+    #0f0f1a;
+  border-bottom: 1px solid rgba(124, 58, 237, 0.18);
+  padding: 16px 18px;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -46,11 +52,12 @@ body {
   position: absolute;
   top: -40px;
   right: -20px;
-  width: 120px;
-  height: 120px;
+  width: 140px;
+  height: 140px;
   border-radius: 50%;
-  background: radial-gradient(circle, rgba(124, 58, 237, 0.4) 0%, transparent 70%);
+  background: radial-gradient(circle, rgba(124, 58, 237, 0.35) 0%, transparent 70%);
   pointer-events: none;
+  opacity: 0.6;
 }
 
 .brand {
@@ -63,7 +70,7 @@ body {
   width: 38px;
   height: 38px;
   border-radius: 10px;
-  background: linear-gradient(135deg, #7c3aed 0%, #4f46e5 100%);
+  background: linear-gradient(135deg, #7c3aed, #d946ef);
   display: flex;
   align-items: center;
   justify-content: center;
