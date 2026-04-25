@@ -506,10 +506,13 @@ function showDeleteBtn(id, rects) {
   const el = ensureDeleteBtn();
   // Anchor to the first rect's top-right — the natural "start of this
   // highlight" corner, matching how Select hangs its ✕ off marker wrappers.
+  // Nudge up + right so the ✕ sits clear of the highlighted text instead of
+  // overlapping the first character.
   const first = rects[0];
   const SIZE = 20; // matches .vellum-select-delete width/height
-  let left = first.right - SIZE / 2;
-  let top = first.top - SIZE / 2;
+  const NUDGE = 6;
+  let left = first.right - SIZE / 2 + NUDGE;
+  let top = first.top - SIZE / 2 - NUDGE;
   left = Math.max(2, Math.min(window.innerWidth - SIZE - 2, left));
   top = Math.max(2, Math.min(window.innerHeight - SIZE - 2, top));
   el.style.left = left + 'px';
@@ -752,6 +755,15 @@ document.addEventListener('mouseup', async (e) => {
 window.VellumHighlighter = {
   createHighlightFromRange,
   deleteHighlight,
+
+  // Returns the tag of the live highlight covering (x, y) in viewport
+  // coordinates, or '' if there's no highlight there or it's untagged.
+  // Used by the quick-highlight popup to pre-fill the tag input when the user
+  // re-selects text inside a tagged highlight.
+  tagAtPoint(x, y) {
+    const hit = findHighlightAt(x, y);
+    return hit?.entry?.tag || '';
+  },
 
   renderFallback: function (anchorElement, payload) {
     if (!payload.fallbackRects) return;
