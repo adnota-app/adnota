@@ -344,11 +344,12 @@ body {
   transform: translateY(-1px);
 }
 
-/* Left accent line — purple gradient, fades in on hover. */
+/* Left accent line — flat accent (not the brand gradient, whose magenta end
+   reads almost cyan-blue against dark surfaces and pulls the eye too hard). */
 .site-card-accent {
   position: absolute;
   left: 0; top: 0; bottom: 0; width: 3px;
-  background: var(--brand-gradient);
+  background: var(--accent);
   border-radius: var(--r) 0 0 var(--r);
   opacity: 0;
   transition: opacity var(--t);
@@ -373,7 +374,7 @@ body {
   width: 32px; height: 32px;
   border-radius: var(--r-xs);
   background: var(--surface-2);
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-soft);
   display: flex; align-items: center; justify-content: center;
   flex-shrink: 0;
   overflow: hidden;
@@ -451,6 +452,9 @@ body {
   align-items: center;
 }
 
+/* Pills are read-only labels, not interactive controls — no border. The
+   color-soft background + colored text + dot already do the identity work,
+   and dropping the border keeps a long row of pills from reading as LED bars. */
 .pill {
   display: inline-flex;
   align-items: center;
@@ -463,15 +467,14 @@ body {
   letter-spacing: 0.02em;
   flex-shrink: 0;
   line-height: 1.4;
-  border: 1px solid;
 }
 
-.pill-erase     { background: var(--red-soft);    color: var(--red);    border-color: var(--red-border); }
-.pill-note      { background: var(--amber-soft);  color: var(--amber);  border-color: var(--amber-border); }
-.pill-highlight { background: var(--accent-soft); color: var(--accent); border-color: var(--border-strong); }
-.pill-stroke    { background: var(--green-soft);  color: var(--green);  border-color: var(--green-border); }
-.pill-resize    { background: var(--blue-soft);   color: var(--blue);   border-color: var(--blue-border); }
-.pill-tag       { background: var(--accent-soft); color: var(--accent); border-color: var(--border-strong); font-weight: 600; }
+.pill-erase     { background: var(--red-soft);    color: var(--red); }
+.pill-note      { background: var(--amber-soft);  color: var(--amber); }
+.pill-highlight { background: var(--accent-soft); color: var(--accent); }
+.pill-stroke    { background: var(--green-soft);  color: var(--green); }
+.pill-resize    { background: var(--blue-soft);   color: var(--blue); }
+.pill-tag       { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
 
 .pill-dot {
   width: 5px; height: 5px;
@@ -496,7 +499,6 @@ body {
   flex-wrap: wrap;
   padding: 10px 28px;
   background: rgba(0, 0, 0, 0.25);
-  border-top: 1px solid var(--border-soft);
   position: relative;
   z-index: 1;
 }
@@ -886,7 +888,7 @@ a.page-path:hover .page-path-icon {
   cursor: text;
   white-space: pre-wrap;
   word-break: break-word;
-  font-weight: 300;
+  font-weight: 400;
 }
 
 /* Quote = highlighted text. 3px left border in the highlight color is the
