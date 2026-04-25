@@ -130,13 +130,13 @@
 
 /* ─── HUD Global Styles & Custom Tooltips ────────────────────────────────── */
 
-[data-adnota-ui][data-tooltip],
-[data-adnota-ui] [data-tooltip] {
+:where([data-adnota-ui])[data-tooltip],
+:where([data-adnota-ui]) [data-tooltip] {
   position: relative;
 }
 
-[data-adnota-ui][data-tooltip]:hover::after,
-[data-adnota-ui] [data-tooltip]:hover::after {
+:where([data-adnota-ui])[data-tooltip]:hover::after,
+:where([data-adnota-ui]) [data-tooltip]:hover::after {
   content: attr(data-tooltip);
   position: absolute;
   bottom: calc(100% + 8px);
