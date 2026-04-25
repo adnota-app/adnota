@@ -11,91 +11,98 @@
 
    In-page overlays (HUD, dock, sticky notes, tag suggest) remain dark
    frosted-glass — they need contrast against arbitrary host pages and are
-   tokenized separately under --hud-*. */
+   tokenized separately under --adnota-hud-*.
+
+   Naming: every property is prefixed --adnota-* because this file ships as
+   a content_script CSS, so its :root declarations land on every host page.
+   Generic names like --bg / --accent / --text would collide with host design
+   systems. The popup and sites pages currently keep their own (un-prefixed)
+   :root blocks for surfaces, text, shadows, radii — TODO consolidate when
+   the dashboard gets its next visual pass. */
 
 :root {
   /* ── Surfaces (light) ── */
-  --bg:        #f5f5f7;
-  --surface:   #ffffff;
-  --surface-2: #fafafa;
-  --surface-3: #f0f0f5;
+  --adnota-bg:        #f5f5f7;
+  --adnota-surface:   #ffffff;
+  --adnota-surface-2: #fafafa;
+  --adnota-surface-3: #f0f0f5;
 
   /* ── Borders ── */
-  --border:        rgba(0, 0, 0, 0.07);
-  --border-strong: rgba(0, 0, 0, 0.12);
-  --border-soft:   rgba(0, 0, 0, 0.04);
+  --adnota-border:        rgba(0, 0, 0, 0.07);
+  --adnota-border-strong: rgba(0, 0, 0, 0.12);
+  --adnota-border-soft:   rgba(0, 0, 0, 0.04);
 
   /* ── Text ── */
-  --text:       #111827;
-  --text-muted: #6b7280;
-  --text-dim:   #9ca3af;
+  --adnota-text:       #111827;
+  --adnota-text-muted: #6b7280;
+  --adnota-text-dim:   #9ca3af;
 
   /* ── Accent (brand) ── */
-  --accent:        #7c3aed;
-  --accent-hover:  #6d28d9;
-  --accent-soft:   rgba(124, 58, 237, 0.08);
-  --accent-glow:   rgba(124, 58, 237, 0.30);
+  --adnota-accent:        #7c3aed;
+  --adnota-accent-hover:  #6d28d9;
+  --adnota-accent-soft:   rgba(124, 58, 237, 0.08);
+  --adnota-accent-glow:   rgba(124, 58, 237, 0.30);
 
   /* ── Semantic colors (tool identity & status) ──
      Calibrated to read on white surfaces — slightly deeper than the
      marketing-site values so they have enough contrast for small text. */
-  --red:   #dc2626;  --red-soft:   rgba(239, 68, 68, 0.10);  --red-border:   rgba(239, 68, 68, 0.25);
-  --amber: #d97706;  --amber-soft: rgba(245, 158, 11, 0.12); --amber-border: rgba(245, 158, 11, 0.25);
-  --blue:  #2563eb;  --blue-soft:  rgba(59, 130, 246, 0.10); --blue-border:  rgba(59, 130, 246, 0.25);
-  --green: #059669;  --green-soft: rgba(16, 185, 129, 0.10); --green-border: rgba(16, 185, 129, 0.25);
-  --pink:  #db2777;  --pink-soft:  rgba(236, 72, 153, 0.10); --pink-border:  rgba(236, 72, 153, 0.25);
+  --adnota-red:   #dc2626;  --adnota-red-soft:   rgba(239, 68, 68, 0.10);  --adnota-red-border:   rgba(239, 68, 68, 0.25);
+  --adnota-amber: #d97706;  --adnota-amber-soft: rgba(245, 158, 11, 0.12); --adnota-amber-border: rgba(245, 158, 11, 0.25);
+  --adnota-blue:  #2563eb;  --adnota-blue-soft:  rgba(59, 130, 246, 0.10); --adnota-blue-border:  rgba(59, 130, 246, 0.25);
+  --adnota-green: #059669;  --adnota-green-soft: rgba(16, 185, 129, 0.10); --adnota-green-border: rgba(16, 185, 129, 0.25);
+  --adnota-pink:  #db2777;  --adnota-pink-soft:  rgba(236, 72, 153, 0.10); --adnota-pink-border:  rgba(236, 72, 153, 0.25);
 
   /* Tool palette aliases — same colors, named for in-extension semantics so
      authors don't have to remember which semantic maps to which tool. */
-  --tool-erase:     var(--red);
-  --tool-note:      var(--amber);
-  --tool-highlight: var(--accent);
-  --tool-resize:    var(--blue);
-  --tool-stroke:    var(--green);
+  --adnota-tool-erase:     var(--adnota-red);
+  --adnota-tool-note:      var(--adnota-amber);
+  --adnota-tool-highlight: var(--adnota-accent);
+  --adnota-tool-resize:    var(--adnota-blue);
+  --adnota-tool-stroke:    var(--adnota-green);
 
   /* ── Typography ── */
-  --font-display: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  --font-body:    'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  --font-mono:    ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  --adnota-font-display: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --adnota-font-body:    'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --adnota-font-mono:    ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 
   /* ── Radii ── */
-  --r-xs: 6px;
-  --r-sm: 8px;
-  --r:    12px;
-  --r-lg: 16px;
+  --adnota-r-xs: 6px;
+  --adnota-r-sm: 8px;
+  --adnota-r:    12px;
+  --adnota-r-lg: 16px;
 
   /* ── Shadows (light theme — softer, less weighty) ── */
-  --shadow-card:  0 1px 3px rgba(0, 0, 0, 0.07), 0 1px 2px rgba(0, 0, 0, 0.04);
-  --shadow-hover: 0 4px 14px rgba(0, 0, 0, 0.10), 0 2px 4px rgba(0, 0, 0, 0.06);
-  --shadow-raise: 0 8px 32px rgba(0, 0, 0, 0.13), 0 2px 8px rgba(0, 0, 0, 0.07);
-  --shadow-glow:  0 0 24px var(--accent-glow);
+  --adnota-shadow-card:  0 1px 3px rgba(0, 0, 0, 0.07), 0 1px 2px rgba(0, 0, 0, 0.04);
+  --adnota-shadow-hover: 0 4px 14px rgba(0, 0, 0, 0.10), 0 2px 4px rgba(0, 0, 0, 0.06);
+  --adnota-shadow-raise: 0 8px 32px rgba(0, 0, 0, 0.13), 0 2px 8px rgba(0, 0, 0, 0.07);
+  --adnota-shadow-glow:  0 0 24px var(--adnota-accent-glow);
 
   /* ── Motion ── */
-  --t-fast:   0.14s;
-  --t:        0.2s;
-  --t-slow:   0.3s;
-  --ease-out: cubic-bezier(0.4, 0, 0.2, 1);
+  --adnota-t-fast:   0.14s;
+  --adnota-t:        0.2s;
+  --adnota-t-slow:   0.3s;
+  --adnota-ease-out: cubic-bezier(0.4, 0, 0.2, 1);
 
   /* ── HUD (content-script overlays) ──
      These surfaces sit on top of arbitrary host pages, so they need to be
-     more opaque and use a darker base than the dashboard --surface — they
+     more opaque and use a darker base than the dashboard --adnota-surface — they
      can't trust the page's background color. Frosted-glass via backdrop-filter
      with a near-black tint and a purple-accent border for brand recognition. */
-  --hud-bg:        rgba(15, 15, 15, 0.92);
-  --hud-bg-strong: rgba(15, 15, 15, 0.96);
-  --hud-border:    rgba(124, 58, 237, 0.45);
-  --hud-text:      #e4e4e7;
+  --adnota-hud-bg:        rgba(15, 15, 15, 0.92);
+  --adnota-hud-bg-strong: rgba(15, 15, 15, 0.96);
+  --adnota-hud-border:    rgba(124, 58, 237, 0.45);
+  --adnota-hud-text:      #e4e4e7;
 
   /* ── Brand monogram gradient ──
      Used for every "A" logo across popup, sites page, modal, content scripts.
      Reads as the one colorful element on light surfaces — that's the point. */
-  --brand-gradient: linear-gradient(135deg, var(--accent) 0%, #4f46e5 100%);
+  --adnota-brand-gradient: linear-gradient(135deg, var(--adnota-accent) 0%, #4f46e5 100%);
 
   /* ── Header strip ──
      The popup and dashboard both use a dark gradient strip for the header
      (where the brand block sits). This keeps the brand "punchy" against an
      otherwise calm light body. */
-  --header-strip: linear-gradient(135deg, #151515 0%, #2a1658 100%);
+  --adnota-header-strip: linear-gradient(135deg, #151515 0%, #2a1658 100%);
 }
 
 /* ── Global focus ring ──
@@ -106,7 +113,7 @@
    ring still covers their full document. */
 :where([data-adnota-ui]):focus-visible,
 :where([data-adnota-ui]) :focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--adnota-accent);
   outline-offset: 2px;
   border-radius: 3px;
 }
@@ -117,7 +124,7 @@
 :where([data-adnota-ui]) textarea:focus-visible,
 :where([data-adnota-ui]) button:focus-visible {
   outline: none;
-  box-shadow: 0 0 0 3px var(--accent-soft), 0 0 0 1px var(--accent);
+  box-shadow: 0 0 0 3px var(--adnota-accent-soft), 0 0 0 1px var(--adnota-accent);
 }
 
 /* ── Scrollbars ──

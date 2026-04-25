@@ -807,8 +807,14 @@ document.addEventListener('click', (e) => {
 }, true);
 
 // ─── Reposition handles on scroll so they stay in the viewport ──────────────
+// Capture phase catches scrolls inside nested overflow containers (window
+// scroll events don't bubble from inner scrollers). rAF-throttle to coalesce
+// the high-frequency scroll firings into one layout read+write per frame.
+let scrollSyncPending = false;
 window.addEventListener('scroll', () => {
-  if (selectedEl && !dragAxis) refreshHandles();
-}, { passive: true });
+  if (!selectedEl || dragAxis || scrollSyncPending) return;
+  scrollSyncPending = true;
+  requestAnimationFrame(() => { scrollSyncPending = false; refreshHandles(); });
+}, { passive: true, capture: true });
 
 })();
