@@ -1523,10 +1523,16 @@ window.VellumState.subscribe(state => {
     shapeOrigin = null;
   }
 
-  // Select and text modes: make marker wrappers clickable for hit testing
-  const interactive = state.mode === 'select' || state.mode === 'text';
+  // Select mode: all wrappers interactive (click-to-select needs hit testing).
+  // Text mode: only TEXT wrappers interactive (so dblclick-to-edit still fires
+  // on `.vellum-text-content`). Shape wrappers stay non-interactive because
+  // they're sized to their anchor block's bbox — making them clickable would
+  // swallow click-to-place-text across the entire surrounding paragraph.
+  const inSelect = state.mode === 'select';
+  const inText = state.mode === 'text';
   document.querySelectorAll('.vellum-marker-wrapper').forEach(el => {
-    el.style.pointerEvents = interactive ? 'auto' : 'none';
+    const isText = el.classList.contains('vellum-text-wrapper');
+    el.style.pointerEvents = (inSelect || (inText && isText)) ? 'auto' : 'none';
   });
 
   // Clear selection on a real mode transition — not on HUD color/strokeWidth
