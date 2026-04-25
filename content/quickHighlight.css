@@ -52,7 +52,10 @@
 
 .vellum-qh-tag-input {
   flex: 1;
-  min-width: 140px;
+  /* min-width: 0 lets the input shrink below its content size so the popup
+     width is set by row 1 (V + swatches + dismiss), not by the input. The
+     placeholder stays readable because row 1 reserves enough width. */
+  min-width: 0;
   background: transparent !important;
   border: none !important;
   border-radius: 0 !important;

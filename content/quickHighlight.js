@@ -24,9 +24,6 @@
   // Suppress re-showing until the next selection change (set after Ctrl+C so
   // the popup doesn't reappear from the still-live selection post-copy).
   let suppressUntilSelectionChange = false;
-  // Session-level dismiss: user clicked the × to banish the popup for this
-  // page. Cleared on reload (nothing persisted), mirrors the dock's dismiss.
-  let sessionDismissed = false;
 
   chrome.storage.local.get(['vellumQuickHighlightEnabled'], (result) => {
     if (result.vellumQuickHighlightEnabled === false) enabled = false;
@@ -86,10 +83,9 @@
     const dismiss = document.createElement('div');
     dismiss.className = 'vellum-select-delete vellum-qh-dismiss';
     dismiss.textContent = '✕';
-    dismiss.setAttribute('title', 'Hide on this page (reload restores)');
+    dismiss.setAttribute('title', 'Dismiss');
     dismiss.addEventListener('click', (e) => {
       e.stopPropagation();
-      sessionDismissed = true;
       hidePopup();
     });
     row.appendChild(dismiss);
@@ -196,7 +192,6 @@
 
   document.addEventListener('mouseup', (e) => {
     if (!enabled) return;
-    if (sessionDismissed) return;
     if (suppressUntilSelectionChange) return;
     // When classic highlight mode is on, its mouseup handler auto-applies the
     // active color. Showing the popup on top would be redundant.
@@ -211,6 +206,12 @@
       if (!rect || (rect.width === 0 && rect.height === 0)) return;
       cachedRange = cur.range.cloneRange();
       positionPopup(rect);
+      // If the selection overlaps a tagged highlight, pre-fill the tag input
+      // so the user can re-apply or edit the same tag without retyping it.
+      const cx = rect.left + rect.width / 2;
+      const cy = rect.top + rect.height / 2;
+      const existingTag = window.VellumHighlighter?.tagAtPoint?.(cx, cy) || '';
+      if (tagInput) tagInput.value = existingTag;
     }, SHOW_DELAY_MS);
   }, true);
 
@@ -223,7 +224,14 @@
     if (!getCurrentSelection()) hidePopup();
   });
 
-  document.addEventListener('scroll', hidePopup, true);
+  // Capture-phase scroll on document also fires when the tag input scrolls
+  // horizontally to keep the cursor in view as the user types. Filter out
+  // scrolls originating inside the popup so a long tag doesn't make the popup
+  // vanish mid-typing.
+  document.addEventListener('scroll', (e) => {
+    if (popup && popup.contains(e.target)) return;
+    hidePopup();
+  }, true);
   window.addEventListener('resize', hidePopup);
 
   document.addEventListener('keydown', (e) => {
