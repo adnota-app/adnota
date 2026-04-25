@@ -67,7 +67,7 @@
       "js": [
         "lib/storage.js",
         "lib/annotationState.js",
-        "lib/vellumUI.js",
+        "lib/adnotaUI.js",
         "lib/tagIndex.js",
         "content/dock.js",
         "content/fuzzyAnchor.js",
@@ -81,7 +81,7 @@
       ],
       "css": [
         "lib/adnotaTokens.css",
-        "lib/vellumUI.css",
+        "lib/adnotaUI.css",
         "content/dock.css",
         "content/sticky.css",
         "content/marker.css",

@@ -14,14 +14,14 @@ const MIN_HEIGHT = 60;
 // ─── Hover overlay (blue) ────────────────────────────────────────────────────
 // Matched to the eraser's outline+fill visual weight so both tools feel the same
 // — just recolored to the resizer's blue accent.
-const hoverOverlay = window.VellumUI.createHoverOverlay('vellum-resizer-overlay', '#3b82f6', 'rgba(59, 130, 246, 0.09)');
+const hoverOverlay = window.AdnotaUI.createHoverOverlay('adnota-resizer-overlay', '#3b82f6', 'rgba(59, 130, 246, 0.09)');
 
 // ─── Dimension badge (top-right corner of hover outline) ─────────────────────
 // Same idea as the eraser's dimension chip — shows current W×H in pixels so
 // users can gauge element size before picking it up.
 const dimensionBadge = document.createElement('div');
-dimensionBadge.id = 'vellum-resizer-dimension-badge';
-dimensionBadge.setAttribute('data-vellum-ui', '1');
+dimensionBadge.id = 'adnota-resizer-dimension-badge';
+dimensionBadge.setAttribute('data-adnota-ui', '1');
 Object.assign(dimensionBadge.style, {
   position: 'absolute',
   top: '-1px',
@@ -42,7 +42,7 @@ hoverOverlay.appendChild(dimensionBadge);
 // Mirrors the eraser HUD but tinted with the resizer's blue accent. Persistent
 // chrome (drag handle + logo + info + trash + undo) so trash/undo stay reachable
 // even when nothing is hovered or selected.
-// Dock body — mounted into VellumDock when resizer mode is active. The dock
+// Dock body — mounted into AdnotaDock when resizer mode is active. The dock
 // owns drag handle + V logo + tool row; we own the info span + trash + undo.
 const resizerBody = document.createElement('div');
 resizerBody.style.display = 'inline-flex';
@@ -50,7 +50,7 @@ resizerBody.style.alignItems = 'center';
 
 // Info section (dynamic — updated on hover / selection)
 const resizerHudInfo = document.createElement('span');
-resizerHudInfo.id = 'vellum-resizer-hud-info';
+resizerHudInfo.id = 'adnota-resizer-hud-info';
 resizerHudInfo.style.display = 'inline-flex';
 resizerHudInfo.style.alignItems = 'center';
 resizerHudInfo.style.minWidth = '220px';
@@ -59,7 +59,7 @@ resizerBody.appendChild(resizerHudInfo);
 // Help (?) button — opens a tail-anchored popover with the full tip list.
 // Replaces the old rotating tip; always reachable, no waiting for the right
 // tip to cycle around.
-const resizerHelpBtn = window.VellumUI.createHelpButton({
+const resizerHelpBtn = window.AdnotaUI.createHelpButton({
   accent: 'blue',
   tips: [
     '<span style="color:#94a3b8">Click to <span style="color:#e4e4e7;font-weight:600">select</span> an element for resizing</span>',
@@ -72,17 +72,17 @@ const resizerHelpBtn = window.VellumUI.createHelpButton({
 resizerBody.appendChild(resizerHelpBtn);
 
 // Divider
-resizerBody.appendChild(Object.assign(document.createElement('div'), { className: 'vellum-toolbar-divider vellum-toolbar-divider-blue' }));
+resizerBody.appendChild(Object.assign(document.createElement('div'), { className: 'adnota-toolbar-divider adnota-toolbar-divider-blue' }));
 
 // Trash — clears all resize rules on this page
-resizerBody.appendChild(window.VellumUI.createTrashButton({
+resizerBody.appendChild(window.AdnotaUI.createTrashButton({
   singular: 'resize',
   plural: 'resizes',
   actionTypes: ['RESIZE'],
 }));
 
 // Undo
-resizerBody.appendChild(window.VellumUI.createUndoButton());
+resizerBody.appendChild(window.AdnotaUI.createUndoButton());
 
 // Idle-state placeholder for the info section. The full tip list lives behind
 // the ? button — this just keeps the strip from looking empty.
@@ -91,10 +91,10 @@ const IDLE_HUD_LABEL = '<span style="color:#94a3b8">Hover an element to resize</
 let resizerDockMounted = false;
 function setHudVisible(visible) {
   if (visible && !resizerDockMounted) {
-    window.VellumDock.mount('resizer', () => resizerBody);
+    window.AdnotaDock.mount('resizer', () => resizerBody);
     resizerDockMounted = true;
   } else if (!visible && resizerDockMounted) {
-    window.VellumDock.unmount('resizer');
+    window.AdnotaDock.unmount('resizer');
     resizerDockMounted = false;
   }
 }
@@ -150,8 +150,8 @@ let startHeight = 0;
 let startMarginLeft = 0;
 let startMarginTop = 0;
 
-// ─── Guard: Vellum-owned elements ────────────────────────────────────────────
-const isVellumElement = window.VellumUI.isVellumElement;
+// ─── Guard: Adnota-owned elements ────────────────────────────────────────────
+const isAdnotaElement = window.AdnotaUI.isAdnotaElement;
 
 // ─── Smart element targeting ─────────────────────────────────────────────────
 // Three steps, in a specific order that matters:
@@ -178,12 +178,12 @@ function isLayoutSignificant(el) {
 }
 
 function findLayoutTarget(raw, extraLevels = 0) {
-  if (!raw || isVellumElement(raw)) return null;
+  if (!raw || isAdnotaElement(raw)) return null;
 
   // Step 1: climb to the nearest layout-significant block-level ancestor.
   let current = raw;
   while (current && current !== document.body && current !== document.documentElement) {
-    if (isVellumElement(current)) return null;
+    if (isAdnotaElement(current)) return null;
     if (isLayoutSignificant(current)) break;
     current = current.parentElement;
   }
@@ -192,8 +192,8 @@ function findLayoutTarget(raw, extraLevels = 0) {
   // Step 2: bubble past visually-identical wrappers, seeded from the layout-
   // significant ancestor (not the raw hover). This is the key fix for the
   // "hovering a menu link returns the UL instead of the NAV" case.
-  current = window.VellumUI.bubbleToVisualRoot(current);
-  if (isVellumElement(current)) return null;
+  current = window.AdnotaUI.bubbleToVisualRoot(current);
+  if (isAdnotaElement(current)) return null;
 
   // Step 3: scroll-wheel walk — each level up must also be layout-significant.
   let walked = 0;
@@ -201,10 +201,10 @@ function findLayoutTarget(raw, extraLevels = 0) {
          current.parentElement !== document.body &&
          current.parentElement !== document.documentElement) {
     const parent = current.parentElement;
-    if (isVellumElement(parent)) return null;
+    if (isAdnotaElement(parent)) return null;
     current = parent;
     // Stop before reaching a page-dominating container.
-    if (window.VellumUI.dominatesViewport(current.getBoundingClientRect())) return current;
+    if (window.AdnotaUI.dominatesViewport(current.getBoundingClientRect())) return current;
     if (isLayoutSignificant(current)) walked++;
   }
   return current;
@@ -217,29 +217,29 @@ function generateCSSSelector(el) {
 
 // ─── Style injection engine ──────────────────────────────────────────────────
 // Map of active resize rules, keyed by the storage `_id`. Mirrors the eraser's
-// `VellumEraseRules` architecture: rules live in the map, the <style> tag is
+// `AdnotaEraseRules` architecture: rules live in the map, the <style> tag is
 // rebuilt from the map after every mutation. This replaced an earlier string-
 // replace approach that could leave zombie rules behind whenever any path
 // (notably the restorer) double-injected — String.prototype.replace with a
 // string argument only strips the first occurrence, so Ctrl+Z and the trash
 // button appeared to do nothing live even though storage was clean.
 function getStyleTag() {
-  let tag = document.getElementById('vellum-style-overrides');
+  let tag = document.getElementById('adnota-style-overrides');
   if (!tag) {
     tag = document.createElement('style');
-    tag.id = 'vellum-style-overrides';
-    tag.setAttribute('data-vellum-ui', '1');
+    tag.id = 'adnota-style-overrides';
+    tag.setAttribute('data-adnota-ui', '1');
     document.head.appendChild(tag);
   }
   return tag;
 }
 
-window.VellumResizeRules = new Map(); // id → { selector, cssText }
+window.AdnotaResizeRules = new Map(); // id → { selector, cssText }
 
 function rebuildResizeStyleTag() {
   const tag = getStyleTag();
   const rules = [];
-  for (const [, rule] of window.VellumResizeRules) {
+  for (const [, rule] of window.AdnotaResizeRules) {
     rules.push(`${rule.selector} { ${rule.cssText} }`);
   }
   tag.textContent = rules.join('\n');
@@ -258,37 +258,37 @@ function selectElement(el) {
 
   // Selection outline
   selectionBox = document.createElement('div');
-  selectionBox.className = 'vellum-resizer-selection';
-  selectionBox.setAttribute('data-vellum-ui', '1');
+  selectionBox.className = 'adnota-resizer-selection';
+  selectionBox.setAttribute('data-adnota-ui', '1');
   positionBox(selectionBox, rect, scrollX, scrollY);
   document.documentElement.appendChild(selectionBox);
 
   // Left-edge handle (width — shrink by dragging right, or grow by dragging left)
-  handleLeft = createHandle('vellum-resizer-handle-left', 'ew-resize');
+  handleLeft = createHandle('adnota-resizer-handle-left', 'ew-resize');
   positionHandleLeft(handleLeft, rect, scrollX, scrollY);
   handleLeft.addEventListener('mousedown', (e) => startDrag(e, 'x-left'));
   document.documentElement.appendChild(handleLeft);
 
   // Right-edge handle (width)
-  handleRight = createHandle('vellum-resizer-handle-right', 'ew-resize');
+  handleRight = createHandle('adnota-resizer-handle-right', 'ew-resize');
   positionHandleRight(handleRight, rect, scrollX, scrollY);
   handleRight.addEventListener('mousedown', (e) => startDrag(e, 'x'));
   document.documentElement.appendChild(handleRight);
 
   // Top-edge handle (height from the top — bottom stays pinned via margin-top)
-  handleTop = createHandle('vellum-resizer-handle-top', 'ns-resize');
+  handleTop = createHandle('adnota-resizer-handle-top', 'ns-resize');
   positionHandleTop(handleTop, rect, scrollX, scrollY);
   handleTop.addEventListener('mousedown', (e) => startDrag(e, 'y-top'));
   document.documentElement.appendChild(handleTop);
 
   // Bottom-edge handle (height)
-  handleBottom = createHandle('vellum-resizer-handle-bottom', 'ns-resize');
+  handleBottom = createHandle('adnota-resizer-handle-bottom', 'ns-resize');
   positionHandleBottom(handleBottom, rect, scrollX, scrollY);
   handleBottom.addEventListener('mousedown', (e) => startDrag(e, 'y'));
   document.documentElement.appendChild(handleBottom);
 
   // Corner handle (both)
-  handleCorner = createHandle('vellum-resizer-handle-corner', 'nwse-resize');
+  handleCorner = createHandle('adnota-resizer-handle-corner', 'nwse-resize');
   positionHandleCorner(handleCorner, rect, scrollX, scrollY);
   handleCorner.addEventListener('mousedown', (e) => startDrag(e, 'xy'));
   document.documentElement.appendChild(handleCorner);
@@ -297,8 +297,8 @@ function selectElement(el) {
   // ✕ delete affordance used when you select something you've drawn. Icon is a
   // circular reset arrow to read as "revert" rather than "delete".
   dismissBtn = document.createElement('button');
-  dismissBtn.className = 'vellum-resizer-dismiss';
-  dismissBtn.setAttribute('data-vellum-ui', '1');
+  dismissBtn.className = 'adnota-resizer-dismiss';
+  dismissBtn.setAttribute('data-adnota-ui', '1');
   dismissBtn.innerHTML =
     '<svg viewBox="0 0 16 16" aria-hidden="true">' +
     '<path d="M3 3v4h4"/>' +
@@ -330,13 +330,13 @@ function deselectElement() {
   if (handleBottom) { handleBottom.remove(); handleBottom = null; }
   if (handleCorner) { handleCorner.remove(); handleCorner = null; }
   if (dismissBtn)   { dismissBtn.remove();   dismissBtn = null; }
-  if (hadSelection && window.VellumState.mode === 'resizer') updateHUD();
+  if (hadSelection && window.AdnotaState.mode === 'resizer') updateHUD();
 }
 
 function createHandle(className, cursor) {
   const h = document.createElement('div');
   h.className = className;
-  h.setAttribute('data-vellum-ui', '1');
+  h.setAttribute('data-adnota-ui', '1');
   h.style.cursor = cursor;
   return h;
 }
@@ -445,8 +445,8 @@ async function resetElement(el) {
   const path = location.pathname;
 
   // Drop every rule for this selector from the live map, then rebuild.
-  for (const [id, rule] of window.VellumResizeRules) {
-    if (rule.selector === selector) window.VellumResizeRules.delete(id);
+  for (const [id, rule] of window.AdnotaResizeRules) {
+    if (rule.selector === selector) window.AdnotaResizeRules.delete(id);
   }
   rebuildResizeStyleTag();
 
@@ -460,7 +460,7 @@ async function resetElement(el) {
   void el.offsetHeight; // force reflow
 
   // Remove from storage
-  if (window.VellumStorage) {
+  if (window.AdnotaStorage) {
     const data = await chrome.storage.local.get(domain);
     if (data[domain]) {
       data[domain].items = data[domain].items.filter(
@@ -472,7 +472,7 @@ async function resetElement(el) {
   }
 
   // Remove any undo entries for this selector
-  window.VellumUndo._stack = window.VellumUndo._stack.filter(
+  window.AdnotaUndo._stack = window.AdnotaUndo._stack.filter(
     entry => entry._resizeSelector !== selector
   );
 
@@ -498,8 +498,8 @@ function startDrag(e, axis) {
 
   // Add a full-viewport overlay to capture all mouse events during drag
   const dragOverlay = document.createElement('div');
-  dragOverlay.id = 'vellum-resizer-drag-overlay';
-  dragOverlay.setAttribute('data-vellum-ui', '1');
+  dragOverlay.id = 'adnota-resizer-drag-overlay';
+  dragOverlay.setAttribute('data-adnota-ui', '1');
   Object.assign(dragOverlay.style, {
     position: 'fixed', top: '0', left: '0', width: '100vw', height: '100vh',
     zIndex: '2147483647',
@@ -611,7 +611,7 @@ async function persistResize(el, cssText) {
   const selector = generateCSSSelector(el);
   const id = Date.now() + '-' + Math.random().toString(36).slice(2, 8);
 
-  window.VellumResizeRules.set(id, { selector, cssText });
+  window.AdnotaResizeRules.set(id, { selector, cssText });
   rebuildResizeStyleTag();
 
   const domain = location.hostname;
@@ -635,7 +635,7 @@ async function persistResize(el, cssText) {
     timestamp: Date.now(),
   };
 
-  if (window.VellumStorage) {
+  if (window.AdnotaStorage) {
     const data = await chrome.storage.local.get(domain);
     const domainData = data[domain] || { items: [] };
     domainData.items.push(entry);
@@ -646,7 +646,7 @@ async function persistResize(el, cssText) {
   const undoEntry = {
     _resizeSelector: selector,
     undo: async () => {
-      window.VellumResizeRules.delete(id);
+      window.AdnotaResizeRules.delete(id);
       rebuildResizeStyleTag();
 
       // Force a reflow so the browser re-computes layout against the
@@ -654,22 +654,22 @@ async function persistResize(el, cssText) {
       const target = document.querySelector(selector);
       if (target) void target.offsetHeight;
 
-      if (window.VellumStorage) {
+      if (window.AdnotaStorage) {
         const data = await chrome.storage.local.get(domain);
         if (data[domain]) {
           data[domain].items = data[domain].items.filter(i => i._id !== id);
           await chrome.storage.local.set({ [domain]: data[domain] });
         }
       }
-      window.VellumUndo.remove(undoEntry);
+      window.AdnotaUndo.remove(undoEntry);
       refreshHandles();
     },
   };
-  window.VellumUndo.push(undoEntry);
+  window.AdnotaUndo.push(undoEntry);
 
   // ── Toast ────────────────────────────────────────────────────────────────
-  window.VellumUI.showToast('Element resized', {
-    id: 'vellum-resizer-toast',
+  window.AdnotaUI.showToast('Element resized', {
+    id: 'adnota-resizer-toast',
     onUndo: () => undoEntry.undo(),
   });
 }
@@ -677,14 +677,14 @@ async function persistResize(el, cssText) {
 // ─── Message routing ─────────────────────────────────────────────────────────
 chrome.runtime.onMessage.addListener((request) => {
   if (request.action === 'toggle-resizer') {
-    window.VellumState.set({
-      mode: window.VellumState.mode === 'resizer' ? null : 'resizer',
+    window.AdnotaState.set({
+      mode: window.AdnotaState.mode === 'resizer' ? null : 'resizer',
     });
   }
 });
 
 // ─── React to mode changes ──────────────────────────────────────────────────
-window.VellumState.subscribe((state) => {
+window.AdnotaState.subscribe((state) => {
   if (state.mode === 'resizer') {
     setHudVisible(true);
     updateHUD();
@@ -701,12 +701,12 @@ window.VellumState.subscribe((state) => {
 
 // ─── Hover: highlight layout-significant elements ───────────────────────────
 document.addEventListener('mousemove', (e) => {
-  if (window.VellumState.mode !== 'resizer') return;
+  if (window.AdnotaState.mode !== 'resizer') return;
   if (dragAxis) return;       // Don't change hover while dragging
   if (selectedEl) return;     // Don't hover while handles are active
 
   const raw = document.elementFromPoint(e.clientX, e.clientY);
-  if (!raw || isVellumElement(raw)) {
+  if (!raw || isAdnotaElement(raw)) {
     hoveredEl = null;
     rawHoveredEl = null;
     traverseDepth = 0;
@@ -752,7 +752,7 @@ function updateHoverTarget() {
 
 // ─── Scroll wheel: walk up/down the DOM tree while hovering ─────────────────
 document.addEventListener('wheel', (e) => {
-  if (window.VellumState.mode !== 'resizer') return;
+  if (window.AdnotaState.mode !== 'resizer') return;
   if (selectedEl) return;     // Don't traverse while handles are active
   if (!rawHoveredEl) return;
 
@@ -781,15 +781,15 @@ document.addEventListener('wheel', (e) => {
 // next explicit click is what picks the new target, matching the two-phase
 // mental model the tool already signals with its two visual states.
 document.addEventListener('click', (e) => {
-  if (window.VellumState.mode !== 'resizer') return;
-  if (isVellumElement(e.target)) return;
+  if (window.AdnotaState.mode !== 'resizer') return;
+  if (isAdnotaElement(e.target)) return;
 
   e.preventDefault();
   e.stopPropagation();
 
   if (selectedEl) {
     // Any click off the selection exits edit mode back to target-select.
-    // Handles and the reset button are data-vellum-ui, so they're excluded
+    // Handles and the reset button are data-adnota-ui, so they're excluded
     // by the guard above and don't trigger this.
     deselectElement();
     // Refresh hover from the click point so the solid blue overlay reappears

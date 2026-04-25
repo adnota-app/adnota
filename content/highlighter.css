@@ -1,27 +1,27 @@
-::highlight(vellum-theme-yellow) {
+::highlight(adnota-theme-yellow) {
   background-color: rgba(255, 235, 59, 0.4) !important;
 }
 
-::highlight(vellum-theme-green) {
+::highlight(adnota-theme-green) {
   background-color: rgba(76, 175, 80, 0.4) !important;
 }
 
-::highlight(vellum-theme-blue) {
+::highlight(adnota-theme-blue) {
   background-color: rgba(33, 150, 243, 0.4) !important;
 }
 
-::highlight(vellum-theme-pink) {
+::highlight(adnota-theme-pink) {
   background-color: rgba(233, 30, 99, 0.4) !important;
 }
 
 /* Redaction — fully opaque black background + black text = completely hidden */
-::highlight(vellum-theme-black) {
+::highlight(adnota-theme-black) {
   background-color: #000 !important;
   color: #000 !important;
 }
 
 /* Hide-all toggle: overlay-mode fallback highlights hide alongside the rest. */
-html.vellum-hidden .vellum-highlight-fallback {
+html.adnota-hidden .adnota-highlight-fallback {
   display: none !important;
 }
 
@@ -29,7 +29,7 @@ html.vellum-hidden .vellum-highlight-fallback {
    CSS Custom Highlights don't receive pointer events and fallback overlays
    are pointer-events: none, so a `title` attribute won't reach either. We
    paint this floating chip ourselves and JS positions it near the cursor. */
-.vellum-highlight-tag-tooltip {
+.adnota-highlight-tag-tooltip {
   position: fixed;
   background: rgba(15, 15, 15, 0.95);
   color: #e4e4e7;
@@ -46,22 +46,22 @@ html.vellum-hidden .vellum-highlight-fallback {
   z-index: 2147483647;
 }
 
-/* Hover delete ✕ — reuses .vellum-select-delete's red-circle look (same
+/* Hover delete ✕ — reuses .adnota-select-delete's red-circle look (same
    pattern as Select tool's per-marker delete) but anchored via fixed
    positioning since highlights have no wrapper to hang off. */
-.vellum-highlight-delete-btn {
+.adnota-highlight-delete-btn {
   position: fixed !important;
   top: auto;
   right: auto;
 }
 
-html.vellum-hidden .vellum-highlight-tag-tooltip,
-html.vellum-hidden .vellum-highlight-delete-btn {
+html.adnota-hidden .adnota-highlight-tag-tooltip,
+html.adnota-hidden .adnota-highlight-delete-btn {
   display: none !important;
 }
 
 /* ── Divider ─────────────────────────────────────────────────────────────── */
-.vellum-toolbar-divider {
+.adnota-toolbar-divider {
   width: 1px;
   height: 18px;
   background: rgba(124, 58, 237, 0.25);
@@ -70,7 +70,7 @@ html.vellum-hidden .vellum-highlight-delete-btn {
 }
 
 /* ── Tool buttons (icon-based) ───────────────────────────────────────────── */
-.vellum-tool-btn {
+.adnota-tool-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -85,7 +85,7 @@ html.vellum-hidden .vellum-highlight-delete-btn {
   color: #94a3b8;
 }
 
-.vellum-tool-btn svg {
+.adnota-tool-btn svg {
   width: 16px;
   height: 16px;
   fill: none;
@@ -96,19 +96,19 @@ html.vellum-hidden .vellum-highlight-delete-btn {
   transition: all 0.15s;
 }
 
-.vellum-tool-btn:hover {
+.adnota-tool-btn:hover {
   background: rgba(124, 58, 237, 0.15);
   color: #c084fc;
 }
 
-.vellum-tool-btn.active {
+.adnota-tool-btn.active {
   background: rgba(124, 58, 237, 0.25);
   box-shadow: 0 0 0 1px rgba(124, 58, 237, 0.5);
   color: #c084fc;
 }
 
 /* ── Color swatches ──────────────────────────────────────────────────────── */
-.vellum-color-swatch {
+.adnota-color-swatch {
   width: 18px;
   height: 18px;
   border-radius: 50%;
@@ -119,24 +119,24 @@ html.vellum-hidden .vellum-highlight-delete-btn {
   flex-shrink: 0;
 }
 
-.vellum-color-swatch:hover {
+.adnota-color-swatch:hover {
   border-color: rgba(255, 255, 255, 0.3);
 }
 
-.vellum-color-swatch.active {
+.adnota-color-swatch.active {
   border-color: rgba(255, 255, 255, 0.7);
   box-shadow: 0 0 0 2px rgba(124, 58, 237, 0.6);
 }
 
 /* ── Eyedropper swatch — background always mirrors the current paint color. ── */
-.vellum-eyedropper-swatch {
+.adnota-eyedropper-swatch {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   color: #fff;
 }
 
-.vellum-eyedropper-swatch svg {
+.adnota-eyedropper-swatch svg {
   width: 14px;
   height: 14px;
   fill: none;
@@ -151,24 +151,24 @@ html.vellum-hidden .vellum-highlight-delete-btn {
 /* ── Fill group (outline / solid radio pair) ─────────────────────────────── */
 /* Red diagonal slash on the outline variant — disambiguates it from the
    rectangle tool icon. Direct class selector beats stroke inheritance. */
-.vellum-outline-slash {
+.adnota-outline-slash {
   stroke: #f87171;
 }
 
 /* Solid-fill button uses fill, not stroke. Higher specificity defeats the
-   global `.vellum-tool-btn svg { fill: none; stroke: #94a3b8 }` rule. */
-.vellum-fill-solid-btn svg .vellum-fill-solid-rect {
+   global `.adnota-tool-btn svg { fill: none; stroke: #94a3b8 }` rule. */
+.adnota-fill-solid-btn svg .adnota-fill-solid-rect {
   fill: #94a3b8;
   stroke: none;
 }
 
-.vellum-fill-solid-btn:hover svg .vellum-fill-solid-rect,
-.vellum-fill-solid-btn.active svg .vellum-fill-solid-rect {
+.adnota-fill-solid-btn:hover svg .adnota-fill-solid-rect,
+.adnota-fill-solid-btn.active svg .adnota-fill-solid-rect {
   fill: #c084fc;
 }
 
 /* ── Stroke width buttons ────────────────────────────────────────────────── */
-.vellum-stroke-btn {
+.adnota-stroke-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -180,31 +180,31 @@ html.vellum-hidden .vellum-highlight-delete-btn {
   flex-shrink: 0;
 }
 
-.vellum-stroke-btn:hover {
+.adnota-stroke-btn:hover {
   background: rgba(124, 58, 237, 0.15);
 }
 
-.vellum-stroke-btn.active {
+.adnota-stroke-btn.active {
   background: rgba(124, 58, 237, 0.25);
   box-shadow: 0 0 0 1px rgba(124, 58, 237, 0.5);
 }
 
-.vellum-stroke-dot {
+.adnota-stroke-dot {
   border-radius: 50%;
   background: #94a3b8;
   transition: background 0.15s;
 }
 
-.vellum-stroke-btn.active .vellum-stroke-dot {
+.adnota-stroke-btn.active .adnota-stroke-dot {
   background: #c084fc;
 }
 
-.vellum-stroke-btn:hover .vellum-stroke-dot {
+.adnota-stroke-btn:hover .adnota-stroke-dot {
   background: #c084fc;
 }
 
 /* ── Undo button ─────────────────────────────────────────────────────────── */
-.vellum-undo-btn {
+.adnota-undo-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -216,7 +216,7 @@ html.vellum-hidden .vellum-highlight-delete-btn {
   flex-shrink: 0;
 }
 
-.vellum-undo-btn svg {
+.adnota-undo-btn svg {
   width: 16px;
   height: 16px;
   fill: none;
@@ -227,10 +227,10 @@ html.vellum-hidden .vellum-highlight-delete-btn {
   transition: stroke 0.15s;
 }
 
-.vellum-undo-btn:hover {
+.adnota-undo-btn:hover {
   background: rgba(124, 58, 237, 0.15);
 }
 
-.vellum-undo-btn:hover svg {
+.adnota-undo-btn:hover svg {
   stroke: #c084fc;
 }

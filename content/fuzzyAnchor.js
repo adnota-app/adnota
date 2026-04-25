@@ -53,7 +53,7 @@ window.FuzzyAnchor = {
     // 2. Unique class combination (filter auto-generated classes)
     if (el.classList.length > 0) {
       const classes = Array.from(el.classList)
-        .filter(c => !c.startsWith('vellum-') && /^[a-zA-Z][\w-]*$/.test(c) && !this._autoClassPattern.test(c));
+        .filter(c => !c.startsWith('adnota-') && /^[a-zA-Z][\w-]*$/.test(c) && !this._autoClassPattern.test(c));
       if (classes.length > 0) {
         const selector = el.tagName.toLowerCase() + '.' + classes.map(c => CSS.escape(c)).join('.');
         try {
@@ -132,9 +132,9 @@ window.FuzzyAnchor = {
       const limit = Math.min(elements.length, 200);
       for (let i = 0; i < limit; i++) {
         const el = elements[i];
-        // Quick check: skip hidden elements and Vellum UI
+        // Quick check: skip hidden elements and Adnota UI
         if (el.offsetHeight === 0 && el.offsetWidth === 0) continue;
-        if (el.closest('[data-vellum-ui]')) continue;
+        if (el.closest('[data-adnota-ui]')) continue;
         // Add if any text word overlap, or if element has no text (images, etc.)
         if (anchor.textFingerprint && anchor.textFingerprint.words.length > 0) {
           if (this._quickTextOverlap(el, anchor.textFingerprint)) {

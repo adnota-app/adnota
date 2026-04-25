@@ -1,4 +1,4 @@
-// content/dock.js — The Vellum Dock
+// content/dock.js — The Adnota Dock
 //
 // One persistent fixed-position widget. Two visual states, toggled by which
 // tool (if any) is active:
@@ -10,8 +10,8 @@
 //            arrow, and the tool's own controls fill the body slot.
 //
 // Back arrow / Escape / clicking the active tool again all exit the tool.
-// Tools register their controls via VellumDock.mount(toolId, buildFn) on
-// entry, VellumDock.unmount(toolId) on exit.
+// Tools register their controls via AdnotaDock.mount(toolId, buildFn) on
+// entry, AdnotaDock.unmount(toolId) on exit.
 
 (function () {
   'use strict';
@@ -43,11 +43,11 @@
 
   // ── Build DOM ─────────────────────────────────────────────────────────────
   const dock = document.createElement('div');
-  dock.id = 'vellum-dock';
-  dock.setAttribute('data-vellum-ui', '1');
+  dock.id = 'adnota-dock';
+  dock.setAttribute('data-adnota-ui', '1');
 
   const dragHandle = document.createElement('span');
-  dragHandle.className = 'vellum-toolbar-drag';
+  dragHandle.className = 'adnota-toolbar-drag';
   dragHandle.textContent = '⡇';
   dragHandle.setAttribute('data-tooltip', 'Drag to reposition');
   dock.appendChild(dragHandle);
@@ -55,15 +55,15 @@
   // Home chrome: V logo (idle) OR back arrow (active). They share a slot so
   // the dock's left edge is visually anchored across state transitions.
   const home = document.createElement('div');
-  home.className = 'vellum-dock-home';
+  home.className = 'adnota-dock-home';
 
   const logo = document.createElement('span');
-  logo.className = 'vellum-dock-logo';
+  logo.className = 'adnota-dock-logo';
   logo.textContent = 'A';
   logo.setAttribute('data-tooltip', 'My Edited Sites');
   logo.addEventListener('click', (e) => {
     e.stopPropagation();
-    // Try/catch + .catch: after a Vellum reload, any tab already loaded
+    // Try/catch + .catch: after a Adnota reload, any tab already loaded
     // has a stale content-script context. chrome.runtime.sendMessage
     // throws SYNCHRONOUSLY in that case ("Extension context invalidated"),
     // so .catch() alone doesn't help — it only handles async rejection.
@@ -77,12 +77,12 @@
 
   const back = document.createElement('button');
   back.type = 'button';
-  back.className = 'vellum-dock-back';
+  back.className = 'adnota-dock-back';
   back.setAttribute('data-tooltip', 'Exit tool (Esc)');
   back.innerHTML = icons.back;
   back.addEventListener('click', (e) => {
     e.stopPropagation();
-    window.VellumState?.set({ mode: null });
+    window.AdnotaState?.set({ mode: null });
   });
   home.appendChild(back);
 
@@ -90,14 +90,14 @@
 
   // Tool row — always-visible when idle, hidden when a tool is active.
   const toolRow = document.createElement('div');
-  toolRow.className = 'vellum-dock-tools';
+  toolRow.className = 'adnota-dock-tools';
 
   const toolEls = [];
   for (const tool of toolDefs) {
     const btn = document.createElement('button');
     btn.type = 'button';
-    btn.className = 'vellum-dock-tool';
-    btn.setAttribute('data-vellum-ui', '1');
+    btn.className = 'adnota-dock-tool';
+    btn.setAttribute('data-adnota-ui', '1');
     btn.setAttribute('data-tooltip', tool.tooltip);
     btn.setAttribute('data-tool-id', tool.id);
     if (tool.accent) btn.setAttribute('data-accent', tool.accent);
@@ -115,18 +115,18 @@
   // Tool body — mounted into when a tool is active. Grows right from the
   // back arrow, shares the same frosted-glass panel.
   const body = document.createElement('div');
-  body.className = 'vellum-dock-body';
+  body.className = 'adnota-dock-body';
   dock.appendChild(body);
 
   // Dismiss X — "get off my screen" button. Appears on hover, only when
   // idle (a tool being active means the dock IS the HUD, so hiding it would
   // strand the user). Clicking hides the dock until the user activates a
   // tool (via popup or keyboard shortcut) or reloads the page.
-  // Reuses .vellum-select-delete — identical red-X affordance as the marker
-  // select-tool delete. .vellum-dock-dismiss layers on the hover-reveal +
+  // Reuses .adnota-select-delete — identical red-X affordance as the marker
+  // select-tool delete. .adnota-dock-dismiss layers on the hover-reveal +
   // positioning behavior.
   const dismissBtn = document.createElement('div');
-  dismissBtn.className = 'vellum-select-delete vellum-dock-dismiss';
+  dismissBtn.className = 'adnota-select-delete adnota-dock-dismiss';
   dismissBtn.textContent = '✕';
   dismissBtn.setAttribute('data-tooltip', 'Hide (reload restores)');
   dock.appendChild(dismissBtn);
@@ -136,7 +136,7 @@
   // ── Position persistence ──────────────────────────────────────────────────
   // The dock starts centered (left:50% + transform). On first drag OR first
   // tool mount, commit to absolute px and persist so the spot survives reloads.
-  const POSITION_KEY = 'vellumDockPosition';
+  const POSITION_KEY = 'adnotaDockPosition';
 
   function commitPositionIfCentered() {
     if (dock.style.left === '50%' || dock.style.left === '') {
@@ -164,7 +164,7 @@
   }
 
   // Same stale-context guard as the V-logo and tool-click handlers: after a
-  // Vellum reload, chrome.storage.local.set throws SYNCHRONOUSLY ("Extension
+  // Adnota reload, chrome.storage.local.set throws SYNCHRONOUSLY ("Extension
   // context invalidated"), so .catch() alone won't help — it only handles
   // async rejection.
   function persistPosition() {
@@ -252,7 +252,7 @@
   // Dock is visibility:hidden until this resolves so we never flash at the
   // default center position when a saved spot exists.
   function markReady() {
-    dock.classList.add('vellum-dock-ready');
+    dock.classList.add('adnota-dock-ready');
   }
   chrome.storage.local.get(POSITION_KEY).then((data) => {
     const pos = data[POSITION_KEY];
@@ -279,7 +279,7 @@
   // ── Tool button clicks ────────────────────────────────────────────────────
   function handleToolClick(tool) {
     if (tool.action === 'toggle-view') {
-      window.VellumVisibility?.toggle();
+      window.AdnotaVisibility?.toggle();
       return;
     }
     // Fire the tool's toggle through the background relay so the content
@@ -301,7 +301,7 @@
   let userDismissed = false;
 
   function applyDismissState() {
-    const modeActive = window.VellumState?.mode != null;
+    const modeActive = window.AdnotaState?.mode != null;
     if (userDismissed && !modeActive) {
       dock.style.display = 'none';
     } else {
@@ -321,7 +321,7 @@
   // hitting a shortcut and the body mounting. Also keeps the row readable if
   // a tool fails to mount its body for some reason.
   function syncActiveState() {
-    const mode = window.VellumState?.mode;
+    const mode = window.AdnotaState?.mode;
     for (const { btn, tool } of toolEls) {
       if (!tool.mode) continue;
       const isActive = tool.id === 'marker'
@@ -331,14 +331,14 @@
     }
   }
 
-  if (window.VellumState?.subscribe) {
-    window.VellumState.subscribe(() => {
+  if (window.AdnotaState?.subscribe) {
+    window.AdnotaState.subscribe(() => {
       syncActiveState();
       applyDismissState();
     });
   }
   chrome.storage.onChanged.addListener((changes, area) => {
-    if (area === 'local' && 'vellumActiveMode' in changes) {
+    if (area === 'local' && 'adnotaActiveMode' in changes) {
       setTimeout(() => {
         syncActiveState();
         applyDismissState();
@@ -354,8 +354,8 @@
     visEntry.btn.setAttribute('data-tooltip', isHidden ? 'Show All' : 'Hide All');
   }
 
-  if (window.VellumVisibility?.subscribe) {
-    window.VellumVisibility.subscribe(setVisibilityIcon);
+  if (window.AdnotaVisibility?.subscribe) {
+    window.AdnotaVisibility.subscribe(setVisibilityIcon);
   } else {
     setVisibilityIcon(false);
   }
@@ -369,7 +369,7 @@
   let unclipTimer = null;
 
   // ── Public API ────────────────────────────────────────────────────────────
-  window.VellumDock = {
+  window.AdnotaDock = {
     // Lock the dock to its current pixel coordinates BEFORE filling the
     // body — otherwise the body's growth pushes the dock left/right (it's
     // centered with translateX(-50%)) and hovering the active tool becomes
@@ -379,7 +379,7 @@
       body.replaceChildren();
       const frag = buildBodyFn?.();
       if (frag) body.appendChild(frag);
-      dock.classList.add('vellum-dock-active');
+      dock.classList.add('adnota-dock-active');
       dock.setAttribute('data-accent', toolId);
       body.style.overflow = '';
       clearTimeout(unclipTimer);
@@ -393,7 +393,7 @@
       clearTimeout(unclipTimer);
       body.style.overflow = '';
       body.replaceChildren();
-      dock.classList.remove('vellum-dock-active');
+      dock.classList.remove('adnota-dock-active');
       dock.removeAttribute('data-accent');
     },
     element: dock,

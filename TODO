@@ -164,7 +164,7 @@ redo tooltips again on the HUDs....
 make all huds consistent look and feel!
 
 wire up right click for sticky notes (also, if you right click and a sticky note is selected, should it give options like: delete, change color, etc? Or is that just gimmicky?)
-What if you could right click ANY vellum item?? (e.g. for deletion, would that be the most natural way to select/delete something you don't want anymore??)
+What if you could right click ANY adnota item?? (e.g. for deletion, would that be the most natural way to select/delete something you don't want anymore??)
 
 Fix mouse cursors when using tools (make it obvious you are in TOOL mode!!! e.g. you put down a text field or two and then try and click on a link and you just place another text field!!!)
 
@@ -198,7 +198,7 @@ Optional: Make size of toolbars and radial menus adjustable? (be able to increas
 
 Should clicking hide all exit any active tool? (similar to clicking escape?) Or not, perhaps you'd want to hide noise to focus on something else?? not sure.
 
-Would it be hard to make it so you could ALWAYS select any Vellum object? Why do we need the SELECT tool? Can't we recognize all of our elements instantly? Shouldn't we be able to automatically move or adjust any Vellum object just by clicking on it?? Today it's a little broken because if you have a bunch of paint items on the screen AND sticky notes, the select tool can select paint items, but NOT sticky notes, only the default cursor can select those... (which makes even less sense because the SELECT tool is a hand cursor, while the default cursor transforms to a hand over the header of a sticky, so it's even MORE confusing to users because it's a hand that can't move a sticky!!).
+Would it be hard to make it so you could ALWAYS select any Adnota object? Why do we need the SELECT tool? Can't we recognize all of our elements instantly? Shouldn't we be able to automatically move or adjust any Adnota object just by clicking on it?? Today it's a little broken because if you have a bunch of paint items on the screen AND sticky notes, the select tool can select paint items, but NOT sticky notes, only the default cursor can select those... (which makes even less sense because the SELECT tool is a hand cursor, while the default cursor transforms to a hand over the header of a sticky, so it's even MORE confusing to users because it's a hand that can't move a sticky!!).
 
 on page load, sometimes we say we couldn't load something too sooooon. WAIT!
 
@@ -265,8 +265,8 @@ claude design has cool take on this:
   every click. Proximity threshold needs to scale down for small shapes.        
   - Discoverability of the affordance: without a dedicated mode, how does the
   user know a pen stroke is draggable? Cursor change on hover (already in place 
-  for select mode via html.vellum-select-mode) would need to become always-on
-  for Vellum elements — which is fine, just more CSS.                           
+  for select mode via html.adnota-select-mode) would need to become always-on
+  for Adnota elements — which is fine, just more CSS.                           
                   
   My take
 
@@ -318,6 +318,6 @@ HMMMM...:
     9. Inconsistent storage access
 
   popup/popup.js:105-107 hits chrome.storage.local.get() directly rather than going
-  through the VellumStorage wrapper. Content scripts do this too in some places. Not a
+  through the AdnotaStorage wrapper. Content scripts do this too in some places. Not a
   bug, since the popup can't access window globals from content scripts, but worth
   noting.

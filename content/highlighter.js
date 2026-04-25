@@ -2,11 +2,11 @@
 
 // Setup CSS Highlight Registry (Requires Chrome 105+)
 const highlightRegistries = {
-  'vellum-theme-yellow': new Highlight(),
-  'vellum-theme-green': new Highlight(),
-  'vellum-theme-blue': new Highlight(),
-  'vellum-theme-pink': new Highlight(),
-  'vellum-theme-black': new Highlight()
+  'adnota-theme-yellow': new Highlight(),
+  'adnota-theme-green': new Highlight(),
+  'adnota-theme-blue': new Highlight(),
+  'adnota-theme-pink': new Highlight(),
+  'adnota-theme-black': new Highlight()
 };
 
 if (typeof CSS !== 'undefined' && 'highlights' in CSS) {
@@ -26,10 +26,10 @@ const toolIcons = {
   text:      '<path d="M6 5h8M6 5v2M14 5v2M10 5v10M8 15h4"/>',
   // Outline variant: hollow square + red diagonal slash to visually distinguish
   // "no fill" from the rectangle tool icon itself.
-  fillOutline: '<rect x="4" y="4" width="12" height="12" rx="1"/><line class="vellum-outline-slash" x1="4" y1="16" x2="16" y2="4"/>',
+  fillOutline: '<rect x="4" y="4" width="12" height="12" rx="1"/><line class="adnota-outline-slash" x1="4" y1="16" x2="16" y2="4"/>',
   // Solid variant: filled square (fill painted via dedicated CSS to defeat the
-  // global .vellum-tool-btn svg { fill: none } rule).
-  fillSolid: '<rect class="vellum-fill-solid-rect" x="4" y="4" width="12" height="12" rx="1"/>',
+  // global .adnota-tool-btn svg { fill: none } rule).
+  fillSolid: '<rect class="adnota-fill-solid-rect" x="4" y="4" width="12" height="12" rx="1"/>',
   eyedropper: '<path d="M12 6l1-1a1.5 1.5 0 012 2l-1 1Z" fill="currentColor"/><path d="M11 5l4 4M12 6L6 12l-2 3 1 1 3-2L14 8"/>',
 };
 
@@ -43,19 +43,19 @@ function svgIcon(name) {
 
 function makeToolBtn(name, title, mode) {
   const btn = document.createElement('div');
-  btn.className = 'vellum-tool-btn';
+  btn.className = 'adnota-tool-btn';
   btn.dataset.tool = mode;
   btn.setAttribute('data-tooltip', title);
   btn.appendChild(svgIcon(name));
   btn.onclick = (e) => {
     e.stopPropagation();
-    window.VellumState.set({ mode: window.VellumState.mode === mode ? null : mode });
+    window.AdnotaState.set({ mode: window.AdnotaState.mode === mode ? null : mode });
   };
   return btn;
 }
 
 // ── Create Toolbar UI ───────────────────────────────────────────────────────
-// Dock body — mounts into VellumDock when a drawing-family mode is active.
+// Dock body — mounts into AdnotaDock when a drawing-family mode is active.
 // The dock owns drag handle + V logo + tool row; we own tools + swatches +
 // stroke widths + fill toggle + trash + undo.
 const highlightToolbar = document.createElement('div');
@@ -81,14 +81,14 @@ for (const mode of ['select', 'pen', 'arrow', 'rect', 'ellipse', 'text']) {
 }
 
 // Divider
-highlightToolbar.appendChild(Object.assign(document.createElement('div'), { className: 'vellum-toolbar-divider' }));
+highlightToolbar.appendChild(Object.assign(document.createElement('div'), { className: 'adnota-toolbar-divider' }));
 
 // ── Fill group — outline / solid radio pair, shown only in rect/ellipse modes.
 // Placed right after the shape tool buttons so the option surfaces next to
 // the tool that triggered it.
 function makeFillBtn({ iconKey, cls, title, filled }) {
   const btn = document.createElement('div');
-  btn.className = `vellum-tool-btn ${cls}`;
+  btn.className = `adnota-tool-btn ${cls}`;
   btn.setAttribute('data-tooltip', title);
   const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
   svg.setAttribute('viewBox', '0 0 20 20');
@@ -96,17 +96,17 @@ function makeFillBtn({ iconKey, cls, title, filled }) {
   btn.appendChild(svg);
   btn.onclick = (e) => {
     e.stopPropagation();
-    window.VellumState.set({ filled });
+    window.AdnotaState.set({ filled });
   };
   return btn;
 }
 const fillOutlineBtn = makeFillBtn({
-  iconKey: 'fillOutline', cls: 'vellum-fill-outline-btn', title: 'Outline', filled: false,
+  iconKey: 'fillOutline', cls: 'adnota-fill-outline-btn', title: 'Outline', filled: false,
 });
 const fillSolidBtn = makeFillBtn({
-  iconKey: 'fillSolid', cls: 'vellum-fill-solid-btn', title: 'Solid fill', filled: true,
+  iconKey: 'fillSolid', cls: 'adnota-fill-solid-btn', title: 'Solid fill', filled: true,
 });
-const fillGroupDivider = Object.assign(document.createElement('div'), { className: 'vellum-toolbar-divider' });
+const fillGroupDivider = Object.assign(document.createElement('div'), { className: 'adnota-toolbar-divider' });
 const fillGroupEls = [fillOutlineBtn, fillSolidBtn, fillGroupDivider];
 highlightToolbar.appendChild(fillOutlineBtn);
 highlightToolbar.appendChild(fillSolidBtn);
@@ -114,16 +114,16 @@ highlightToolbar.appendChild(fillGroupDivider);
 
 // Color swatches
 const themes = {
-  'vellum-theme-yellow': 'rgb(255, 235, 59)',
-  'vellum-theme-green': 'rgb(76, 175, 80)',
-  'vellum-theme-blue': 'rgb(33, 150, 243)',
-  'vellum-theme-pink': 'rgb(233, 30, 99)',
-  'vellum-theme-black': '#111'
+  'adnota-theme-yellow': 'rgb(255, 235, 59)',
+  'adnota-theme-green': 'rgb(76, 175, 80)',
+  'adnota-theme-blue': 'rgb(33, 150, 243)',
+  'adnota-theme-pink': 'rgb(233, 30, 99)',
+  'adnota-theme-black': '#111'
 };
 
 function resolvePaintColor(c) {
   if (typeof c === 'string' && (c.startsWith('#') || c.startsWith('rgb'))) return c;
-  return themes[c] || themes['vellum-theme-yellow'];
+  return themes[c] || themes['adnota-theme-yellow'];
 }
 
 // ── Eyedropper swatch — doubles as current-color indicator and picker. Its
@@ -133,7 +133,7 @@ function resolvePaintColor(c) {
 // sixth swatch. For highlights, custom hex routes through the fallback overlay
 // renderer since CSS Custom Highlights need pre-registered theme names.
 const eyedropperSwatch = document.createElement('div');
-eyedropperSwatch.className = 'vellum-color-swatch vellum-eyedropper-swatch';
+eyedropperSwatch.className = 'adnota-color-swatch adnota-eyedropper-swatch';
 eyedropperSwatch.setAttribute('data-tooltip', 'Current color — click to pick any color from the page');
 const eyeSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
 eyeSvg.setAttribute('viewBox', '0 0 20 20');
@@ -142,14 +142,14 @@ eyedropperSwatch.appendChild(eyeSvg);
 eyedropperSwatch.onclick = async (e) => {
   e.stopPropagation();
   if (typeof window.EyeDropper !== 'function') {
-    window.VellumUI.showToast('Eyedropper requires Chrome 95+');
+    window.AdnotaUI.showToast('Eyedropper requires Chrome 95+');
     return;
   }
   try {
     const dropper = new window.EyeDropper();
     const result = await dropper.open();
     if (result?.sRGBHex) {
-      window.VellumState.set({ color: result.sRGBHex });
+      window.AdnotaState.set({ color: result.sRGBHex });
     }
   } catch (err) {
     // User cancelled picker — no-op.
@@ -158,30 +158,30 @@ eyedropperSwatch.onclick = async (e) => {
 highlightToolbar.appendChild(eyedropperSwatch);
 
 // Divider between eyedropper (current-color control) and the palette.
-highlightToolbar.appendChild(Object.assign(document.createElement('div'), { className: 'vellum-toolbar-divider' }));
+highlightToolbar.appendChild(Object.assign(document.createElement('div'), { className: 'adnota-toolbar-divider' }));
 
 const swatches = {};
 for (const [themeClass, colorHex] of Object.entries(themes)) {
   const swatch = document.createElement('div');
-  swatch.className = 'vellum-color-swatch';
+  swatch.className = 'adnota-color-swatch';
   swatch.style.backgroundColor = colorHex;
-  if (themeClass === 'vellum-theme-black') {
+  if (themeClass === 'adnota-theme-black') {
     swatch.setAttribute('data-tooltip', 'Redact');
   } else {
-    let tooltipName = themeClass.replace('vellum-theme-', '');
+    let tooltipName = themeClass.replace('adnota-theme-', '');
     tooltipName = tooltipName.charAt(0).toUpperCase() + tooltipName.slice(1);
     swatch.setAttribute('data-tooltip', tooltipName);
   }
   swatch.onclick = (e) => {
     e.stopPropagation();
-    window.VellumState.set({ color: themeClass });
+    window.AdnotaState.set({ color: themeClass });
   };
   swatches[themeClass] = swatch;
   highlightToolbar.appendChild(swatch);
 }
 
 // Divider
-highlightToolbar.appendChild(Object.assign(document.createElement('div'), { className: 'vellum-toolbar-divider' }));
+highlightToolbar.appendChild(Object.assign(document.createElement('div'), { className: 'adnota-toolbar-divider' }));
 
 // Stroke width presets
 const strokePresets = [
@@ -192,35 +192,35 @@ const strokePresets = [
 const strokeBtns = {};
 for (const preset of strokePresets) {
   const btn = document.createElement('div');
-  btn.className = 'vellum-stroke-btn';
+  btn.className = 'adnota-stroke-btn';
   btn.setAttribute('data-tooltip', preset.label);
   const dot = document.createElement('div');
-  dot.className = 'vellum-stroke-dot';
+  dot.className = 'adnota-stroke-dot';
   dot.style.width = preset.dotSize + 'px';
   dot.style.height = preset.dotSize + 'px';
   btn.appendChild(dot);
   btn.onclick = (e) => {
     e.stopPropagation();
-    window.VellumState.set({ strokeWidth: preset.width });
+    window.AdnotaState.set({ strokeWidth: preset.width });
   };
   strokeBtns[preset.width] = btn;
   highlightToolbar.appendChild(btn);
 }
 
 // Divider — trailing edge of the stroke-width group; hides with the strokes.
-const strokeGroupDivider = Object.assign(document.createElement('div'), { className: 'vellum-toolbar-divider' });
+const strokeGroupDivider = Object.assign(document.createElement('div'), { className: 'adnota-toolbar-divider' });
 highlightToolbar.appendChild(strokeGroupDivider);
 const strokeGroupEls = [...Object.values(strokeBtns), strokeGroupDivider];
 
 // Trash — clears every drawing annotation on this page (highlights + markers)
-highlightToolbar.appendChild(window.VellumUI.createTrashButton({
+highlightToolbar.appendChild(window.AdnotaUI.createTrashButton({
   singular: 'highlight or drawing',
   plural: 'highlights & drawings',
   actionTypes: ['HIGHLIGHT', 'MARKER'],
 }));
 
 // Undo
-highlightToolbar.appendChild(window.VellumUI.createUndoButton());
+highlightToolbar.appendChild(window.AdnotaUI.createUndoButton());
 
 // All drawing-family modes that show the dock body
 const _drawingModes = new Set(['pen', 'highlight', 'arrow', 'rect', 'ellipse', 'text', 'select']);
@@ -247,57 +247,57 @@ const CURSORS = {
      </svg>`, 2, 1, 'default')
 };
 
-// Inject/update a stylesheet that forces the tool cursor on every non-Vellum
+// Inject/update a stylesheet that forces the tool cursor on every non-Adnota
 // element with `!important`. Page-defined `cursor: pointer` on links/buttons
 // would otherwise win over an inline body cursor — that's the exact bug where
 // hovering a link made the cursor look clickable, then sticky mode dropped a
 // note instead of following the link.
 //
-// `html.vellum-dragging` override lets marker-drag swap to `grabbing` without
+// `html.adnota-dragging` override lets marker-drag swap to `grabbing` without
 // fighting the lock.
 function setCursorLock(cursor) {
-  let tag = document.getElementById('vellum-cursor-lock');
+  let tag = document.getElementById('adnota-cursor-lock');
   if (!cursor) {
     if (tag) tag.remove();
     return;
   }
   if (!tag) {
     tag = document.createElement('style');
-    tag.id = 'vellum-cursor-lock';
-    tag.setAttribute('data-vellum-ui', '1');
+    tag.id = 'adnota-cursor-lock';
+    tag.setAttribute('data-adnota-ui', '1');
     document.head.appendChild(tag);
   }
-  // `:not([data-vellum-ui] *)` excludes descendants of Vellum UI — the project
-  // convention is every Vellum UI element carries `data-vellum-ui="1"`, so
+  // `:not([data-adnota-ui] *)` excludes descendants of Adnota UI — the project
+  // convention is every Adnota UI element carries `data-adnota-ui="1"`, so
   // toolbars/buttons/sticky notes keep their own cursors (grab, pointer, etc.).
-  const scope = '*:not([data-vellum-ui]):not([data-vellum-ui] *)';
+  const scope = '*:not([data-adnota-ui]):not([data-adnota-ui] *)';
   tag.textContent =
     `${scope} { cursor: ${cursor} !important; }\n` +
     // Drag override: beats the base lock on page elements via specificity, and
     // beats marker.css's select-mode `grab` rule on wrappers via !important.
-    `html.vellum-dragging ${scope} { cursor: grabbing !important; }\n` +
-    `html.vellum-dragging .vellum-marker-wrapper,\n` +
-    `html.vellum-dragging .vellum-marker-wrapper * { cursor: grabbing !important; }`;
+    `html.adnota-dragging ${scope} { cursor: grabbing !important; }\n` +
+    `html.adnota-dragging .adnota-marker-wrapper,\n` +
+    `html.adnota-dragging .adnota-marker-wrapper * { cursor: grabbing !important; }`;
 }
 
 // Expose for other content scripts (sticky.js re-applies the cursor when its
 // color swatch changes so the sticky-note cursor tracks the active color).
-window.VellumCursor = { set: setCursorLock, svgCursor };
+window.AdnotaCursor = { set: setCursorLock, svgCursor };
 
-// Global VellumState Subscription — single place that owns cursor and toolbar state
+// Global AdnotaState Subscription — single place that owns cursor and toolbar state
 // for ALL modes. Eraser and sticky manage their own overlays but delegate cursor here.
 let highlightDockMounted = false;
-window.VellumState.subscribe(state => {
+window.AdnotaState.subscribe(state => {
   // Mount the dock body for all drawing-family modes (pen, highlight, arrow,
   // rect, ellipse, text, select). Switching between sub-modes keeps the body
   // mounted — the dock just stays active and the body's internal state
   // (active tool button, fill group visibility, etc.) updates below.
   const showToolbar = _drawingModes.has(state.mode);
   if (showToolbar && !highlightDockMounted) {
-    window.VellumDock.mount('highlight', () => highlightToolbar);
+    window.AdnotaDock.mount('highlight', () => highlightToolbar);
     highlightDockMounted = true;
   } else if (!showToolbar && highlightDockMounted) {
-    window.VellumDock.unmount('highlight');
+    window.AdnotaDock.unmount('highlight');
     highlightDockMounted = false;
   }
 
@@ -314,8 +314,8 @@ window.VellumState.subscribe(state => {
     case 'select':    setCursorLock(CURSORS.select); break;
     case 'text':      setCursorLock(CURSORS.text);   break;
     // Sticky owns its cursor so the icon can recolor when the user picks a
-    // swatch in the HUD — see window.VellumSticky.applyCursor in sticky.js.
-    case 'sticky':    window.VellumSticky?.applyCursor(); break;
+    // swatch in the HUD — see window.AdnotaSticky.applyCursor in sticky.js.
+    case 'sticky':    window.AdnotaSticky?.applyCursor(); break;
     // Resizer — crosshair keeps mode intent clear; resize handles set their
     // own ew-resize/ns-resize/nwse-resize cursors inline, overriding this.
     case 'resizer':
@@ -328,7 +328,7 @@ window.VellumState.subscribe(state => {
     default: setCursorLock(null); break;
   }
   // Drive the `grab` cursor on marker hover + any other select-mode-only CSS.
-  document.documentElement.classList.toggle('vellum-select-mode', state.mode === 'select');
+  document.documentElement.classList.toggle('adnota-select-mode', state.mode === 'select');
 
   // Update tool button active states
   for (const [mode, btn] of Object.entries(toolBtns)) {
@@ -374,8 +374,8 @@ window.VellumState.subscribe(state => {
 // no longer has a toolbar button.
 chrome.runtime.onMessage.addListener((request) => {
   if (request.action === 'toggle-highlighter') {
-    const isDrawing = _drawingModes.has(window.VellumState.mode);
-    window.VellumState.set({ mode: isDrawing ? null : 'pen' });
+    const isDrawing = _drawingModes.has(window.AdnotaState.mode);
+    window.AdnotaState.set({ mode: isDrawing ? null : 'pen' });
   }
 });
 
@@ -386,7 +386,7 @@ chrome.runtime.onMessage.addListener((request) => {
 // every live highlight, hit-test on mousemove, and render:
 //   • a floating `#tag` chip near the cursor (when the highlight has a tag)
 //   • a clickable red ✕ at the highlight's top-right (always)
-// The ✕ reuses .vellum-select-delete styling for consistency with the Select
+// The ✕ reuses .adnota-select-delete styling for consistency with the Select
 // tool's per-item delete affordance on markers.
 const liveHighlights = new Map(); // _id → { tag, color, text, range?, fallbackEl? }
 
@@ -442,8 +442,8 @@ let tagTooltipEl = null;
 function ensureTagTooltip() {
   if (tagTooltipEl) return tagTooltipEl;
   tagTooltipEl = document.createElement('div');
-  tagTooltipEl.className = 'vellum-highlight-tag-tooltip';
-  tagTooltipEl.setAttribute('data-vellum-ui', '1');
+  tagTooltipEl.className = 'adnota-highlight-tag-tooltip';
+  tagTooltipEl.setAttribute('data-adnota-ui', '1');
   tagTooltipEl.style.display = 'none';
   document.documentElement.appendChild(tagTooltipEl);
   return tagTooltipEl;
@@ -479,8 +479,8 @@ function ensureDeleteBtn() {
   deleteBtnEl = document.createElement('div');
   // Reuse the Select-tool's red-circle class for visual consistency; our own
   // class overrides positioning to fixed and scopes any tweaks.
-  deleteBtnEl.className = 'vellum-select-delete vellum-highlight-delete-btn';
-  deleteBtnEl.setAttribute('data-vellum-ui', '1');
+  deleteBtnEl.className = 'adnota-select-delete adnota-highlight-delete-btn';
+  deleteBtnEl.setAttribute('data-adnota-ui', '1');
   deleteBtnEl.setAttribute('title', 'Delete highlight');
   deleteBtnEl.textContent = '✕';
   deleteBtnEl.style.display = 'none';
@@ -509,7 +509,7 @@ function showDeleteBtn(id, rects) {
   // Nudge up + right so the ✕ sits clear of the highlighted text instead of
   // overlapping the first character.
   const first = rects[0];
-  const SIZE = 20; // matches .vellum-select-delete width/height
+  const SIZE = 20; // matches .adnota-select-delete width/height
   const NUDGE = 6;
   let left = first.right - SIZE / 2 + NUDGE;
   let top = first.top - SIZE / 2 - NUDGE;
@@ -535,8 +535,8 @@ document.addEventListener('mousemove', (e) => {
       hideTagTooltip();
       return;
     }
-    // Any other Vellum UI surface → stand down.
-    if (window.VellumUI?.isVellumElement(lastPointer.target)) {
+    // Any other Adnota UI surface → stand down.
+    if (window.AdnotaUI?.isAdnotaElement(lastPointer.target)) {
       hideTagTooltip();
       hideDeleteBtn();
       return;
@@ -565,7 +565,7 @@ window.addEventListener('resize', () => { hideTagTooltip(); hideDeleteBtn(); }, 
 async function deleteHighlight(id) {
   const entry = liveHighlights.get(id);
   if (!entry) return null;
-  const items = await window.VellumStorage.getAnchorsForUrl(location.href);
+  const items = await window.AdnotaStorage.getAnchorsForUrl(location.href);
   const payload = items.find(i => i._id === id);
   if (!payload) return null;
 
@@ -576,29 +576,29 @@ async function deleteHighlight(id) {
   }
   liveHighlights.delete(id);
 
-  await window.VellumStorage.deleteItem(location.hostname, '_id', id);
+  await window.AdnotaStorage.deleteItem(location.hostname, '_id', id);
 
   let consumed = false;
   const undoEntry = {
     undo: async () => {
       if (consumed) return;
       consumed = true;
-      await window.VellumStorage.saveItem(location.hostname, location.pathname, payload);
+      await window.AdnotaStorage.saveItem(location.hostname, location.pathname, payload);
       const match = window.FuzzyAnchor.findMatch(payload.anchor);
       if (match.confidence >= 40 && match.element) {
         if (payload.isFallback) {
-          window.VellumHighlighter.renderFallback(match.element, payload);
+          window.AdnotaHighlighter.renderFallback(match.element, payload);
         } else {
-          window.VellumHighlighter.applyStoredHighlight(match.element, payload);
+          window.AdnotaHighlighter.applyStoredHighlight(match.element, payload);
         }
       }
-      window.VellumUndo.remove(undoEntry);
+      window.AdnotaUndo.remove(undoEntry);
     }
   };
-  window.VellumUndo.push(undoEntry);
+  window.AdnotaUndo.push(undoEntry);
 
-  window.VellumUI?.showToast?.('Highlight deleted', {
-    id: 'vellum-highlight-toast',
+  window.AdnotaUI?.showToast?.('Highlight deleted', {
+    id: 'adnota-highlight-toast',
     onUndo: () => undoEntry.undo(),
   });
   return payload;
@@ -644,8 +644,8 @@ async function createHighlightFromRange(range, color, tag = '') {
   // Only attach the tag field when it's actually set, so the untagged Alt+H
   // path (and any other caller that doesn't pass a tag) leaves no empty-string
   // debris in storage.
-  const normalizedTag = window.VellumTags
-    ? window.VellumTags.normalize(tag)
+  const normalizedTag = window.AdnotaTags
+    ? window.AdnotaTags.normalize(tag)
     : (typeof tag === 'string' ? tag.trim() : '');
 
   const payload = {
@@ -673,7 +673,7 @@ async function createHighlightFromRange(range, color, tag = '') {
       width: (r.width / box.width) * 100,
       height: (r.height / box.height) * 100
     }));
-    window.VellumHighlighter?.renderFallback?.(blockElement, payload);
+    window.AdnotaHighlighter?.renderFallback?.(blockElement, payload);
   } else if (typeof CSS !== 'undefined' && 'highlights' in CSS) {
     const registry = highlightRegistries[color];
     if (registry) {
@@ -697,30 +697,30 @@ async function createHighlightFromRange(range, color, tag = '') {
           width: (r.width / box.width) * 100,
           height: (r.height / box.height) * 100
         }));
-        window.VellumHighlighter?.renderFallback?.(blockElement, payload);
+        window.AdnotaHighlighter?.renderFallback?.(blockElement, payload);
       }
     }
   }
 
-  if (window.VellumStorage) {
-    await window.VellumStorage.saveItem(location.hostname, location.pathname, payload);
+  if (window.AdnotaStorage) {
+    await window.AdnotaStorage.saveItem(location.hostname, location.pathname, payload);
   }
 
   const capturedId = _id;
   const capturedColor = color;
   const capturedRange = payload._clonedRange || null;
   const capturedFallback = payload.isFallback || false;
-  window.VellumUndo.push({
+  window.AdnotaUndo.push({
     undo: async () => {
       if (capturedFallback) {
-        const fallbackEl = document.querySelector(`.vellum-highlight-fallback[data-highlight-id="${capturedId}"]`);
+        const fallbackEl = document.querySelector(`.adnota-highlight-fallback[data-highlight-id="${capturedId}"]`);
         if (fallbackEl) fallbackEl.remove();
       } else if (capturedRange) {
         highlightRegistries[capturedColor]?.delete(capturedRange);
       }
       unregisterLiveHighlight(capturedId);
-      if (window.VellumStorage) {
-        await window.VellumStorage.deleteItem(location.hostname, '_id', capturedId);
+      if (window.AdnotaStorage) {
+        await window.AdnotaStorage.deleteItem(location.hostname, '_id', capturedId);
       }
     }
   });
@@ -729,9 +729,9 @@ async function createHighlightFromRange(range, color, tag = '') {
 }
 
 document.addEventListener('mouseup', async (e) => {
-  if (window.VellumState.mode !== 'highlight') return;
+  if (window.AdnotaState.mode !== 'highlight') return;
 
-  if (window.VellumUI.isVellumElement(e.target)) return;
+  if (window.AdnotaUI.isAdnotaElement(e.target)) return;
 
   const selection = window.getSelection();
   if (!selection || selection.isCollapsed) {
@@ -743,16 +743,16 @@ document.addEventListener('mouseup', async (e) => {
   if (!text) return;
 
   // Hide mode must never obscure work — reveal everything before applying.
-  window.VellumVisibility.show();
+  window.AdnotaVisibility.show();
 
-  await createHighlightFromRange(range, window.VellumState.color);
+  await createHighlightFromRange(range, window.AdnotaState.color);
 
   try {
     selection.removeAllRanges();
   } catch (e) { }
 });
 
-window.VellumHighlighter = {
+window.AdnotaHighlighter = {
   createHighlightFromRange,
   deleteHighlight,
 
@@ -768,21 +768,21 @@ window.VellumHighlighter = {
   renderFallback: function (anchorElement, payload) {
     if (!payload.fallbackRects) return;
     const themeColors = {
-      'vellum-theme-yellow': 'rgba(255, 235, 59, 0.4)',
-      'vellum-theme-green': 'rgba(76, 175, 80, 0.4)',
-      'vellum-theme-blue': 'rgba(33, 150, 243, 0.4)',
-      'vellum-theme-pink': 'rgba(233, 30, 99, 0.4)',
+      'adnota-theme-yellow': 'rgba(255, 235, 59, 0.4)',
+      'adnota-theme-green': 'rgba(76, 175, 80, 0.4)',
+      'adnota-theme-blue': 'rgba(33, 150, 243, 0.4)',
+      'adnota-theme-pink': 'rgba(233, 30, 99, 0.4)',
       // Redaction: fully opaque, no blend mode — must completely cover the text.
-      'vellum-theme-black': '#000'
+      'adnota-theme-black': '#000'
     };
     // Custom eyedropper colors are painted opaquely (cover-up intent) — no blend mode.
     const isCustomColor = typeof payload.color === 'string' &&
                           (payload.color.startsWith('#') || payload.color.startsWith('rgb'));
-    const isSolidRedaction = payload.color === 'vellum-theme-black' || isCustomColor;
+    const isSolidRedaction = payload.color === 'adnota-theme-black' || isCustomColor;
     const paintColor = themeColors[payload.color] || payload.color;
 
     const wrapper = document.createElement('div');
-    wrapper.className = 'vellum-highlight-fallback';
+    wrapper.className = 'adnota-highlight-fallback';
     wrapper.dataset.highlightId = payload._id; // Needed for undo lookup.
     wrapper.style.position = 'absolute';
     wrapper.style.pointerEvents = 'none';
@@ -792,7 +792,7 @@ window.VellumHighlighter = {
     payload.fallbackRects.forEach(rect => {
       const div = document.createElement('div');
       div.style.position = 'absolute';
-      div.style.backgroundColor = paintColor || themeColors['vellum-theme-yellow'];
+      div.style.backgroundColor = paintColor || themeColors['adnota-theme-yellow'];
       // Redaction + custom colors must be fully opaque — multiply lets text bleed through.
       if (!isSolidRedaction) div.style.mixBlendMode = 'multiply';
       wrapper.appendChild(div);
