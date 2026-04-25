@@ -1,8 +1,8 @@
-# Vellum — The Persistent Canvas
+# Adnota — The Persistent Canvas
 
 > Treat any website like your personal canvas. Erase what you don't need. Annotate what matters. Highlight, redact, and draw — all persistent across sessions, all stored privately on your machine.
 
-Vellum is a Manifest V3 Chrome Extension built around a single core idea: **your annotations live with the page, not in a silo.** Every change you make to a website persists automatically, restores on the next visit, and is instantly accessible from a dedicated history view. No accounts, no cloud, no data leaving the browser.
+Adnota is a Manifest V3 Chrome Extension built around a single core idea: **your annotations live with the page, not in a silo.** Every change you make to a website persists automatically, restores on the next visit, and is instantly accessible from a dedicated history view. No accounts, no cloud, no data leaving the browser.
 
 Highlight what's notable, eliminate what's not.
 
@@ -10,15 +10,17 @@ Mark it up. Block it out. Make it yours.
 
 NOTE: WE ARE NOT IN PRODUCTION YET, SO MAKE AN EFFORT TO CLEAN UP CODE AND REDUCE DUPLICATE AS WE GO!
 
+NOTE 2: This project was originally written with a name of VELLUM, but that name is taken, so we are rebranding to ADNOTA.
+
 Annotate your web, your way.
 
 Adnota: Annotate the web.
 
-The product North Star: Vellum today is "make any webpage yours" (destructive + additive edits on any specific page)
+The product North Star: Adnota today is "make any webpage yours" (destructive + additive edits on any specific page)
 
 ---
 
-## Shipped: Current Architecture
+## Architecture
 
 ### Extension Shell
 
@@ -55,7 +57,7 @@ Methods: `saveItem`, `saveNote` (generic upsert-by-uuid — caller passes full p
 #### `lib/vellumUI.js` — `window.VellumUI`                                                                           
 Shared UI utilities that prevent duplication across content scripts.                                                                                                     
 
-**`data-vellum-ui` convention**: Every Vellum UI element (overlays, toolbars, toasts, sticky notes, marker wrappers, etc.) must be tagged with `data-vellum-ui="1"`. This is how the eraser, resizer, and marker know to ignore Vellum's own elements — `isVellumElement(el)` is a single `.closest('[data-vellum-ui]')` check. When adding new UI elements, always set this attribute or they will be erasable/selectable by the user's own tools.
+**`data-vellum-ui` convention**: Every Adnota UI element (overlays, toolbars, toasts, sticky notes, marker wrappers, etc.) must be tagged with `data-vellum-ui="1"`. This is how the eraser, resizer, and marker know to ignore Adnota's own elements — `isVellumElement(el)` is a single `.closest('[data-vellum-ui]')` check. When adding new UI elements, always set this attribute or they will be erasable/selectable by the user's own tools.
 
 **Shared HUD button helpers**: `createToolbarIconButton`, `createUndoButton`, and `createTrashButton` produce the dark-frosted `vellum-undo-btn`-styled controls used across every HUD. `softDeleteItems({singular, plural, actionTypes})` is the single implementation behind every bulk trash action (popup stat cards, popup "Clear All," and HUD trash buttons): it snapshots matching items by ID, removes them from storage, hides them from the DOM, and shows a 5-second toast with Undo. Undo re-writes storage and re-renders in place; Ctrl+Z also pops the batch off `VellumUndo`.
 
@@ -88,9 +90,9 @@ Also exposes `generateCSSSelector(el)` as a shared utility (used by the resizer)
 
 #### `content/eraser.js`
 - Activated via popup or `Alt+E` keyboard shortcut
-- Red outline hover preview tracks the cursor; Vellum's own UI elements are guarded and invisible to the eraser
+- Red outline hover preview tracks the cursor; Adnota's own UI elements are guarded and invisible to the eraser
 - **Top-right badge cluster on the hover outline**: pinned where the user's eye already is. `W×H` dimension pill plus a soft-red `likely ad` pill that lights up whenever `getEffectiveAdSignals()` fires (same detection that drives silent domain-wide promotion). Both follow the cursor with the outline so the most actionable signals don't require a glance down at the HUD strip
-- **HUD strip**: fixed bottom-center bar (draggable) that stays visible whenever the eraser is active. Layout: drag handle → V logo chip → info section → trash → undo. Info section updates live while hovering:
+- **HUD strip**: fixed bottom-center bar (draggable) that stays visible whenever the eraser is active. Layout: drag handle → A logo chip → info section → trash → undo. Info section updates live while hovering:
   - **Confidence score** with contextual label — "likely ad" (red, when ad signals detected), "strong anchor" (green, ≥70), "moderate" (amber, ≥40), "weak anchor" (red, <40)
   - **Ad signal badges** — colored pills (e.g., `ad-keyword`, `iframe`, `ad-network`) shown when detected
   - **Scroll nudge** — "▲ Scroll up N× for better target" shown when `findBetterTarget()` identifies a higher parent with a stronger anchor score
@@ -106,14 +108,14 @@ Also exposes `generateCSSSelector(el)` as a shared utility (used by the resizer)
 - Undo: shared `VellumUndo` stack + 5s toast button, both cancel mid-flight animations
 - Show/Hide (`Alt+V`): erased elements are tracked in the shared `VellumErasedElements` Set (populated by both eraser clicks and restorer); `VellumVisibility` iterates this set to toggle inline `display:none` on each node
 - Storage write is non-blocking (does not delay animation)
-- **Ad-popup defense**: while eraser is active, `mousedown` / `pointerdown` / `auxclick` on any non-Vellum target are intercepted on `window`-capture and `preventDefault`-ed. Stops ads that hijack the earliest pointer event to call `window.open()` before our click handler fires. Right-click (`button === 2`) is left alone so Inspect still works. Every blocked interaction calls `VellumState.anchorFocus()` to re-anchor keyboard focus, since `preventDefault` on mousedown suppresses the browser's implicit focus transfer
+- **Ad-popup defense**: while eraser is active, `mousedown` / `pointerdown` / `auxclick` on any non-Adnota target are intercepted on `window`-capture and `preventDefault`-ed. Stops ads that hijack the earliest pointer event to call `window.open()` before our click handler fires. Right-click (`button === 2`) is left alone so Inspect still works. Every blocked interaction calls `VellumState.anchorFocus()` to re-anchor keyboard focus, since `preventDefault` on mousedown suppresses the browser's implicit focus transfer
 - **Iframe pointer shield**: cross-origin iframes swallow wheel events (parent doc never sees them, so scroll-to-traverse fails and the browser chain-scrolls the page instead) and their internal clicks never reach our handlers. While eraser is active, a scoped `<style id="vellum-iframe-shield">` sets `iframe { pointer-events: none !important }` on every iframe, routing wheel and click through to the iframe's container in the parent doc — which is usually the full ad wrapper the user actually means to erase. Removed on mode exit
 
 #### `content/sticky.js` — `window.StickyEngine`
 - Activated via popup or `Alt+S`
 - Click anywhere on the page to drop a sticky note; stays in sticky mode for rapid placement — exit via `Escape` or re-toggle
 - **Dark frosted-glass toolbar** (fixed, bottom-center, draggable) — matches marker/eraser HUD aesthetic
-- **Toolbar layout**: drag handle → V logo chip → 5 sticky-note-shaped color swatches → trash → undo. Trash clears every sticky note on the current page after a confirm.
+- **Toolbar layout**: drag handle → A logo chip → 5 sticky-note-shaped color swatches → trash → undo. Trash clears every sticky note on the current page after a confirm.
 - **Five colors**: yellow, green, blue, pink, white — swatches are mini sticky note icons (folded corner shape) filled with the theme color. Active swatch gets a purple glow ring. Choice persists to `vellumStickyColor` in storage.
 - **Hybrid anchor placement**: on click, finds the nearest block-level DOM element via `FuzzyAnchor.generate()` and stores the note's pixel offset (`dx`, `dy`) from that element alongside a percentage-based fallback (`xPct`, `yScrollPct`). On restore, tries the anchor first (element re-found via FuzzyAnchor tournament scoring → apply offset). If the anchor can't be resolved (score < 40 — page was restructured), falls back to percentage placement. **You never lose your work.**
 - **Drag and Drop**: pointer-event drag on the header repositions notes freely. On drop, re-anchors to the element underneath the new position and persists updated coordinates.
@@ -127,7 +129,7 @@ Also exposes `generateCSSSelector(el)` as a shared utility (used by the resizer)
 #### `content/highlighter.js` — `window.VellumHighlighter`
 - Activated via popup or `Alt+H`
 - **Dark frosted-glass toolbar** (fixed, bottom-center, draggable) — matches eraser HUD aesthetic with `rgba(15,15,15,0.92)` background, `backdrop-filter: blur(8px)`, and purple accent border
-- **Toolbar layout**: drag handle → V logo chip → tool icons → color swatches → stroke width presets → trash → undo. Trash clears every highlight and marker shape on the current page after a confirm.
+- **Toolbar layout**: drag handle → A logo chip → tool icons → color swatches → stroke width presets → trash → undo. Trash clears every highlight and marker shape on the current page after a confirm.
 - **Seven tool buttons** (SVG icons with purple hover/active states):
   - **Select** — click to select existing annotations; delete via red ✕ or Delete/Backspace key; double-click text to re-edit
   - **Pencil** — freehand drawing (original pen mode)
@@ -160,7 +162,7 @@ Also exposes `generateCSSSelector(el)` as a shared utility (used by the resizer)
 - **Smart element targeting** (two-stage, order matters): (1) climb to the nearest layout-significant block-level ancestor (≥120×60px, non-inline) — escapes tiny hovers like a menu link before any bubbling happens; (2) *then* use the shared `VellumUI.bubbleToVisualRoot` helper, seeded from that ancestor, to promote past visually-identical outer wrappers. This ordering is important: the eraser bubbles from the raw hover because any size element is a legitimate erase target, but the resizer almost always wants a meaningful block, so seeding the IoU comparison from a real layout element (not a 220×36 link) lets it correctly reach a 220×356 `nav` two hops above
 - **Dimension badge**: small `W×H` pixel label in the top-right corner of the blue hover outline
 - **Scroll-wheel DOM traversal**: while hovering, scroll up to walk to the next layout-significant parent, scroll down to walk back toward children. Stops before reaching a viewport-dominating container
-- **HUD strip**: fixed bottom-center bar (draggable) that stays visible whenever the resizer is active. Layout: drag handle → V logo chip (blue) → info section → trash → undo. Matches the eraser HUD aesthetic, tinted with the resizer's blue accent. Info section updates live:
+- **HUD strip**: fixed bottom-center bar (draggable) that stays visible whenever the resizer is active. Layout: drag handle → A logo chip (blue) → info section → trash → undo. Matches the eraser HUD aesthetic, tinted with the resizer's blue accent. Info section updates live:
   - **Idle** — short static label ("Hover an element to resize"); the full tip list lives behind a `?` popover (click to select, scroll to traverse, drag handles, ↺ to reset, Esc to exit)
   - **Hovering** — current target dimensions in `W×H` + scroll-to-walk hint
   - **Selected** — locked target dimensions (live-updated during drag) + reset hint
@@ -173,7 +175,7 @@ Also exposes `generateCSSSelector(el)` as a shared utility (used by the resizer)
   - **Bottom handle** — drag to resize height
   - **Corner handle** — drag to resize both width and height simultaneously
   - **Blue reset button** (top-right, circular reset arrow icon) — resets ALL resize overrides for this element, removing injected CSS from both the `<style>` tag and storage. Deliberately blue (not a red ✕) so it doesn't collide semantically with the marker select tool's red ✕ delete affordance
-- **Cursor lock**: while resizer mode is active, the central `VellumCursor.set` stylesheet forces a stable `default` arrow on every non-Vellum element with `!important`, so hovering links or buttons can't flip the cursor to `pointer`. Handles keep their own inline `ew-resize` / `ns-resize` / `nwse-resize` cursors via higher specificity on the handle elements
+- **Cursor lock**: while resizer mode is active, the central `VellumCursor.set` stylesheet forces a stable `default` arrow on every non-Adnota element with `!important`, so hovering links or buttons can't flip the cursor to `pointer`. Handles keep their own inline `ew-resize` / `ns-resize` / `nwse-resize` cursors via higher specificity on the handle elements
 - All resizes persist as CSS rules in a `<style id="vellum-style-overrides">` tag — survives React/Vue re-renders. The tag's contents are driven by a `window.VellumResizeRules` Map (keyed by storage `_id`, valued `{ selector, cssText }`), with `window.rebuildResizeStyleTag()` rewriting the tag from the Map after every mutation. Mirrors the eraser's `VellumEraseRules` pattern — every path (drag persist, Ctrl+Z, trash button, blue ↺ reset, restorer) goes through the same map + rebuild so there's no string surgery on the tag's `textContent` and no way for a zombie rule to survive undo/delete
 - **Domain-wide by default**: every resize is stored with `path: '*'` so it applies to every page of the domain. Unlike the eraser (which scopes to the current page unless Shift+Click or ad-fingerprint detection promotes it), resize targets are almost always structural containers (nav, sidebar, header, article wrapper) that recur across a site with the same selector — scoping per-page would force the user to redo the same resize on every sibling page. If a structural-`nth-child` selector ever matches something unintended on another page the rule silently no-ops, and the blue ↺ reset on that page wipes it
 - CSS selector generation uses the shared `FuzzyAnchor.generateCSSSelector()` utility
@@ -202,12 +204,12 @@ Also exposes `generateCSSSelector(el)` as a shared utility (used by the resizer)
 
 #### `content/quickHighlight.js`
 - Medium-style contextual popup that appears above any non-empty text selection after a ~400 ms dwell — independent of the Alt+H highlight mode
-- **Two-row layout**. Row 1: Vellum "V" brand chip (visually distinct from the host site's own toolbar) → five color swatches → session-dismiss `✕`. Row 2: an optional tag input (`#` glyph + text field). Clicking a swatch reads the current tag value and forwards it to `VellumHighlighter.createHighlightFromRange(range, color, tag)` so the created HIGHLIGHT carries the tag; leaving the input blank preserves the original one-tap flow
+- **Two-row layout**. Row 1: Adnota "A" brand chip (visually distinct from the host site's own toolbar) → five color swatches → session-dismiss `✕`. Row 2: an optional tag input (`#` glyph + text field). Clicking a swatch reads the current tag value and forwards it to `VellumHighlighter.createHighlightFromRange(range, color, tag)` so the created HIGHLIGHT carries the tag; leaving the input blank preserves the original one-tap flow
 - Each new selection re-prompts — colors and tag are not "sticky" between highlights; the user picks per-action. The tag input clears on every `hidePopup`
 - **Selection preservation**: clicking into the tag input collapses the browser's live text selection. To work around this, the popup caches a clone of the selection range at show-time; `applyHighlight()` prefers the live selection but falls back to the cached range. The `selectionchange` hide is also suppressed while the tag input has focus
 - Tag autocomplete is wired via `VellumTags.buildAutocompleteDropdown`. The dropdown lives outside the popup (appended to `<body>` with `position: fixed`), so the outside-click hide-handler has an explicit bypass for `.vellum-tag-suggest`
 - Dismisses on: selection collapse (except during tag-input focus), `Escape`, scroll, resize, click-away, or `Ctrl/Cmd+C` (copy is never intercepted — the popup just gets out of the way)
-- Skips editable contexts (`input`, `textarea`, `contenteditable`) and any selection inside a Vellum UI element
+- Skips editable contexts (`input`, `textarea`, `contenteditable`) and any selection inside an Adnota UI element
 - Suppressed while `VellumState.mode === 'highlight'` so it doesn't double up with the classic auto-apply mouseup. The Alt+H auto-apply path itself does **not** read a tag — it stays a zero-UI fast path. Tagging a highlight created that way is deferred to v2 (Select-tool integration or Home-page retrofit)
 - Reuses `VellumHighlighter.createHighlightFromRange()` — no duplicate save/undo logic
 - Feature-gated by `chrome.storage.local.vellumQuickHighlightEnabled` (default `true`); a future toggle UI can flip this without touching the content script
@@ -235,12 +237,12 @@ Premium dark-header popup (360px wide). Features:
 - **My Edited Sites** button in footer (purple outline) — opens the Sites history page
 - **Clear All Page Edits** button in footer (red outline)
 
-#### `content/dock.js` + `content/dock.css` — The Vellum Dock
-One persistent floating widget (fixed, bottom-center, draggable) that is the only Vellum chrome on the page. Two visual states, toggled by which tool (if any) is active:
-- **Idle**: `[drag][V][eraser][sticky][marker][resizer][vis]` — always-visible tool row, one click away. At `opacity: 0.55` so it stays out of the way.
-- **Active**: `[drag][← back (tinted)][tool's HUD body]` — tool row collapses, V morphs into an accent-colored back arrow, the tool's own controls fill the body slot.
+#### `content/dock.js` + `content/dock.css` — The Adnota Dock
+One persistent floating widget (fixed, bottom-center, draggable) that is the only Adnota chrome on the page. Two visual states, toggled by which tool (if any) is active:
+- **Idle**: `[drag][A][eraser][sticky][marker][resizer][vis]` — always-visible tool row, one click away. At `opacity: 0.55` so it stays out of the way.
+- **Active**: `[drag][← back (tinted)][tool's HUD body]` — tool row collapses, A morphs into an accent-colored back arrow, the tool's own controls fill the body slot.
 - **Back arrow / Escape / clicking the active tool again** all exit the tool and return to idle.
-- **V logo** opens the Sites history page in a new tab.
+- **A logo** opens the Sites history page in a new tab.
 - **Dismiss X** (red circle, reuses `.vellum-select-delete` styling) fades in on hover when idle — click to hide the dock for the current page. Any tool activation (popup, keyboard shortcut) or reload restores it. Session-only, never persisted.
 - **Drag anywhere** on the dock to reposition. 4px threshold distinguishes drag from click; saved position persists to `chrome.storage.local.vellumDockPosition` and survives reloads.
 - **Position flash prevention**: `visibility: hidden` until JS has read the saved position and added `.vellum-dock-ready`, so a repositioned dock never blinks at the default center on page load.
@@ -346,7 +348,7 @@ From the Sites page, allow searching by annotation *content* (not just hostname)
 ### Lower Priority / Later
 
 **6. Team Sharing**
-Requires cloud sync first. Share your annotated version of a page with a link — collaborator opens it, Vellum re-applies all annotations on their end. Powerful for editorial review, research handoff, redaction sign-off.
+Requires cloud sync first. Share your annotated version of a page with a link — collaborator opens it, Adnota re-applies all annotations on their end. Powerful for editorial review, research handoff, redaction sign-off.
 
 **7. Presentation / Focus Mode**
 `Alt+V` already hides everything. A dedicated presentation mode could selectively show only highlights (no sticky notes) or only notes (no erasures) depending on context.
