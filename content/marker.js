@@ -1078,13 +1078,10 @@ document.addEventListener('mousemove', (e) => {
   pendingMarkerHitTest = requestAnimationFrame(() => {
     pendingMarkerHitTest = 0;
     if (!lastMarkerPointer) return;
-    // Suppressed when paint is hidden, or when select/shift mode owns the delete UI.
-    const html = document.documentElement;
-    if (
-      html.classList.contains('vellum-hidden') ||
-      html.classList.contains('vellum-select-mode') ||
-      html.classList.contains('vellum-shift-mode')
-    ) {
+    // Hidden mode (paint toggled off) is the only mode-level suppression — the
+    // selected-wrapper carve-out below handles the overlap with the Select-tool's
+    // own ✕ on whichever item is currently selected.
+    if (document.documentElement.classList.contains('vellum-hidden')) {
       hideHoverDeleteBtn();
       return;
     }
