@@ -104,18 +104,18 @@
    ring doesn't bleed onto host-page form fields when this file ships as a
    content_script. The popup and sites <body> set data-adnota-ui="1" so the
    ring still covers their full document. */
-[data-adnota-ui]:focus-visible,
-[data-adnota-ui] :focus-visible {
+:where([data-adnota-ui]):focus-visible,
+:where([data-adnota-ui]) :focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
   border-radius: 3px;
 }
 
 /* Inputs and buttons get a softer ring that doesn't fight their own border. */
-[data-adnota-ui] input:focus-visible,
-[data-adnota-ui] select:focus-visible,
-[data-adnota-ui] textarea:focus-visible,
-[data-adnota-ui] button:focus-visible {
+:where([data-adnota-ui]) input:focus-visible,
+:where([data-adnota-ui]) select:focus-visible,
+:where([data-adnota-ui]) textarea:focus-visible,
+:where([data-adnota-ui]) button:focus-visible {
   outline: none;
   box-shadow: 0 0 0 3px var(--accent-soft), 0 0 0 1px var(--accent);
 }
@@ -124,33 +124,33 @@
    Webkit (Chrome) only — Firefox uses the OS bar. Subtle on light surfaces
    so they recede unless engaged. Scoped to [data-adnota-ui] so we don't
    restyle every host-page scrollbar from the content_script. */
-[data-adnota-ui]::-webkit-scrollbar,
-[data-adnota-ui] ::-webkit-scrollbar {
+:where([data-adnota-ui])::-webkit-scrollbar,
+:where([data-adnota-ui]) ::-webkit-scrollbar {
   width: 10px;
   height: 10px;
 }
 
-[data-adnota-ui]::-webkit-scrollbar-track,
-[data-adnota-ui] ::-webkit-scrollbar-track {
+:where([data-adnota-ui])::-webkit-scrollbar-track,
+:where([data-adnota-ui]) ::-webkit-scrollbar-track {
   background: transparent;
 }
 
-[data-adnota-ui]::-webkit-scrollbar-thumb,
-[data-adnota-ui] ::-webkit-scrollbar-thumb {
+:where([data-adnota-ui])::-webkit-scrollbar-thumb,
+:where([data-adnota-ui]) ::-webkit-scrollbar-thumb {
   background: rgba(0, 0, 0, 0.15);
   border-radius: 5px;
   border: 2px solid transparent;
   background-clip: padding-box;
 }
 
-[data-adnota-ui]::-webkit-scrollbar-thumb:hover,
-[data-adnota-ui] ::-webkit-scrollbar-thumb:hover {
+:where([data-adnota-ui])::-webkit-scrollbar-thumb:hover,
+:where([data-adnota-ui]) ::-webkit-scrollbar-thumb:hover {
   background: rgba(0, 0, 0, 0.25);
   background-clip: padding-box;
   border: 2px solid transparent;
 }
 
-[data-adnota-ui]::-webkit-scrollbar-corner,
-[data-adnota-ui] ::-webkit-scrollbar-corner {
+:where([data-adnota-ui])::-webkit-scrollbar-corner,
+:where([data-adnota-ui]) ::-webkit-scrollbar-corner {
   background: transparent;
 }
