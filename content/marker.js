@@ -1111,6 +1111,20 @@ document.addEventListener('mousemove', (e) => {
 window.addEventListener('scroll', hideHoverDeleteBtn, { passive: true, capture: true });
 window.addEventListener('resize', hideHoverDeleteBtn, { passive: true });
 
+// Shift down or pointerdown both signal an intent that ends the hover state
+// (drag-to-move, click-to-select, etc). Hiding here closes a gap where neither
+// keydown nor pointerdown emits a mousemove, leaving the ✕ stranded at its
+// last hover position throughout a drag.
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Shift') hideHoverDeleteBtn();
+}, true);
+document.addEventListener('pointerdown', (e) => {
+  // Pointerdown on the ✕ itself is the click that's about to delete — keep it
+  // visible so the click handler sees `hoverDeleteWrapper`.
+  if (e.target === hoverDeleteBtnEl) return;
+  hideHoverDeleteBtn();
+}, true);
+
 function showSelectionUI(wrapper) {
   clearSelection();
   selectedWrapper = wrapper;
