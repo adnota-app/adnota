@@ -145,15 +145,16 @@ Add ability to delete all storage for entire domain from HOME page (you can alre
 - get rid of eraser cursor! (it's ugly... just have a pointer? can we have a white pointer?)
 - fix the resize tool, does it need a HUD? (it's the oldest tool at this point...) Should it have same element fill as eraser tool? It also doesn't set "ACTIVE" when you use the tool in popup.js.
 - FIX HUD MENU DRAG BAR ICONS... (they're way too small!)
+- thin=16px, medium=24px, thick=36px - this works well for lines, but might be too big for text size?
+- some styles from sites are still bleeding into sticky notes.
 
 TODO:
 
-thin=16px, medium=24px, thick=36px - this works well for lines, but might be too big for text size?
 
 get rid of highlighter from PAINT hud. change PAINT to DRAW and consider having an alt+e for ERASE, alt+r for RESIZE, alt+s for STICKY, and alt+d for DRAW. Thoughts?
 Should these shortcuts even be alt? Or just the keys e, r, s, d? 
 
-some styles from sites are still bleeding into sticky notes.
+
 feature: have a "show all work from this page" shortcut, which either SHOWS all your quotes in one place in text so you can copy/paste OR it just puts them all on your clipboard?? EXTRACT FROM PAGE feature, a popup that let's you edit anything you wrote or selected and then copy it to your clipboard.
 
 redo tooltips again on the HUDs....
