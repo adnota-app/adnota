@@ -148,11 +148,32 @@
     }
   }
 
+  // Keep at least this many pixels of the dock on-screen in every direction so
+  // a user can always grab it back. Without this guard the dock can be dragged
+  // fully off the viewport and that off-screen position then persists across
+  // reloads, leaving the dock invisible and unreachable.
+  const MIN_VISIBLE_PX = 40;
+  function clampToViewport(left, top) {
+    const r = dock.getBoundingClientRect();
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    return {
+      left: Math.max(MIN_VISIBLE_PX - r.width, Math.min(vw - MIN_VISIBLE_PX, left)),
+      top:  Math.max(0,                        Math.min(vh - MIN_VISIBLE_PX, top)),
+    };
+  }
+
+  // Same stale-context guard as the V-logo and tool-click handlers: after a
+  // Vellum reload, chrome.storage.local.set throws SYNCHRONOUSLY ("Extension
+  // context invalidated"), so .catch() alone won't help — it only handles
+  // async rejection.
   function persistPosition() {
     if (dock.style.left && dock.style.left !== '50%') {
-      chrome.storage.local.set({
-        [POSITION_KEY]: { left: dock.style.left, top: dock.style.top },
-      }).catch(() => {});
+      try {
+        chrome.storage.local.set({
+          [POSITION_KEY]: { left: dock.style.left, top: dock.style.top },
+        }).catch(() => {});
+      } catch (_) { /* context invalidated after extension reload */ }
     }
   }
 
@@ -180,8 +201,11 @@
       dock.style.cursor = 'grabbing';
       return;
     }
-    dock.style.left = (dragState.startLeft + (e.clientX - dragState.startX)) + 'px';
-    dock.style.top = (dragState.startTop + (e.clientY - dragState.startY)) + 'px';
+    const targetLeft = dragState.startLeft + (e.clientX - dragState.startX);
+    const targetTop  = dragState.startTop  + (e.clientY - dragState.startY);
+    const clamped = clampToViewport(targetLeft, targetTop);
+    dock.style.left = clamped.left + 'px';
+    dock.style.top = clamped.top + 'px';
     dock.style.bottom = 'auto';
     dock.style.transform = 'none';
     e.preventDefault();
@@ -237,6 +261,17 @@
       dock.style.top = pos.top;
       dock.style.bottom = 'auto';
       dock.style.transform = 'none';
+      // Saved position may now be off-screen (window resized to a smaller
+      // display, or pre-clamp build dragged it off). Pull it back in and
+      // re-persist so the dock is reachable from the next load on.
+      const left = parseFloat(pos.left);
+      const top  = parseFloat(pos.top);
+      const clamped = clampToViewport(left, top);
+      if (clamped.left !== left || clamped.top !== top) {
+        dock.style.left = clamped.left + 'px';
+        dock.style.top = clamped.top + 'px';
+        persistPosition();
+      }
     }
     markReady();
   }).catch(markReady);

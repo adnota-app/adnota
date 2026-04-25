@@ -61,7 +61,8 @@ That description doesn't need to be long. "DIV · Trending repositories" is 26 b
 
 
 
-
+NEW IDEA:
+what if we made a NEW extension that turned the elements of a website into a 2d platformer!!! That could be crazy!! and really unique!!!
 
 
 
@@ -149,7 +150,6 @@ TODO:
 
 thin=16px, medium=24px, thick=36px - this works well for lines, but might be too big for text size?
 
-BUG: you can drag toolbar off the screen (and then it saves it's position there!)
 some styles from sites are still bleeding into sticky notes.
 feature: have a "show all work from this page" shortcut, which either SHOWS all your quotes in one place in text so you can copy/paste OR it just puts them all on your clipboard?? EXTRACT FROM PAGE feature, a popup that let's you edit anything you wrote or selected and then copy it to your clipboard.
 

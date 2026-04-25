@@ -988,29 +988,128 @@ function isPointNearShape(wrapper, screenX, screenY) {
 }
 
 // Undoable delete: hides the element, removes from storage, pushes undo to restore both.
+// Shared by the Select-tool ✕ and the hover-✕. The `consumed` guard makes Ctrl+Z
+// and the toast Undo button safely idempotent (matches highlighter.deleteHighlight).
 async function deleteSelectedMarker(wrapper) {
   const uuid = wrapper.dataset.uuid;
   const payload = wrapper._vellumPayload;
 
-  // Hide immediately
   wrapper.style.display = 'none';
   clearSelection();
+  hideHoverDeleteBtn();
 
-  // Delete from storage
   if (window.VellumStorage) {
     await window.VellumStorage.deleteItem(location.hostname, 'uuid', uuid);
   }
 
-  // Push undo: re-show the wrapper and re-save to storage
-  window.VellumUndo.push({
+  let consumed = false;
+  const undoEntry = {
     undo: async () => {
+      if (consumed) return;
+      consumed = true;
       wrapper.style.display = '';
       if (window.VellumStorage && payload) {
         await window.VellumStorage.saveItem(location.hostname, location.pathname, payload);
       }
+      window.VellumUndo.remove(undoEntry);
     }
+  };
+  window.VellumUndo.push(undoEntry);
+
+  window.VellumUI?.showToast?.('Marker deleted', {
+    id: 'vellum-marker-toast',
+    onUndo: () => undoEntry.undo(),
   });
 }
+
+// ── Hover delete ✕ for painted markers ──────────────────────────────────────
+// Same pattern as the highlighter's hover-✕: a single floating button that
+// follows whichever marker the cursor is over. Marker wrappers are
+// pointer-events: none by default (so links underneath stay clickable), so we
+// hit-test off mousemove rather than per-element pointerover. Suppressed in
+// select / shift modes — those have their own select-box ✕ affordance.
+let hoverDeleteBtnEl = null;
+let hoverDeleteWrapper = null;
+
+function ensureHoverDeleteBtn() {
+  if (hoverDeleteBtnEl) return hoverDeleteBtnEl;
+  hoverDeleteBtnEl = document.createElement('div');
+  hoverDeleteBtnEl.className = 'vellum-select-delete vellum-marker-hover-delete';
+  hoverDeleteBtnEl.setAttribute('data-vellum-ui', '1');
+  hoverDeleteBtnEl.setAttribute('title', 'Delete');
+  hoverDeleteBtnEl.textContent = '✕';
+  hoverDeleteBtnEl.style.position = 'fixed';
+  hoverDeleteBtnEl.style.display = 'none';
+  hoverDeleteBtnEl.addEventListener('click', async (e) => {
+    e.stopPropagation();
+    e.preventDefault();
+    const wrapper = hoverDeleteWrapper;
+    if (!wrapper) return;
+    await deleteSelectedMarker(wrapper);
+  });
+  document.documentElement.appendChild(hoverDeleteBtnEl);
+  return hoverDeleteBtnEl;
+}
+
+function hideHoverDeleteBtn() {
+  if (hoverDeleteBtnEl) hoverDeleteBtnEl.style.display = 'none';
+  hoverDeleteWrapper = null;
+}
+
+function showHoverDeleteBtn(wrapper) {
+  const el = ensureHoverDeleteBtn();
+  const bbox = getShapeBBox(wrapper);
+  const SIZE = 20; // matches .vellum-select-delete width/height
+  let left = bbox.left + bbox.width - SIZE / 2;
+  let top = bbox.top - SIZE / 2;
+  left = Math.max(2, Math.min(window.innerWidth - SIZE - 2, left));
+  top = Math.max(2, Math.min(window.innerHeight - SIZE - 2, top));
+  el.style.left = left + 'px';
+  el.style.top = top + 'px';
+  el.style.display = 'flex';
+  hoverDeleteWrapper = wrapper;
+}
+
+let pendingMarkerHitTest = 0;
+let lastMarkerPointer = null;
+document.addEventListener('mousemove', (e) => {
+  lastMarkerPointer = { x: e.clientX, y: e.clientY, target: e.target };
+  if (pendingMarkerHitTest) return;
+  pendingMarkerHitTest = requestAnimationFrame(() => {
+    pendingMarkerHitTest = 0;
+    if (!lastMarkerPointer) return;
+    // Suppressed when paint is hidden, or when select/shift mode owns the delete UI.
+    const html = document.documentElement;
+    if (
+      html.classList.contains('vellum-hidden') ||
+      html.classList.contains('vellum-select-mode') ||
+      html.classList.contains('vellum-shift-mode')
+    ) {
+      hideHoverDeleteBtn();
+      return;
+    }
+    // Cursor on the ✕ itself → keep it visible.
+    if (hoverDeleteBtnEl && lastMarkerPointer.target === hoverDeleteBtnEl) return;
+    // Any other Vellum UI (dock, sticky, toolbar) → stand down.
+    if (window.VellumUI?.isVellumElement(lastMarkerPointer.target)) {
+      hideHoverDeleteBtn();
+      return;
+    }
+    const wrapper = hitTestMarker(lastMarkerPointer.x, lastMarkerPointer.y);
+    // If the hovered wrapper is already selected (post SHIFT+drag, or any active
+    // selection), the Select-tool's select-box ✕ is already painted on it — a
+    // second hover-✕ stacks underneath and looks like a doubled ring.
+    if (!wrapper || wrapper === selectedWrapper) {
+      hideHoverDeleteBtn();
+      return;
+    }
+    showHoverDeleteBtn(wrapper);
+  });
+}, { passive: true });
+
+// Viewport changes invalidate cached bbox; next mousemove re-tests.
+window.addEventListener('scroll', hideHoverDeleteBtn, { passive: true, capture: true });
+window.addEventListener('resize', hideHoverDeleteBtn, { passive: true });
 
 function showSelectionUI(wrapper) {
   clearSelection();

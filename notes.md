@@ -64,7 +64,7 @@ The verdict: Vellum is technically excellent, philosophically interesting, and i
       "description": "Toggle CSS Nudge (Layout) Mode"
     }
 
-
+chrome.storage.local.remove('vellumDockPosition')
 
     turn on debug logging for bubbling up parent elements:
     localStorage.setItem('vellum-debug-bubble', '1')
