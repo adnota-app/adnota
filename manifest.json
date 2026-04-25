@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Vellum",
+  "name": "Adnota",
   "version": "0.1.0",
-  "description": "The Persistent Canvas. Erase distracting elements from the web permanently.",
+  "description": "Annotate the web. Erase, highlight, draw, and annotate any page — persistent across sessions, stored privately on your machine.",
   "permissions": [
     "storage",
     "activeTab",
@@ -27,7 +27,7 @@
   },
   "action": {
     "default_popup": "popup/index.html",
-    "default_title": "Vellum"
+    "default_title": "Adnota"
   },
   "commands": {
     "toggle-eraser": {

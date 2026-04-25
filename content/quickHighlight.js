@@ -64,8 +64,8 @@
 
     const logo = document.createElement('span');
     logo.className = 'vellum-qh-logo';
-    logo.textContent = 'V';
-    logo.setAttribute('title', 'Vellum');
+    logo.textContent = 'A';
+    logo.setAttribute('title', 'Adnota');
     row.appendChild(logo);
 
     for (const theme of THEMES) {

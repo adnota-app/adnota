@@ -13,7 +13,7 @@ function showBrokenAnchorsToast(count) {
   toast.className = 'vellum-toast';
   toast.setAttribute('data-vellum-ui', '1');
   toast.innerHTML = `
-    <div class="vellum-toast-logo">V</div>
+    <div class="vellum-toast-logo">A</div>
     <span class="vellum-toast-message">${count} saved edit${plural} couldn't be reapplied — this page may have changed.</span>
     <div class="vellum-toast-actions">
       <span class="vellum-toast-btn" id="vellum-broken-dismiss">Dismiss</span>
