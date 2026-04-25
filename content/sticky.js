@@ -29,8 +29,8 @@ const _inlineTags = new Set([
 function findAnchorTarget(el) {
   let current = el;
   while (current && current !== document.body && current !== document.documentElement) {
-    // Skip Vellum's own UI
-    if (current.closest('[data-vellum-ui]')) {
+    // Skip Adnota's own UI
+    if (current.closest('[data-adnota-ui]')) {
       current = current.parentElement;
       continue;
     }
@@ -48,22 +48,22 @@ function findAnchorTarget(el) {
 // ---------------------------------------------------------------------------
 
 const STICKY_THEMES = {
-  'vellum-theme-yellow': { bg: '#FBE6A1', swatch: 'rgb(251, 230, 161)' },
-  'vellum-theme-green':  { bg: '#B8F5B8', swatch: 'rgb(184, 245, 184)' },
-  'vellum-theme-blue':   { bg: '#A3DDFB', swatch: 'rgb(163, 221, 251)' },
-  'vellum-theme-pink':   { bg: '#FFC0C8', swatch: 'rgb(255, 192, 200)' },
-  'vellum-theme-white':  { bg: '#F5F5F0', swatch: 'rgb(245, 245, 240)' },
+  'adnota-theme-yellow': { bg: '#FBE6A1', swatch: 'rgb(251, 230, 161)' },
+  'adnota-theme-green':  { bg: '#B8F5B8', swatch: 'rgb(184, 245, 184)' },
+  'adnota-theme-blue':   { bg: '#A3DDFB', swatch: 'rgb(163, 221, 251)' },
+  'adnota-theme-pink':   { bg: '#FFC0C8', swatch: 'rgb(255, 192, 200)' },
+  'adnota-theme-white':  { bg: '#F5F5F0', swatch: 'rgb(245, 245, 240)' },
 };
 
 // Track the active note color. Defaults to yellow, persisted to storage.
-let activeStickyColor = 'vellum-theme-yellow';
+let activeStickyColor = 'adnota-theme-yellow';
 
 // Restore persisted sticky color on load.
-chrome.storage.local.get(['vellumStickyColor'], (result) => {
-  if (result.vellumStickyColor && STICKY_THEMES[result.vellumStickyColor]) {
-    activeStickyColor = result.vellumStickyColor;
+chrome.storage.local.get(['adnotaStickyColor'], (result) => {
+  if (result.adnotaStickyColor && STICKY_THEMES[result.adnotaStickyColor]) {
+    activeStickyColor = result.adnotaStickyColor;
     updateStickySwatches();
-    if (window.VellumState.mode === 'sticky') applyStickyCursor();
+    if (window.AdnotaState.mode === 'sticky') applyStickyCursor();
   }
 });
 
@@ -85,16 +85,16 @@ function applyStickyCursor() {
   const svg = stickyNoteSVG(fill).replace(/\n/g, '').replace(/\s+/g, ' ');
   // Hotspot (1, 1) — top-left of the note aligns with the click point, since
   // that's the anchor for placement.
-  const cursor = window.VellumCursor.svgCursor(svg, 1, 1, 'crosshair');
-  window.VellumCursor.set(cursor);
+  const cursor = window.AdnotaCursor.svgCursor(svg, 1, 1, 'crosshair');
+  window.AdnotaCursor.set(cursor);
 }
-window.VellumSticky = { applyCursor: applyStickyCursor };
+window.AdnotaSticky = { applyCursor: applyStickyCursor };
 
 // ---------------------------------------------------------------------------
 // Sticky HUD Toolbar — frosted glass bar, matches marker/eraser aesthetic
 // ---------------------------------------------------------------------------
 
-// Dock body \u2014 mounts into VellumDock when sticky mode is active. The dock
+// Dock body \u2014 mounts into AdnotaDock when sticky mode is active. The dock
 // owns the drag handle + V logo + tool row; we own swatches + trash + undo.
 const stickyBody = document.createElement('div');
 stickyBody.style.display = 'inline-flex';
@@ -104,8 +104,8 @@ stickyBody.style.alignItems = 'center';
 const stickySwatches = {};
 for (const [themeClass, info] of Object.entries(STICKY_THEMES)) {
   const swatch = document.createElement('div');
-  swatch.className = 'vellum-sticky-swatch';
-  let tooltipName = themeClass.replace('vellum-theme-', '');
+  swatch.className = 'adnota-sticky-swatch';
+  let tooltipName = themeClass.replace('adnota-theme-', '');
   tooltipName = tooltipName.charAt(0).toUpperCase() + tooltipName.slice(1);
   swatch.setAttribute('data-tooltip', tooltipName);
   swatch.innerHTML = stickyNoteSVG(info.swatch);
@@ -113,9 +113,9 @@ for (const [themeClass, info] of Object.entries(STICKY_THEMES)) {
   swatch.onclick = (e) => {
     e.stopPropagation();
     activeStickyColor = themeClass;
-    chrome.storage.local.set({ vellumStickyColor: themeClass });
+    chrome.storage.local.set({ adnotaStickyColor: themeClass });
     updateStickySwatches();
-    if (window.VellumState.mode === 'sticky') applyStickyCursor();
+    if (window.AdnotaState.mode === 'sticky') applyStickyCursor();
   };
   stickySwatches[themeClass] = swatch;
   stickyBody.appendChild(swatch);
@@ -129,20 +129,20 @@ function updateStickySwatches() {
 updateStickySwatches();
 
 // Divider
-stickyBody.appendChild(Object.assign(document.createElement('div'), { className: 'vellum-toolbar-divider vellum-toolbar-divider-orange' }));
+stickyBody.appendChild(Object.assign(document.createElement('div'), { className: 'adnota-toolbar-divider adnota-toolbar-divider-orange' }));
 
 // Trash — clears all sticky notes on this page
-const stickyTrashBtn = window.VellumUI.createTrashButton({
+const stickyTrashBtn = window.AdnotaUI.createTrashButton({
   singular: 'sticky note',
   plural: 'sticky notes',
   actionTypes: ['NOTE'],
 });
-stickyTrashBtn.classList.add('vellum-undo-btn-orange');
+stickyTrashBtn.classList.add('adnota-undo-btn-orange');
 stickyBody.appendChild(stickyTrashBtn);
 
 // Undo
-const stickyUndoBtn = window.VellumUI.createUndoButton();
-stickyUndoBtn.classList.add('vellum-undo-btn-orange');
+const stickyUndoBtn = window.AdnotaUI.createUndoButton();
+stickyUndoBtn.classList.add('adnota-undo-btn-orange');
 stickyBody.appendChild(stickyUndoBtn);
 
 // ---------------------------------------------------------------------------
@@ -151,21 +151,21 @@ stickyBody.appendChild(stickyUndoBtn);
 
 chrome.runtime.onMessage.addListener((request) => {
   if (request.action === 'toggle-sticky') {
-    window.VellumState.set({ mode: window.VellumState.mode === 'sticky' ? null : 'sticky' });
+    window.AdnotaState.set({ mode: window.AdnotaState.mode === 'sticky' ? null : 'sticky' });
   }
 });
 
-// React to VellumState changes — mount/unmount dock body.
+// React to AdnotaState changes — mount/unmount dock body.
 let stickyDockMounted = false;
-window.VellumState.subscribe(state => {
-  document.body.classList.toggle('vellum-sticky-active', state.mode === 'sticky');
+window.AdnotaState.subscribe(state => {
+  document.body.classList.toggle('adnota-sticky-active', state.mode === 'sticky');
 
   const isSticky = state.mode === 'sticky';
   if (isSticky && !stickyDockMounted) {
-    window.VellumDock.mount('sticky', () => stickyBody);
+    window.AdnotaDock.mount('sticky', () => stickyBody);
     stickyDockMounted = true;
   } else if (!isSticky && stickyDockMounted) {
-    window.VellumDock.unmount('sticky');
+    window.AdnotaDock.unmount('sticky');
     stickyDockMounted = false;
   }
 });
@@ -178,7 +178,7 @@ window.VellumState.subscribe(state => {
 // highlight popup's "add sticky" shortcut. Builds anchor + placement, renders,
 // saves, and pushes an undo entry. Returns the new note's uuid.
 async function createStickyAt(clientX, clientY, { targetEl = null, theme = null } = {}) {
-  window.VellumVisibility.show();
+  window.AdnotaVisibility.show();
 
   const placement = clientToPlacement(clientX, clientY);
 
@@ -209,8 +209,8 @@ async function createStickyAt(clientX, clientY, { targetEl = null, theme = null 
 
   window.StickyEngine.renderNote(placement, comments, uuid, true, null, resolvedTheme, anchor, anchorOffset, '');
 
-  if (window.VellumStorage) {
-    await window.VellumStorage.saveNote(
+  if (window.AdnotaStorage) {
+    await window.AdnotaStorage.saveNote(
       location.hostname, location.pathname, uuid,
       { placement, comments, theme: resolvedTheme, anchor, anchorOffset, tag: '' }
     );
@@ -219,25 +219,25 @@ async function createStickyAt(clientX, clientY, { targetEl = null, theme = null 
   const domain = location.hostname;
   const undoEntry = {
     undo: async () => {
-      const container = document.querySelector(`.vellum-sticky-container[data-uuid="${uuid}"]`);
+      const container = document.querySelector(`.adnota-sticky-container[data-uuid="${uuid}"]`);
       if (container) container.remove();
       activeNotes.delete(uuid);
-      if (window.VellumStorage) {
-        await window.VellumStorage.deleteItem(domain, 'uuid', uuid);
+      if (window.AdnotaStorage) {
+        await window.AdnotaStorage.deleteItem(domain, 'uuid', uuid);
       }
-      window.VellumUndo.remove(undoEntry);
+      window.AdnotaUndo.remove(undoEntry);
     }
   };
-  window.VellumUndo.push(undoEntry);
+  window.AdnotaUndo.push(undoEntry);
 
   return uuid;
 }
 
 document.addEventListener('click', async (e) => {
-  if (window.VellumState.mode !== 'sticky') return;
+  if (window.AdnotaState.mode !== 'sticky') return;
 
-  // Don't fire through any Vellum UI (dock, existing notes, toasts, etc.)
-  if (window.VellumUI.isVellumElement(e.target)) return;
+  // Don't fire through any Adnota UI (dock, existing notes, toasts, etc.)
+  if (window.AdnotaUI.isAdnotaElement(e.target)) return;
 
   e.preventDefault();
   e.stopPropagation();
@@ -310,17 +310,17 @@ window.StickyEngine = {
    * @param {string}  uuid
    * @param {boolean} isNew         Focus textarea when true.
    * @param {object}  dimensions    { width, height } or null
-   * @param {string}  theme         CSS class name, e.g. 'vellum-theme-yellow'
+   * @param {string}  theme         CSS class name, e.g. 'adnota-theme-yellow'
    * @param {object}  anchor        FuzzyAnchor data or null
    * @param {object}  anchorOffset  { dx, dy } pixel offset from anchor element
    */
-  renderNote(placement, comments, uuid, isNew = false, dimensions = null, theme = 'vellum-theme-yellow', anchor = null, anchorOffset = null, tag = '') {
+  renderNote(placement, comments, uuid, isNew = false, dimensions = null, theme = 'adnota-theme-yellow', anchor = null, anchorOffset = null, tag = '') {
     // Guard duplicate renders.
-    if (document.querySelector(`.vellum-sticky-container[data-uuid="${uuid}"]`)) return;
+    if (document.querySelector(`.adnota-sticky-container[data-uuid="${uuid}"]`)) return;
 
     const container = document.createElement('div');
-    container.className = 'vellum-sticky-container ' + (theme || 'vellum-theme-yellow');
-    container.setAttribute('data-vellum-ui', '1');
+    container.className = 'adnota-sticky-container ' + (theme || 'adnota-theme-yellow');
+    container.setAttribute('data-adnota-ui', '1');
     container.dataset.uuid = uuid;
     container.style.position = 'absolute';
 
@@ -330,19 +330,19 @@ window.StickyEngine = {
     const ts  = `${pad(createdAt.getMonth() + 1)}/${pad(createdAt.getDate())}/${String(createdAt.getFullYear()).slice(-2)} ${pad(createdAt.getHours())}:${pad(createdAt.getMinutes())}`;
 
     container.innerHTML = `
-      <div class="vellum-sticky-card">
-        <div class="vellum-sticky-header">
-          <span class="vellum-timestamp">${ts}</span>
-          <button class="vellum-trash-btn" data-tooltip="Delete note" aria-label="Delete note">
+      <div class="adnota-sticky-card">
+        <div class="adnota-sticky-header">
+          <span class="adnota-timestamp">${ts}</span>
+          <button class="adnota-trash-btn" data-tooltip="Delete note" aria-label="Delete note">
             <svg width="9" height="9" viewBox="0 0 9 9" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
               <line x1="1" y1="1" x2="8" y2="8"/><line x1="8" y1="1" x2="1" y2="8"/>
             </svg>
           </button>
         </div>
-        <textarea class="vellum-sticky-textarea" placeholder="Take a note...">${initialText}</textarea>
-        <div class="vellum-sticky-tag-row" data-vellum-ui="1">
-          <span class="vellum-sticky-tag-icon">#</span>
-          <input class="vellum-sticky-tag-input" type="text" placeholder="tag" maxlength="40" />
+        <textarea class="adnota-sticky-textarea" placeholder="Take a note...">${initialText}</textarea>
+        <div class="adnota-sticky-tag-row" data-adnota-ui="1">
+          <span class="adnota-sticky-tag-icon">#</span>
+          <input class="adnota-sticky-tag-input" type="text" placeholder="tag" maxlength="40" />
         </div>
       </div>
     `;
@@ -351,7 +351,7 @@ window.StickyEngine = {
 
     // Apply stored dimensions before first paint so the restored size matches
     // exactly what the user left the note at.
-    const card = container.querySelector('.vellum-sticky-card');
+    const card = container.querySelector('.adnota-sticky-card');
     if (dimensions && dimensions.width && dimensions.height) {
       card.style.width  = `${dimensions.width}px`;
       card.style.height = `${dimensions.height}px`;
@@ -364,14 +364,14 @@ window.StickyEngine = {
       placement: { ...placement },
       anchor: anchor || null,
       anchorOffset: anchorOffset || null,
-      theme: theme || 'vellum-theme-yellow',
-      tag: window.VellumTags ? window.VellumTags.normalize(tag) : (tag || ''),
+      theme: theme || 'adnota-theme-yellow',
+      tag: window.AdnotaTags ? window.AdnotaTags.normalize(tag) : (tag || ''),
     };
     activeNotes.set(uuid, noteState);
 
     // Preload tag into the input — using .value rather than template
     // interpolation so we don't have to escape HTML into an attribute.
-    const tagInput = container.querySelector('.vellum-sticky-tag-input');
+    const tagInput = container.querySelector('.adnota-sticky-tag-input');
     if (tagInput) tagInput.value = noteState.tag;
 
     this.updatePosition(uuid);
@@ -386,9 +386,9 @@ window.StickyEngine = {
         const { inlineSize: width, blockSize: height } = entry.borderBoxSize[0];
         clearTimeout(resizeTimeout);
         resizeTimeout = setTimeout(async () => {
-          if (!window.VellumStorage) return;
+          if (!window.AdnotaStorage) return;
           const savedDimensions = { width: Math.round(width), height: Math.round(height) };
-          await window.VellumStorage.saveNote(
+          await window.AdnotaStorage.saveNote(
             location.hostname, location.pathname, uuid,
             { placement: noteState.placement, comments, theme: noteState.theme, anchor: noteState.anchor, anchorOffset: noteState.anchorOffset, dimensions: savedDimensions, tag: noteState.tag }
           );
@@ -412,13 +412,13 @@ window.StickyEngine = {
     });
 
     // ── Drag on header ───────────────────────────────────────────────────────
-    const header    = container.querySelector('.vellum-sticky-header');
+    const header    = container.querySelector('.adnota-sticky-header');
     let isDragging  = false;
     let dragOffsetX = 0;
     let dragOffsetY = 0;
 
     header.addEventListener('pointerdown', (e) => {
-      if (e.target.closest('.vellum-trash-btn')) return;
+      if (e.target.closest('.adnota-trash-btn')) return;
       isDragging = true;
       header.setPointerCapture(e.pointerId);
 
@@ -482,8 +482,8 @@ window.StickyEngine = {
         }
       }
 
-      if (window.VellumStorage) {
-        await window.VellumStorage.saveNote(
+      if (window.AdnotaStorage) {
+        await window.AdnotaStorage.saveNote(
           location.hostname, location.pathname, uuid,
           { placement: updatedPlacement, comments, theme: noteState.theme, anchor: noteState.anchor, anchorOffset: noteState.anchorOffset, tag: noteState.tag }
         );
@@ -498,9 +498,9 @@ window.StickyEngine = {
     textarea.addEventListener('input', () => {
       clearTimeout(saveTimeout);
       saveTimeout = setTimeout(async () => {
-        if (!window.VellumStorage) return;
+        if (!window.AdnotaStorage) return;
         comments[0].text = textarea.value;
-        await window.VellumStorage.saveNote(
+        await window.AdnotaStorage.saveNote(
           location.hostname, location.pathname, uuid,
           { placement: noteState.placement, comments, theme: noteState.theme, anchor: noteState.anchor, anchorOffset: noteState.anchorOffset, tag: noteState.tag }
         );
@@ -511,12 +511,12 @@ window.StickyEngine = {
     // Tags ride through the same saveNote merge path as every other field; we
     // keep a separate debounce timer so typing into the tag input doesn't
     // interfere with (and isn't interfered by) the textarea autosave.
-    if (tagInput && window.VellumTags) {
-      window.VellumTags.buildAutocompleteDropdown(tagInput);
+    if (tagInput && window.AdnotaTags) {
+      window.AdnotaTags.buildAutocompleteDropdown(tagInput);
 
       const commitTag = async () => {
-        if (!window.VellumStorage) return;
-        await window.VellumStorage.saveNote(
+        if (!window.AdnotaStorage) return;
+        await window.AdnotaStorage.saveNote(
           location.hostname, location.pathname, uuid,
           { placement: noteState.placement, comments, theme: noteState.theme, anchor: noteState.anchor, anchorOffset: noteState.anchorOffset, tag: noteState.tag }
         );
@@ -524,14 +524,14 @@ window.StickyEngine = {
 
       let tagSaveTimeout;
       tagInput.addEventListener('input', () => {
-        noteState.tag = window.VellumTags.normalize(tagInput.value);
+        noteState.tag = window.AdnotaTags.normalize(tagInput.value);
         clearTimeout(tagSaveTimeout);
         tagSaveTimeout = setTimeout(commitTag, DEBOUNCE_MS);
       });
       tagInput.addEventListener('blur', () => {
         // Snap the displayed value to the normalized form (trim, collapse
         // internal whitespace) so what the user sees matches what we stored.
-        const normalized = window.VellumTags.normalize(tagInput.value);
+        const normalized = window.AdnotaTags.normalize(tagInput.value);
         if (tagInput.value !== normalized) tagInput.value = normalized;
         noteState.tag = normalized;
         clearTimeout(tagSaveTimeout);
@@ -540,7 +540,7 @@ window.StickyEngine = {
     }
 
     // ── Delete with undo ─────────────────────────────────────────────────────
-    const trashBtn = container.querySelector('.vellum-trash-btn');
+    const trashBtn = container.querySelector('.adnota-trash-btn');
     trashBtn.addEventListener('click', () => {
       container.style.display = 'none';
 
@@ -552,11 +552,11 @@ window.StickyEngine = {
         committed = true;
         clearTimeout(deleteTimeout);
         container.style.display = 'block';
-        window.VellumUI.dismissToast(toast);
-        window.VellumUndo.remove(undoEntry);
+        window.AdnotaUI.dismissToast(toast);
+        window.AdnotaUndo.remove(undoEntry);
       };
 
-      const toast = window.VellumUI.showToast('Note deleted', {
+      const toast = window.AdnotaUI.showToast('Note deleted', {
         onUndo: performUndo,
         timeout: 0, // managed by deleteTimeout below
       });
@@ -564,17 +564,17 @@ window.StickyEngine = {
       deleteTimeout = setTimeout(async () => {
         if (committed) return;
         committed = true;
-        window.VellumUndo.remove(undoEntry);
-        window.VellumUI.dismissToast(toast);
+        window.AdnotaUndo.remove(undoEntry);
+        window.AdnotaUI.dismissToast(toast);
         activeNotes.delete(uuid);
         container.remove();
-        if (window.VellumStorage) {
-          await window.VellumStorage.deleteItem(location.hostname, 'uuid', uuid);
+        if (window.AdnotaStorage) {
+          await window.AdnotaStorage.deleteItem(location.hostname, 'uuid', uuid);
         }
       }, 5000);
 
       const undoEntry = { undo: performUndo };
-      window.VellumUndo.push(undoEntry);
+      window.AdnotaUndo.push(undoEntry);
     });
   },
 

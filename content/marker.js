@@ -40,13 +40,13 @@ function simplifyPathRDP(points, epsilon) {
 // or a raw hex (from the eyedropper swatch).
 function getStrokeColor() {
   const themes = {
-    'vellum-theme-yellow': '#fbc02d',
-    'vellum-theme-green': '#388e3c',
-    'vellum-theme-blue': '#1976d2',
-    'vellum-theme-pink': '#c2185b',
-    'vellum-theme-black': '#111'
+    'adnota-theme-yellow': '#fbc02d',
+    'adnota-theme-green': '#388e3c',
+    'adnota-theme-blue': '#1976d2',
+    'adnota-theme-pink': '#c2185b',
+    'adnota-theme-black': '#111'
   };
-  const c = window.VellumState.color;
+  const c = window.AdnotaState.color;
   if (typeof c === 'string' && (c.startsWith('#') || c.startsWith('rgb'))) return c;
   return themes[c] || '#fbc02d';
 }
@@ -60,7 +60,7 @@ const _freehandModes = new Set(['pen']);
 const _shapeModes = new Set(['arrow', 'rect', 'ellipse']);
 
 function isToolbarHit(e) {
-  const toolbar = document.getElementById('vellum-highlighter-widget');
+  const toolbar = document.getElementById('adnota-highlighter-widget');
   if (!toolbar) return false;
   if (toolbar.contains(e.target)) return true;
   const rect = toolbar.getBoundingClientRect();
@@ -80,28 +80,28 @@ function findAnchorBlock(screenX, screenY) {
 }
 
 function restoreOverlay() {
-  const stillActive = window.VellumState.isVisible && _overlayModes.has(window.VellumState.mode);
+  const stillActive = window.AdnotaState.isVisible && _overlayModes.has(window.AdnotaState.mode);
   captureSvg.style.display = stillActive ? 'block' : 'none';
   captureSvg.style.pointerEvents = stillActive ? 'auto' : 'none';
 }
 
 // ── Save + undo helper ──────────────────────────────────────────────────────
 async function saveMarkerPayload(blockElement, payload) {
-  window.VellumMarker.renderMarker(blockElement, payload);
+  window.AdnotaMarker.renderMarker(blockElement, payload);
   restoreOverlay();
 
-  if (window.VellumStorage) {
-    await window.VellumStorage.saveItem(location.hostname, location.pathname, payload);
+  if (window.AdnotaStorage) {
+    await window.AdnotaStorage.saveItem(location.hostname, location.pathname, payload);
   }
 
   const capturedUuid = payload.uuid;
   const capturedDomain = location.hostname;
-  window.VellumUndo.push({
+  window.AdnotaUndo.push({
     undo: async () => {
-      const el = document.querySelector(`.vellum-marker-wrapper[data-uuid="${capturedUuid}"]`);
+      const el = document.querySelector(`.adnota-marker-wrapper[data-uuid="${capturedUuid}"]`);
       if (el) el.remove();
-      if (window.VellumStorage) {
-        await window.VellumStorage.deleteItem(capturedDomain, 'uuid', capturedUuid);
+      if (window.AdnotaStorage) {
+        await window.AdnotaStorage.deleteItem(capturedDomain, 'uuid', capturedUuid);
       }
     }
   });
@@ -115,7 +115,7 @@ function handlePenDown(e) {
   currentPathNodes = [{ x: e.clientX, y: e.clientY }];
   capturePath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
   capturePath.setAttribute('stroke', getStrokeColor());
-  capturePath.setAttribute('stroke-width', String(window.VellumState.strokeWidth));
+  capturePath.setAttribute('stroke-width', String(window.AdnotaState.strokeWidth));
   capturePath.setAttribute('fill', 'none');
   capturePath.setAttribute('stroke-linecap', 'round');
   capturePath.setAttribute('stroke-linejoin', 'round');
@@ -136,7 +136,7 @@ async function handlePenUp(e) {
   if (currentPathNodes.length < 3) {
     capturePath.remove();
     capturePath = null;
-    window.VellumState.set({ mode: null });
+    window.AdnotaState.set({ mode: null });
     return;
   }
 
@@ -158,7 +158,7 @@ async function handlePenUp(e) {
     shapeType: 'freehand',
     drawing: normalizedPath,
     color: getStrokeColor(),
-    strokeWidth: window.VellumState.strokeWidth
+    strokeWidth: window.AdnotaState.strokeWidth
   };
 
   capturePath.remove();
@@ -187,22 +187,22 @@ function handleArrowDown(e) {
   captureShape.setAttribute('x2', e.clientX);
   captureShape.setAttribute('y2', e.clientY);
   captureShape.setAttribute('stroke', getStrokeColor());
-  captureShape.setAttribute('stroke-width', String(window.VellumState.strokeWidth));
+  captureShape.setAttribute('stroke-width', String(window.AdnotaState.strokeWidth));
   captureShape.setAttribute('stroke-linecap', 'round');
 
   // Live arrowhead marker
-  const defs = captureSvg.querySelector('defs#vellum-live-defs') || (() => {
+  const defs = captureSvg.querySelector('defs#adnota-live-defs') || (() => {
     const d = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
-    d.id = 'vellum-live-defs';
+    d.id = 'adnota-live-defs';
     captureSvg.insertBefore(d, captureSvg.firstChild);
     return d;
   })();
   // Remove old live arrow marker if any
-  const oldMarker = defs.querySelector('#vellum-live-arrowhead');
+  const oldMarker = defs.querySelector('#adnota-live-arrowhead');
   if (oldMarker) oldMarker.remove();
 
   const marker = document.createElementNS('http://www.w3.org/2000/svg', 'marker');
-  marker.setAttribute('id', 'vellum-live-arrowhead');
+  marker.setAttribute('id', 'adnota-live-arrowhead');
   marker.setAttribute('markerWidth', '6');
   marker.setAttribute('markerHeight', '6');
   marker.setAttribute('refX', '5');
@@ -215,7 +215,7 @@ function handleArrowDown(e) {
   marker.appendChild(polygon);
   defs.appendChild(marker);
 
-  captureShape.setAttribute('marker-end', 'url(#vellum-live-arrowhead)');
+  captureShape.setAttribute('marker-end', 'url(#adnota-live-arrowhead)');
   captureSvg.appendChild(captureShape);
 }
 
@@ -258,7 +258,7 @@ async function handleArrowUp(e) {
     drawing: normalizedPath,
     isArrow: true,
     color: getStrokeColor(),
-    strokeWidth: window.VellumState.strokeWidth
+    strokeWidth: window.AdnotaState.strokeWidth
   };
 
   captureShape.remove();
@@ -281,12 +281,12 @@ function handleRectDown(e) {
   captureShape.setAttribute('height', '0');
   captureShape.setAttribute('rx', '2');
   const color = getStrokeColor();
-  if (window.VellumState.filled) {
+  if (window.AdnotaState.filled) {
     captureShape.setAttribute('fill', color);
     captureShape.setAttribute('stroke', 'none');
   } else {
     captureShape.setAttribute('stroke', color);
-    captureShape.setAttribute('stroke-width', String(window.VellumState.strokeWidth));
+    captureShape.setAttribute('stroke-width', String(window.AdnotaState.strokeWidth));
     captureShape.setAttribute('fill', 'none');
     captureShape.setAttribute('stroke-linejoin', 'round');
   }
@@ -337,8 +337,8 @@ async function handleRectUp(e) {
       h:  parseFloat((h / box.height * 100).toFixed(2)),
     },
     color: getStrokeColor(),
-    strokeWidth: window.VellumState.strokeWidth,
-    filled: !!window.VellumState.filled
+    strokeWidth: window.AdnotaState.strokeWidth,
+    filled: !!window.AdnotaState.filled
   };
 
   captureShape.remove();
@@ -360,12 +360,12 @@ function handleEllipseDown(e) {
   captureShape.setAttribute('rx', '0');
   captureShape.setAttribute('ry', '0');
   const color = getStrokeColor();
-  if (window.VellumState.filled) {
+  if (window.AdnotaState.filled) {
     captureShape.setAttribute('fill', color);
     captureShape.setAttribute('stroke', 'none');
   } else {
     captureShape.setAttribute('stroke', color);
-    captureShape.setAttribute('stroke-width', String(window.VellumState.strokeWidth));
+    captureShape.setAttribute('stroke-width', String(window.AdnotaState.strokeWidth));
     captureShape.setAttribute('fill', 'none');
   }
   captureSvg.appendChild(captureShape);
@@ -416,8 +416,8 @@ async function handleEllipseUp(e) {
       ry: parseFloat((ry / box.height * 100).toFixed(2)),
     },
     color: getStrokeColor(),
-    strokeWidth: window.VellumState.strokeWidth,
-    filled: !!window.VellumState.filled
+    strokeWidth: window.AdnotaState.strokeWidth,
+    filled: !!window.AdnotaState.filled
   };
 
   captureShape.remove();
@@ -435,7 +435,7 @@ const _textFontSizes = { 2: 16, 4: 24, 8: 36 };
 let activeTextEditor = null; // the currently open editable text element
 
 function getTextFontSize() {
-  return _textFontSizes[window.VellumState.strokeWidth] || 24;
+  return _textFontSizes[window.AdnotaState.strokeWidth] || 24;
 }
 
 function commitActiveText() {
@@ -462,13 +462,13 @@ function commitActiveText() {
   const elRect = editor.el.getBoundingClientRect();
 
   // If this is an edit of an existing text, update payload in place
-  if (editor.isEdit && editor.wrapper._vellumPayload) {
-    const payload = editor.wrapper._vellumPayload;
+  if (editor.isEdit && editor.wrapper._adnotaPayload) {
+    const payload = editor.wrapper._adnotaPayload;
     payload.text = text;
     // Re-save
-    if (window.VellumStorage) {
-      window.VellumStorage.deleteItem(location.hostname, 'uuid', payload.uuid).then(() => {
-        window.VellumStorage.saveItem(location.hostname, location.pathname, payload);
+    if (window.AdnotaStorage) {
+      window.AdnotaStorage.deleteItem(location.hostname, 'uuid', payload.uuid).then(() => {
+        window.AdnotaStorage.saveItem(location.hostname, location.pathname, payload);
       });
     }
     return;
@@ -489,7 +489,7 @@ function commitActiveText() {
     },
     color: editor.color,
     fontSize: editor.fontSize,
-    strokeWidth: window.VellumState.strokeWidth
+    strokeWidth: window.AdnotaState.strokeWidth
   };
 
   // Remove the live-editing wrapper and re-render via renderMarker for proper sync
@@ -498,14 +498,14 @@ function commitActiveText() {
 }
 
 function handleTextClick(e) {
-  if (window.VellumState.mode !== 'text') return;
+  if (window.AdnotaState.mode !== 'text') return;
   if (e.shiftKey) return;                              // Shift shortcut owns the click
   if (isToolbarHit(e)) return;
-  if (e.target.closest('.vellum-select-box')) return;
-  if (e.target.closest('[data-vellum-ui]')) return;
+  if (e.target.closest('.adnota-select-box')) return;
+  if (e.target.closest('[data-adnota-ui]')) return;
 
   // If clicking on an existing text marker, start editing it instead
-  const existingText = e.target.closest('.vellum-text-content');
+  const existingText = e.target.closest('.adnota-text-content');
   if (existingText) return; // let dblclick handle editing
 
   // Commit any active editor first
@@ -515,7 +515,7 @@ function handleTextClick(e) {
   e.stopPropagation();
 
   // Hide mode must never block work — reveal before placing the editor.
-  window.VellumVisibility.show();
+  window.AdnotaVisibility.show();
 
   const screenX = e.clientX;
   const screenY = e.clientY;
@@ -523,8 +523,8 @@ function handleTextClick(e) {
   // Find anchor block
   let targetNode = document.elementFromPoint(screenX, screenY);
   if (!targetNode || targetNode.nodeType !== Node.ELEMENT_NODE) targetNode = document.body;
-  // Skip Vellum UI elements
-  if (targetNode.closest('[data-vellum-ui]')) {
+  // Skip Adnota UI elements
+  if (targetNode.closest('[data-adnota-ui]')) {
     targetNode = document.body;
   }
   const blockElement = targetNode.closest('p, div, section, article, main, li, h1, h2, h3, h4, td') || document.body;
@@ -535,8 +535,8 @@ function handleTextClick(e) {
   // Create a temporary wrapper for live editing — pin to document origin
   // so the textEl's absolute coordinates work correctly.
   const wrapper = document.createElement('div');
-  wrapper.className = 'vellum-marker-wrapper vellum-text-wrapper';
-  wrapper.setAttribute('data-vellum-ui', '1');
+  wrapper.className = 'adnota-marker-wrapper adnota-text-wrapper';
+  wrapper.setAttribute('data-adnota-ui', '1');
   wrapper.style.pointerEvents = 'auto';
   wrapper.style.top = '0';
   wrapper.style.left = '0';
@@ -544,7 +544,7 @@ function handleTextClick(e) {
   wrapper.style.height = '0';
 
   const textEl = document.createElement('div');
-  textEl.className = 'vellum-text-content';
+  textEl.className = 'adnota-text-content';
   textEl.contentEditable = 'true';
   textEl.spellcheck = false;
   Object.assign(textEl.style, {
@@ -604,20 +604,20 @@ function handleTextClick(e) {
       e.preventDefault();
       commitActiveText();
     }
-    // Stop propagation so Ctrl+Z doesn't trigger VellumUndo while typing
+    // Stop propagation so Ctrl+Z doesn't trigger AdnotaUndo while typing
     e.stopPropagation();
   });
 }
 
 // Double-click to edit existing text (works in both text and select modes)
 function handleTextDblClick(e) {
-  if (window.VellumState.mode !== 'select' && window.VellumState.mode !== 'text') return;
+  if (window.AdnotaState.mode !== 'select' && window.AdnotaState.mode !== 'text') return;
 
-  const textContent = e.target.closest('.vellum-text-content');
+  const textContent = e.target.closest('.adnota-text-content');
   if (!textContent) return;
 
-  const wrapper = textContent.closest('.vellum-marker-wrapper');
-  if (!wrapper || !wrapper._vellumPayload) return;
+  const wrapper = textContent.closest('.adnota-marker-wrapper');
+  if (!wrapper || !wrapper._adnotaPayload) return;
 
   e.preventDefault();
   e.stopPropagation();
@@ -646,10 +646,10 @@ function handleTextDblClick(e) {
   activeTextEditor = {
     el: textContent,
     wrapper: wrapper,
-    blockElement: wrapper._vellumAnchorElement || document.body,
+    blockElement: wrapper._adnotaAnchorElement || document.body,
     screenX: 0, screenY: 0, // not needed for edits
-    color: wrapper._vellumPayload.color,
-    fontSize: wrapper._vellumPayload.fontSize,
+    color: wrapper._adnotaPayload.color,
+    fontSize: wrapper._adnotaPayload.fontSize,
     isEdit: true,
   };
 
@@ -665,7 +665,7 @@ function handleTextDblClick(e) {
     if (ev.key === 'Escape') {
       ev.preventDefault();
       // Restore original text on cancel
-      textContent.textContent = wrapper._vellumPayload.text;
+      textContent.textContent = wrapper._adnotaPayload.text;
       commitActiveText();
     } else if (ev.key === 'Enter' && !ev.shiftKey) {
       ev.preventDefault();
@@ -680,14 +680,14 @@ function handleTextDblClick(e) {
 // ═════════════════════════════════════════════════════════════════════════════
 
 function handlePointerDown(e) {
-  const mode = window.VellumState.mode;
+  const mode = window.AdnotaState.mode;
   if (!_overlayModes.has(mode)) return;
   if (isToolbarHit(e)) return;
   e.preventDefault();
 
   // Hide mode must never block work — reveal before the stroke starts so the
   // user can see what they're drawing.
-  window.VellumVisibility.show();
+  window.AdnotaVisibility.show();
 
   switch (mode) {
     case 'pen':     handlePenDown(e); break;
@@ -698,7 +698,7 @@ function handlePointerDown(e) {
 }
 
 function handlePointerMove(e) {
-  const mode = window.VellumState.mode;
+  const mode = window.AdnotaState.mode;
   if (!_overlayModes.has(mode)) return;
   e.preventDefault();
 
@@ -711,7 +711,7 @@ function handlePointerMove(e) {
 }
 
 async function handlePointerUp(e) {
-  const mode = window.VellumState.mode;
+  const mode = window.AdnotaState.mode;
   if (!_overlayModes.has(mode)) return;
   e.preventDefault();
 
@@ -727,8 +727,8 @@ async function handlePointerUp(e) {
 // RENDER MARKER — handles all shape types for both live creation and restore
 // ═════════════════════════════════════════════════════════════════════════════
 
-// Bug 1 fix: Define VellumMarker BEFORE initCaptureOverlay and VellumState.subscribe
-window.VellumMarker = {
+// Bug 1 fix: Define AdnotaMarker BEFORE initCaptureOverlay and AdnotaState.subscribe
+window.AdnotaMarker = {
   renderMarker: function (anchorElement, payload) {
     const shapeType = payload.shapeType || (payload.isArrow ? 'arrow' : 'freehand');
 
@@ -737,14 +737,14 @@ window.VellumMarker = {
     if ((shapeType === 'rect' || shapeType === 'ellipse') && !payload.shape) return;
     if (shapeType === 'text' && !payload.text) return;
 
-    const existing = document.querySelector(`.vellum-marker-wrapper[data-uuid="${payload.uuid}"]`);
+    const existing = document.querySelector(`.adnota-marker-wrapper[data-uuid="${payload.uuid}"]`);
     if (existing) return;
 
     // ── TEXT SHAPE — uses HTML, not SVG ──────────────────────────────────
     if (shapeType === 'text') {
       const wrapper = document.createElement('div');
-      wrapper.className = 'vellum-marker-wrapper';
-      wrapper.setAttribute('data-vellum-ui', '1');
+      wrapper.className = 'adnota-marker-wrapper';
+      wrapper.setAttribute('data-adnota-ui', '1');
       wrapper.dataset.uuid = payload.uuid;
       wrapper.dataset.shapeType = 'text';
       // Pin to document origin so textEl absolute coords work correctly
@@ -755,7 +755,7 @@ window.VellumMarker = {
       wrapper.style.overflow = 'visible';
 
       const textEl = document.createElement('div');
-      textEl.className = 'vellum-text-content';
+      textEl.className = 'adnota-text-content';
       textEl.textContent = payload.text;
       Object.assign(textEl.style, {
         position: 'absolute',
@@ -773,8 +773,8 @@ window.VellumMarker = {
         userSelect: 'none',
       });
       wrapper.appendChild(textEl);
-      wrapper._vellumPayload = payload;
-      wrapper._vellumAnchorElement = anchorElement;
+      wrapper._adnotaPayload = payload;
+      wrapper._adnotaAnchorElement = anchorElement;
       document.documentElement.appendChild(wrapper);
 
       function syncTextPos() {
@@ -796,8 +796,8 @@ window.VellumMarker = {
 
     // ── SVG SHAPES (freehand, arrow, rect, ellipse) ─────────────────────
     const wrapper = document.createElement('div');
-    wrapper.className = 'vellum-marker-wrapper';
-    wrapper.setAttribute('data-vellum-ui', '1');
+    wrapper.className = 'adnota-marker-wrapper';
+    wrapper.setAttribute('data-adnota-ui', '1');
     wrapper.dataset.uuid = payload.uuid;
     wrapper.dataset.shapeType = shapeType;
 
@@ -861,8 +861,8 @@ window.VellumMarker = {
     svg.appendChild(shapeEl);
     wrapper.appendChild(svg);
     // Stash payload + anchor for select-tool operations (delete, undo, move).
-    wrapper._vellumPayload = payload;
-    wrapper._vellumAnchorElement = anchorElement;
+    wrapper._adnotaPayload = payload;
+    wrapper._adnotaAnchorElement = anchorElement;
     document.documentElement.appendChild(wrapper);
 
     function syncBounds() {
@@ -934,7 +934,7 @@ function clearSelection() {
 // returned in screen (viewport) coordinates.
 function getShapeBBox(wrapper) {
   // Text wrappers have no SVG — use the text content element directly
-  const textContent = wrapper.querySelector('.vellum-text-content');
+  const textContent = wrapper.querySelector('.adnota-text-content');
   if (textContent) {
     const r = textContent.getBoundingClientRect();
     const pad = 4;
@@ -992,14 +992,14 @@ function isPointNearShape(wrapper, screenX, screenY) {
 // and the toast Undo button safely idempotent (matches highlighter.deleteHighlight).
 async function deleteSelectedMarker(wrapper) {
   const uuid = wrapper.dataset.uuid;
-  const payload = wrapper._vellumPayload;
+  const payload = wrapper._adnotaPayload;
 
   wrapper.style.display = 'none';
   clearSelection();
   hideHoverDeleteBtn();
 
-  if (window.VellumStorage) {
-    await window.VellumStorage.deleteItem(location.hostname, 'uuid', uuid);
+  if (window.AdnotaStorage) {
+    await window.AdnotaStorage.deleteItem(location.hostname, 'uuid', uuid);
   }
 
   let consumed = false;
@@ -1008,16 +1008,16 @@ async function deleteSelectedMarker(wrapper) {
       if (consumed) return;
       consumed = true;
       wrapper.style.display = '';
-      if (window.VellumStorage && payload) {
-        await window.VellumStorage.saveItem(location.hostname, location.pathname, payload);
+      if (window.AdnotaStorage && payload) {
+        await window.AdnotaStorage.saveItem(location.hostname, location.pathname, payload);
       }
-      window.VellumUndo.remove(undoEntry);
+      window.AdnotaUndo.remove(undoEntry);
     }
   };
-  window.VellumUndo.push(undoEntry);
+  window.AdnotaUndo.push(undoEntry);
 
-  window.VellumUI?.showToast?.('Marker deleted', {
-    id: 'vellum-marker-toast',
+  window.AdnotaUI?.showToast?.('Marker deleted', {
+    id: 'adnota-marker-toast',
     onUndo: () => undoEntry.undo(),
   });
 }
@@ -1034,8 +1034,8 @@ let hoverDeleteWrapper = null;
 function ensureHoverDeleteBtn() {
   if (hoverDeleteBtnEl) return hoverDeleteBtnEl;
   hoverDeleteBtnEl = document.createElement('div');
-  hoverDeleteBtnEl.className = 'vellum-select-delete vellum-marker-hover-delete';
-  hoverDeleteBtnEl.setAttribute('data-vellum-ui', '1');
+  hoverDeleteBtnEl.className = 'adnota-select-delete adnota-marker-hover-delete';
+  hoverDeleteBtnEl.setAttribute('data-adnota-ui', '1');
   hoverDeleteBtnEl.setAttribute('title', 'Delete');
   hoverDeleteBtnEl.textContent = '✕';
   hoverDeleteBtnEl.style.position = 'fixed';
@@ -1059,7 +1059,7 @@ function hideHoverDeleteBtn() {
 function showHoverDeleteBtn(wrapper) {
   const el = ensureHoverDeleteBtn();
   const bbox = getShapeBBox(wrapper);
-  const SIZE = 20; // matches .vellum-select-delete width/height
+  const SIZE = 20; // matches .adnota-select-delete width/height
   let left = bbox.left + bbox.width - SIZE / 2;
   let top = bbox.top - SIZE / 2;
   left = Math.max(2, Math.min(window.innerWidth - SIZE - 2, left));
@@ -1081,7 +1081,7 @@ document.addEventListener('mousemove', (e) => {
     // Hidden mode (paint toggled off) is the only mode-level suppression — the
     // selected-wrapper carve-out below handles the overlap with the Select-tool's
     // own ✕ on whichever item is currently selected.
-    if (document.documentElement.classList.contains('vellum-hidden')) {
+    if (document.documentElement.classList.contains('adnota-hidden')) {
       hideHoverDeleteBtn();
       return;
     }
@@ -1092,15 +1092,15 @@ document.addEventListener('mousemove', (e) => {
     }
     // Cursor on the ✕ itself → keep it visible.
     if (hoverDeleteBtnEl && lastMarkerPointer.target === hoverDeleteBtnEl) return;
-    // Stand down on Vellum UI surfaces (dock, sticky, toolbar) — but allow
+    // Stand down on Adnota UI surfaces (dock, sticky, toolbar) — but allow
     // marker wrappers AND the captureSvg drawing overlay through, so hover-✕
     // works in pen / arrow / rect / ellipse modes too. In those modes wrappers
     // are pointer-events: none and the captureSvg owns the pointer, so without
     // these carve-outs the ✕ would never appear while a paint tool is active.
     const target = lastMarkerPointer.target;
-    const isMarkerWrapper = target?.closest?.('.vellum-marker-wrapper');
+    const isMarkerWrapper = target?.closest?.('.adnota-marker-wrapper');
     const isCaptureSvg = target === captureSvg;
-    if (window.VellumUI?.isVellumElement(target) && !isMarkerWrapper && !isCaptureSvg) {
+    if (window.AdnotaUI?.isAdnotaElement(target) && !isMarkerWrapper && !isCaptureSvg) {
       hideHoverDeleteBtn();
       return;
     }
@@ -1139,12 +1139,12 @@ function showSelectionUI(wrapper) {
   selectedWrapper = wrapper;
 
   selectBox = document.createElement('div');
-  selectBox.className = 'vellum-select-box';
-  selectBox.setAttribute('data-vellum-ui', '1');
+  selectBox.className = 'adnota-select-box';
+  selectBox.setAttribute('data-adnota-ui', '1');
 
   // Delete button
   const delBtn = document.createElement('div');
-  delBtn.className = 'vellum-select-delete';
+  delBtn.className = 'adnota-select-delete';
   delBtn.textContent = '\u2715';
   delBtn.setAttribute('data-tooltip', 'Delete');
   delBtn.onclick = async (e) => {
@@ -1183,11 +1183,11 @@ function showSelectionUI(wrapper) {
 // Hit-test helper shared by click-to-select and pointerdown-to-drag. Picks the
 // smallest visible wrapper whose shape is near the pointer.
 function hitTestMarker(clientX, clientY) {
-  const wrappers = document.querySelectorAll('.vellum-marker-wrapper');
+  const wrappers = document.querySelectorAll('.adnota-marker-wrapper');
   let bestWrapper = null;
   let bestArea = Infinity;
   for (const wrapper of wrappers) {
-    // Hidden wrappers (direct display:none or ancestor .vellum-hidden) are not targetable.
+    // Hidden wrappers (direct display:none or ancestor .adnota-hidden) are not targetable.
     if (window.getComputedStyle(wrapper).display === 'none') continue;
     if (!isPointNearShape(wrapper, clientX, clientY)) continue;
     const bbox = getShapeBBox(wrapper);
@@ -1208,13 +1208,13 @@ let moveDragState = null;
 let suppressNextClick = false;
 
 function handleSelectPointerDown(e) {
-  const inSelectMode = window.VellumState.mode === 'select';
+  const inSelectMode = window.AdnotaState.mode === 'select';
   const shiftShortcut = e.shiftKey;
   if (!inSelectMode && !shiftShortcut) return;
   if (isToolbarHit(e)) return;
   if (e.button !== 0) return; // left-click only
-  if (e.target.closest('.vellum-select-box')) return; // delete button handles itself
-  if (e.target.closest('.vellum-text-content[contenteditable="true"]')) return; // editing — don't drag
+  if (e.target.closest('.adnota-select-box')) return; // delete button handles itself
+  if (e.target.closest('.adnota-text-content[contenteditable="true"]')) return; // editing — don't drag
   // Shift-shortcut defers to interactive page targets (links, buttons, inputs)
   // when the geometric hit would overlap them — but only when there's no paint
   // item directly in the way. We check hit-test first below, then decide.
@@ -1249,9 +1249,9 @@ function handleSelectPointerMove(e) {
     if (Math.abs(dx) < DRAG_THRESHOLD_PX && Math.abs(dy) < DRAG_THRESHOLD_PX) return;
     moveDragState.moved = true;
     // Cursor swap; the cursor-lock stylesheet in highlighter.js has an
-    // `html.vellum-dragging` override that swaps every descendant to
+    // `html.adnota-dragging` override that swaps every descendant to
     // `grabbing !important`, beating the select-mode arrow.
-    document.documentElement.classList.add('vellum-dragging');
+    document.documentElement.classList.add('adnota-dragging');
     // Retarget the selection box onto the wrapper we're actually dragging,
     // otherwise a stale bbox from a prior selection follows the drag.
     if (selectedWrapper !== moveDragState.wrapper) {
@@ -1270,7 +1270,7 @@ async function handleSelectPointerUp(e) {
   const dy = e.clientY - startY;
   moveDragState = null;
 
-  document.documentElement.classList.remove('vellum-dragging');
+  document.documentElement.classList.remove('adnota-dragging');
 
   if (!moved) {
     // Fall through to the normal click-to-select flow.
@@ -1281,8 +1281,8 @@ async function handleSelectPointerUp(e) {
   // move shouldn't also register as a click on the (new) element beneath.
   suppressNextClick = true;
 
-  const payload = wrapper._vellumPayload;
-  const anchorElement = wrapper._vellumAnchorElement;
+  const payload = wrapper._adnotaPayload;
+  const anchorElement = wrapper._adnotaAnchorElement;
   if (!payload || !anchorElement) {
     wrapper.style.transform = '';
     return;
@@ -1311,31 +1311,31 @@ async function handleSelectPointerUp(e) {
   // is already on the page, so we must remove the old wrapper first.
   wrapper.remove();
   if (selectBox) { selectBox.style.transform = ''; clearSelection(); }
-  window.VellumMarker.renderMarker(anchorElement, payload);
+  window.AdnotaMarker.renderMarker(anchorElement, payload);
 
   // Persist: delete old row, save updated payload.
-  if (window.VellumStorage) {
-    await window.VellumStorage.deleteItem(location.hostname, 'uuid', payload.uuid);
-    await window.VellumStorage.saveItem(location.hostname, location.pathname, payload);
+  if (window.AdnotaStorage) {
+    await window.AdnotaStorage.deleteItem(location.hostname, 'uuid', payload.uuid);
+    await window.AdnotaStorage.saveItem(location.hostname, location.pathname, payload);
   }
 
   // Re-select the moved marker so the user sees where it landed.
-  const fresh = document.querySelector(`.vellum-marker-wrapper[data-uuid="${payload.uuid}"]`);
+  const fresh = document.querySelector(`.adnota-marker-wrapper[data-uuid="${payload.uuid}"]`);
   if (fresh) showSelectionUI(fresh);
 
   // Undo: restore old coords + storage row.
-  window.VellumUndo.push({
+  window.AdnotaUndo.push({
     undo: async () => {
       if (oldSnapshot.shape) payload.shape = oldSnapshot.shape;
       if (oldSnapshot.textPos) payload.textPos = oldSnapshot.textPos;
       if (oldSnapshot.drawing) payload.drawing = oldSnapshot.drawing;
-      const current = document.querySelector(`.vellum-marker-wrapper[data-uuid="${payload.uuid}"]`);
+      const current = document.querySelector(`.adnota-marker-wrapper[data-uuid="${payload.uuid}"]`);
       if (current) current.remove();
       clearSelection();
-      window.VellumMarker.renderMarker(anchorElement, payload);
-      if (window.VellumStorage) {
-        await window.VellumStorage.deleteItem(location.hostname, 'uuid', payload.uuid);
-        await window.VellumStorage.saveItem(location.hostname, location.pathname, payload);
+      window.AdnotaMarker.renderMarker(anchorElement, payload);
+      if (window.AdnotaStorage) {
+        await window.AdnotaStorage.deleteItem(location.hostname, 'uuid', payload.uuid);
+        await window.AdnotaStorage.saveItem(location.hostname, location.pathname, payload);
       }
     },
   });
@@ -1358,7 +1358,7 @@ function shiftMarkerPayload(payload, dxPct, dyPct) {
 }
 
 function handleSelectClick(e) {
-  const inSelectMode = window.VellumState.mode === 'select';
+  const inSelectMode = window.AdnotaState.mode === 'select';
   const shiftShortcut = e.shiftKey;
   if (!inSelectMode && !shiftShortcut) return;
   if (isToolbarHit(e)) return;
@@ -1373,7 +1373,7 @@ function handleSelectClick(e) {
   }
 
   // Don't deselect when clicking the select box itself
-  if (e.target.closest('.vellum-select-box')) return;
+  if (e.target.closest('.adnota-select-box')) return;
 
   const bestWrapper = hitTestMarker(e.clientX, e.clientY);
   if (bestWrapper) {
@@ -1406,10 +1406,10 @@ document.addEventListener('keydown', (e) => {
 // handleSelectClick above so it doesn't need to run here.
 function handleShiftSelectionDismiss(e) {
   if (!selectedWrapper) return;
-  if (window.VellumState.mode === 'select') return;
+  if (window.AdnotaState.mode === 'select') return;
   if (e.shiftKey) return;                               // shift+click = re-select, handled by handleSelectClick
   if (e.button !== 0) return;
-  if (e.target.closest('.vellum-select-box')) return;   // ✕ button handles itself
+  if (e.target.closest('.adnota-select-box')) return;   // ✕ button handles itself
   if (hitTestMarker(e.clientX, e.clientY) === selectedWrapper) return; // clicking the same item is a no-op
   clearSelection();
 }
@@ -1423,15 +1423,15 @@ function handleShiftSelectionDismiss(e) {
 //     kills whole categories of jank.
 function syncOverlayForShift() {
   if (!captureSvg) return;
-  const overlayActive = window.VellumState.isVisible && _overlayModes.has(window.VellumState.mode);
+  const overlayActive = window.AdnotaState.isVisible && _overlayModes.has(window.AdnotaState.mode);
   if (!overlayActive) return;                             // nothing to suspend
-  const shiftHeld = document.documentElement.classList.contains('vellum-shift-mode');
+  const shiftHeld = document.documentElement.classList.contains('adnota-shift-mode');
   captureSvg.style.pointerEvents = shiftHeld ? 'none' : 'auto';
 }
 
 document.addEventListener('keydown', (e) => {
   if (e.key !== 'Shift') return;
-  document.documentElement.classList.add('vellum-shift-mode');
+  document.documentElement.classList.add('adnota-shift-mode');
   // Abort any in-progress drawing stroke — user changed intent mid-gesture.
   if (capturePath) { capturePath.remove(); capturePath = null; }
   if (captureShape) { captureShape.remove(); captureShape = null; }
@@ -1440,14 +1440,14 @@ document.addEventListener('keydown', (e) => {
 }, true);
 document.addEventListener('keyup', (e) => {
   if (e.key !== 'Shift') return;
-  document.documentElement.classList.remove('vellum-shift-mode');
+  document.documentElement.classList.remove('adnota-shift-mode');
   syncOverlayForShift();
 }, true);
 // Dropped focus (alt-tab, devtools) never fires a keyup for still-held Shift.
 // Clear the class so the page doesn't get stuck in shift-mode, and restore
 // the overlay.
 window.addEventListener('blur', () => {
-  document.documentElement.classList.remove('vellum-shift-mode');
+  document.documentElement.classList.remove('adnota-shift-mode');
   syncOverlayForShift();
 });
 
@@ -1457,8 +1457,8 @@ window.addEventListener('blur', () => {
 
 function initCaptureOverlay() {
   captureSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-  captureSvg.id = 'vellum-capture-canvas';
-  captureSvg.setAttribute('data-vellum-ui', '1');
+  captureSvg.id = 'adnota-capture-canvas';
+  captureSvg.setAttribute('data-adnota-ui', '1');
   captureSvg.style.display = 'none';
 
   captureSvg.addEventListener('pointerdown', handlePointerDown);
@@ -1470,14 +1470,14 @@ function initCaptureOverlay() {
 
 initCaptureOverlay();
 
-// Let other Vellum UI (sticky headers, HUDs, toolbars) pierce the capture
+// Let other Adnota UI (sticky headers, HUDs, toolbars) pierce the capture
 // overlay. Without this, the full-page SVG swallows pointerdown so you can't
 // drag a sticky note or click a HUD button while a shape tool is active.
 document.addEventListener('pointermove', (e) => {
-  if (!_overlayModes.has(window.VellumState.mode)) return;
+  if (!_overlayModes.has(window.AdnotaState.mode)) return;
   if (capturePath || captureShape) return; // mid-stroke — keep capturing
   const stack = document.elementsFromPoint(e.clientX, e.clientY);
-  const overUI = stack.some(el => el !== captureSvg && el.closest('[data-vellum-ui]'));
+  const overUI = stack.some(el => el !== captureSvg && el.closest('[data-adnota-ui]'));
   captureSvg.style.pointerEvents = overUI ? 'none' : 'auto';
 }, true);
 
@@ -1497,9 +1497,9 @@ document.addEventListener('click', handleTextClick, true);
 // Double-click to edit text (works in select and text modes)
 document.addEventListener('dblclick', handleTextDblClick, true);
 
-// VellumState Subscription
-let _prevVellumMode = window.VellumState.mode;
-window.VellumState.subscribe(state => {
+// AdnotaState Subscription
+let _prevAdnotaMode = window.AdnotaState.mode;
+window.AdnotaState.subscribe(state => {
   // Commit any in-progress text when switching modes
   if (activeTextEditor) commitActiveText();
 
@@ -1510,7 +1510,7 @@ window.VellumState.subscribe(state => {
     // Shift held: suspend the overlay's pointer capture so holding Shift
     // temporarily turns off any drawing tool in favor of the select shortcut.
     // Restored when Shift is released via the keyup listener.
-    captureSvg.style.pointerEvents = document.documentElement.classList.contains('vellum-shift-mode') ? 'none' : 'auto';
+    captureSvg.style.pointerEvents = document.documentElement.classList.contains('adnota-shift-mode') ? 'none' : 'auto';
   } else {
     captureSvg.style.display = 'none';
     captureSvg.style.pointerEvents = 'none';
@@ -1522,22 +1522,22 @@ window.VellumState.subscribe(state => {
 
   // Select mode: all wrappers interactive (click-to-select needs hit testing).
   // Text mode: only TEXT wrappers interactive (so dblclick-to-edit still fires
-  // on `.vellum-text-content`). Shape wrappers stay non-interactive because
+  // on `.adnota-text-content`). Shape wrappers stay non-interactive because
   // they're sized to their anchor block's bbox — making them clickable would
   // swallow click-to-place-text across the entire surrounding paragraph.
   const inSelect = state.mode === 'select';
   const inText = state.mode === 'text';
-  document.querySelectorAll('.vellum-marker-wrapper').forEach(el => {
-    const isText = el.classList.contains('vellum-text-wrapper');
+  document.querySelectorAll('.adnota-marker-wrapper').forEach(el => {
+    const isText = el.classList.contains('adnota-text-wrapper');
     el.style.pointerEvents = (inSelect || (inText && isText)) ? 'auto' : 'none';
   });
 
   // Clear selection on a real mode transition — not on HUD color/strokeWidth
   // emits (those keep the mode but would otherwise clobber a live Shift+click
   // selection).
-  if (state.mode !== _prevVellumMode) {
+  if (state.mode !== _prevAdnotaMode) {
     clearSelection();
-    _prevVellumMode = state.mode;
+    _prevAdnotaMode = state.mode;
   }
 });
 

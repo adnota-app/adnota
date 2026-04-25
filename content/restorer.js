@@ -5,18 +5,18 @@ let initialRestorationDone = false;
 
 function showBrokenAnchorsToast(count) {
   // De-duplicate: only one broken-anchor toast at a time.
-  if (document.getElementById('vellum-broken-toast')) return;
+  if (document.getElementById('adnota-broken-toast')) return;
 
   const plural = count === 1 ? '' : 's';
   const toast = document.createElement('div');
-  toast.id = 'vellum-broken-toast';
-  toast.className = 'vellum-toast';
-  toast.setAttribute('data-vellum-ui', '1');
+  toast.id = 'adnota-broken-toast';
+  toast.className = 'adnota-toast';
+  toast.setAttribute('data-adnota-ui', '1');
   toast.innerHTML = `
-    <div class="vellum-toast-logo">A</div>
-    <span class="vellum-toast-message">${count} saved edit${plural} couldn't be reapplied — this page may have changed.</span>
-    <div class="vellum-toast-actions">
-      <span class="vellum-toast-btn" id="vellum-broken-dismiss">Dismiss</span>
+    <div class="adnota-toast-logo">A</div>
+    <span class="adnota-toast-message">${count} saved edit${plural} couldn't be reapplied — this page may have changed.</span>
+    <div class="adnota-toast-actions">
+      <span class="adnota-toast-btn" id="adnota-broken-dismiss">Dismiss</span>
     </div>
   `;
 
@@ -24,7 +24,7 @@ function showBrokenAnchorsToast(count) {
   const attach = () => {
     (document.body || document.documentElement).appendChild(toast);
 
-    document.getElementById('vellum-broken-dismiss').addEventListener('click', () => {
+    document.getElementById('adnota-broken-dismiss').addEventListener('click', () => {
       toast.style.opacity = '0';
       setTimeout(() => toast.remove(), 300);
     });
@@ -47,9 +47,9 @@ function showBrokenAnchorsToast(count) {
 }
 
 async function performRestoration() {
-  if (!window.VellumStorage || !window.FuzzyAnchor) return;
+  if (!window.AdnotaStorage || !window.FuzzyAnchor) return;
 
-  const anchors = await window.VellumStorage.getAnchorsForUrl(location.href);
+  const anchors = await window.AdnotaStorage.getAnchorsForUrl(location.href);
   if (!anchors || anchors.length === 0) return;
 
   let erasuresCount = 0;
@@ -66,18 +66,18 @@ async function performRestoration() {
       // Go through the shared Map so rebuild is the single source of truth.
       // Older fallback (plain textContent append) is kept for the rare case
       // where resizer.js hasn't loaded yet — extremely unlikely at restore time.
-      if (window.VellumResizeRules && item._id) {
-        window.VellumResizeRules.set(item._id, {
+      if (window.AdnotaResizeRules && item._id) {
+        window.AdnotaResizeRules.set(item._id, {
           selector: item.selector,
           cssText: item.cssText,
         });
         if (window.rebuildResizeStyleTag) window.rebuildResizeStyleTag();
       } else {
-        let styleTag = document.getElementById('vellum-style-overrides');
+        let styleTag = document.getElementById('adnota-style-overrides');
         if (!styleTag) {
           styleTag = document.createElement('style');
-          styleTag.id = 'vellum-style-overrides';
-          styleTag.setAttribute('data-vellum-ui', '1');
+          styleTag.id = 'adnota-style-overrides';
+          styleTag.setAttribute('data-adnota-ui', '1');
           document.head.appendChild(styleTag);
         }
         styleTag.textContent += `${item.selector} { ${item.cssText} }\n`;
@@ -96,7 +96,7 @@ async function performRestoration() {
         window.StickyEngine.renderNote(
           item.placement, item.comments, item.uuid, false,
           item.dimensions || null,
-          item.theme || 'vellum-theme-yellow',
+          item.theme || 'adnota-theme-yellow',
           item.anchor || null,
           item.anchorOffset || null,
           item.tag || ''
@@ -110,25 +110,25 @@ async function performRestoration() {
     // ── ERASE with CSS selector: inject rule + best-effort FuzzyAnchor ──────
     if (item.action === 'ERASE' && item.selector) {
       // CSS rule hides the element (and any future re-creations like ad rotations)
-      let eraseTag = document.getElementById('vellum-erase-overrides');
+      let eraseTag = document.getElementById('adnota-erase-overrides');
       if (!eraseTag) {
         eraseTag = document.createElement('style');
-        eraseTag.id = 'vellum-erase-overrides';
-        eraseTag.setAttribute('data-vellum-ui', '1');
+        eraseTag.id = 'adnota-erase-overrides';
+        eraseTag.setAttribute('data-adnota-ui', '1');
         document.head.appendChild(eraseTag);
       }
-      if (window.VellumEraseRules) {
-        window.VellumEraseRules.set(id, item.selector);
+      if (window.AdnotaEraseRules) {
+        window.AdnotaEraseRules.set(id, item.selector);
         if (window.rebuildEraseStyleTag) window.rebuildEraseStyleTag();
       } else {
         eraseTag.textContent += `${item.selector} { display: none !important; }\n`;
       }
 
-      // Best-effort: also add to VellumErasedElements for inline show/hide toggle
+      // Best-effort: also add to AdnotaErasedElements for inline show/hide toggle
       const match = window.FuzzyAnchor.findMatch(item.anchor);
       if (match.confidence >= 40 && match.element) {
         match.element.style.setProperty('display', 'none', 'important');
-        if (window.VellumErasedElements) window.VellumErasedElements.add(match.element);
+        if (window.AdnotaErasedElements) window.AdnotaErasedElements.add(match.element);
       }
       // CSS rule has us covered — mark processed regardless of FuzzyAnchor result
       processedItems.add(id);
@@ -141,17 +141,17 @@ async function performRestoration() {
 
     if (match.confidence >= 40 && match.element) {
       if (item.action === 'HIGHLIGHT') {
-        if (window.VellumHighlighter) {
-          window.VellumHighlighter.applyStoredHighlight(match.element, item);
+        if (window.AdnotaHighlighter) {
+          window.AdnotaHighlighter.applyStoredHighlight(match.element, item);
         }
       } else if (item.action === 'MARKER') {
-        if (window.VellumMarker) {
-          window.VellumMarker.renderMarker(match.element, item);
+        if (window.AdnotaMarker) {
+          window.AdnotaMarker.renderMarker(match.element, item);
         }
       } else {
         // ERASE (legacy items without selector) — inline style only
         match.element.style.setProperty('display', 'none', 'important');
-        if (window.VellumErasedElements) window.VellumErasedElements.add(match.element);
+        if (window.AdnotaErasedElements) window.AdnotaErasedElements.add(match.element);
         erasuresCount++;
       }
       processedItems.add(id);
@@ -162,7 +162,7 @@ async function performRestoration() {
   }
 
   chrome.storage.local.set({
-    vellum_stats: {
+    adnota_stats: {
       [location.href]: { success: erasuresCount, notes: notesCount, resizes: resizeCount, broken: brokenThisPass }
     }
   });

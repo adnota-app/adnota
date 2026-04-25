@@ -1,7 +1,7 @@
 // content/eraser.js
 
 // ─── Hover overlay ────────────────────────────────────────────────────────────
-const highlightOverlay = window.VellumUI.createHoverOverlay('vellum-highlight-overlay', '#ef4444', 'rgba(239, 68, 68, 0.15)');
+const highlightOverlay = window.AdnotaUI.createHoverOverlay('adnota-highlight-overlay', '#ef4444', 'rgba(239, 68, 68, 0.15)');
 
 // ─── Top-right badge cluster on the hover outline ───────────────────────────
 // Lives where the user's eye already is — the element they're hovering — so
@@ -10,7 +10,7 @@ const highlightOverlay = window.VellumUI.createHoverOverlay('vellum-highlight-ov
 // outline's top-right; badges sit side by side with consistent height and
 // disappear when not relevant.
 const overlayBadgeRow = document.createElement('div');
-overlayBadgeRow.setAttribute('data-vellum-ui', '1');
+overlayBadgeRow.setAttribute('data-adnota-ui', '1');
 Object.assign(overlayBadgeRow.style, {
   position: 'absolute',
   top: '-1px',
@@ -26,8 +26,8 @@ highlightOverlay.appendChild(overlayBadgeRow);
 // (same detection that drives the silent domain-wide promotion on click).
 // Soft red with an opaque background so it reads against any element underneath.
 const adBadge = document.createElement('div');
-adBadge.id = 'vellum-ad-badge';
-adBadge.setAttribute('data-vellum-ui', '1');
+adBadge.id = 'adnota-ad-badge';
+adBadge.setAttribute('data-adnota-ui', '1');
 adBadge.textContent = 'likely ad';
 Object.assign(adBadge.style, {
   background: 'rgba(220, 38, 38, 0.92)',
@@ -44,8 +44,8 @@ Object.assign(adBadge.style, {
 overlayBadgeRow.appendChild(adBadge);
 
 const dimensionBadge = document.createElement('div');
-dimensionBadge.id = 'vellum-dimension-badge';
-dimensionBadge.setAttribute('data-vellum-ui', '1');
+dimensionBadge.id = 'adnota-dimension-badge';
+dimensionBadge.setAttribute('data-adnota-ui', '1');
 Object.assign(dimensionBadge.style, {
   background: 'rgba(15, 15, 15, 0.85)',
   color: '#e4e4e7',
@@ -58,7 +58,7 @@ Object.assign(dimensionBadge.style, {
 });
 overlayBadgeRow.appendChild(dimensionBadge);
 
-// ─── HUD body (mounts into the unified VellumDock on activation) ───────────
+// ─── HUD body (mounts into the unified AdnotaDock on activation) ───────────
 // The dock owns the chrome (drag handle, V logo, tool row, position).
 // The eraser owns its controls — info strip + trash + undo — built once
 // and mounted into the dock body slot when the tool is active.
@@ -68,7 +68,7 @@ eraserBody.style.alignItems = 'center';
 
 // Info section (dynamic — updated on hover)
 const eraserHudInfo = document.createElement('span');
-eraserHudInfo.id = 'vellum-eraser-hud-info';
+eraserHudInfo.id = 'adnota-eraser-hud-info';
 eraserHudInfo.style.display = 'inline-flex';
 eraserHudInfo.style.alignItems = 'center';
 eraserHudInfo.style.minWidth = '220px';
@@ -77,7 +77,7 @@ eraserBody.appendChild(eraserHudInfo);
 // Help (?) button — opens a tail-anchored popover with the full tip list.
 // Replaces the old rotating tip; always reachable, no waiting for the right
 // tip to cycle around.
-const eraserHelpBtn = window.VellumUI.createHelpButton({
+const eraserHelpBtn = window.AdnotaUI.createHelpButton({
   accent: 'red',
   tips: [
     '<span style="color:#94a3b8">Click to erase on <span style="color:#e4e4e7;font-weight:600">this page</span></span>',
@@ -87,26 +87,26 @@ const eraserHelpBtn = window.VellumUI.createHelpButton({
     '<span style="color:#94a3b8">Press <span style="background:rgba(239,68,68,0.25);color:#fca5a5;padding:1px 4px;border-radius:3px;font-size:11px;font-weight:600;margin-right:2px">Esc</span> to exit any tool</span>',
   ],
 });
-eraserHelpBtn.classList.add('vellum-undo-btn-red');
+eraserHelpBtn.classList.add('adnota-undo-btn-red');
 eraserBody.appendChild(eraserHelpBtn);
 
 // Divider
 eraserBody.appendChild(Object.assign(document.createElement('div'), {
-  className: 'vellum-toolbar-divider vellum-toolbar-divider-red',
+  className: 'adnota-toolbar-divider adnota-toolbar-divider-red',
 }));
 
 // Trash — clears all erasures on this page
-const eraserTrashBtn = window.VellumUI.createTrashButton({
+const eraserTrashBtn = window.AdnotaUI.createTrashButton({
   singular: 'erasure',
   plural: 'erasures',
   actionTypes: ['ERASE'],
 });
-eraserTrashBtn.classList.add('vellum-undo-btn-red');
+eraserTrashBtn.classList.add('adnota-undo-btn-red');
 eraserBody.appendChild(eraserTrashBtn);
 
 // Undo
-const eraserUndoBtn = window.VellumUI.createUndoButton();
-eraserUndoBtn.classList.add('vellum-undo-btn-red');
+const eraserUndoBtn = window.AdnotaUI.createUndoButton();
+eraserUndoBtn.classList.add('adnota-undo-btn-red');
 eraserBody.appendChild(eraserUndoBtn);
 
 // ─── Idle-state info label ──────────────────────────────────────────────────
@@ -181,8 +181,8 @@ function detectAdSignals(el) {
 // Modern web pages stack visually-redundant wrapper divs. Bubbling past them to
 // the outermost same-sized parent picks a better anchor and spares users the
 // scroll-wheel walk. Manual scroll still walks further from this baseline.
-// Actual bubble/viewport logic lives in VellumUI — shared with the resizer.
-const dominatesViewport = window.VellumUI.dominatesViewport;
+// Actual bubble/viewport logic lives in AdnotaUI — shared with the resizer.
+const dominatesViewport = window.AdnotaUI.dominatesViewport;
 // Scroll-up nudge won't suggest a parent that's this many times larger than
 // the element the user is actually hovering — at that point we've walked past
 // the ad and into real content regardless of what the ad-density heuristic says.
@@ -265,7 +265,7 @@ function getAnchorStrength(el) {
 
   // Stable class combination
   const stableClasses = Array.from(el.classList)
-    .filter(c => !c.startsWith('vellum-') && /^[a-zA-Z][\w-]*$/.test(c) && !window.FuzzyAnchor._autoClassPattern.test(c));
+    .filter(c => !c.startsWith('adnota-') && /^[a-zA-Z][\w-]*$/.test(c) && !window.FuzzyAnchor._autoClassPattern.test(c));
   if (stableClasses.length > 0) {
     const sel = el.tagName.toLowerCase() + '.' + stableClasses.map(c => CSS.escape(c)).join('.');
     try {
@@ -332,7 +332,7 @@ function findBetterTarget(el) {
 
   while (cur && cur !== document.body && cur !== document.documentElement && stepsUp < 6) {
     stepsUp++;
-    if (isVellumElement(cur)) { cur = cur.parentElement; continue; }
+    if (isAdnotaElement(cur)) { cur = cur.parentElement; continue; }
 
     const curRect = cur.getBoundingClientRect();
     const curArea = curRect.width * curRect.height;
@@ -435,9 +435,9 @@ function updateHUD(target) {
 // the trash/undo buttons stay reachable even when no element is hovered.
 function setHudVisible(visible) {
   if (visible) {
-    window.VellumDock.mount('eraser', () => eraserBody);
+    window.AdnotaDock.mount('eraser', () => eraserBody);
   } else {
-    window.VellumDock.unmount('eraser');
+    window.AdnotaDock.unmount('eraser');
   }
 }
 
@@ -446,20 +446,20 @@ let rawHoveredEl = null;     // actual element under cursor (before traversal)
 let traverseDepth = 0;       // 0 = raw element, >0 = walked up N parents
 
 // Shared set of erased elements — restorer.js also adds to this.
-// VellumVisibility iterates this set to toggle show/hide on each erased node.
-window.VellumErasedElements = new Set();
+// AdnotaVisibility iterates this set to toggle show/hide on each erased node.
+window.AdnotaErasedElements = new Set();
 
 // ─── CSS rule injection for persistent erasure ──────────────────────────────
 // Erased elements get a CSS rule so that if the element is destroyed and re-created
 // (e.g. ad rotation timers), the browser automatically hides the new instance.
-window.VellumEraseRules = new Map(); // id → cssSelector
+window.AdnotaEraseRules = new Map(); // id → cssSelector
 
 function getOrCreateEraseStyleTag() {
-  let tag = document.getElementById('vellum-erase-overrides');
+  let tag = document.getElementById('adnota-erase-overrides');
   if (!tag) {
     tag = document.createElement('style');
-    tag.id = 'vellum-erase-overrides';
-    tag.setAttribute('data-vellum-ui', '1');
+    tag.id = 'adnota-erase-overrides';
+    tag.setAttribute('data-adnota-ui', '1');
     document.head.appendChild(tag);
   }
   return tag;
@@ -468,7 +468,7 @@ function getOrCreateEraseStyleTag() {
 function rebuildEraseStyleTag() {
   const tag = getOrCreateEraseStyleTag();
   const rules = [];
-  for (const [, selector] of window.VellumEraseRules) {
+  for (const [, selector] of window.AdnotaEraseRules) {
     rules.push(`${selector} { display: none !important; }`);
   }
   tag.textContent = rules.join('\n');
@@ -485,8 +485,8 @@ let iframeShieldStyleTag = null;
 function setIframeShield(active) {
   if (active && !iframeShieldStyleTag) {
     iframeShieldStyleTag = document.createElement('style');
-    iframeShieldStyleTag.id = 'vellum-iframe-shield';
-    iframeShieldStyleTag.setAttribute('data-vellum-ui', '1');
+    iframeShieldStyleTag.id = 'adnota-iframe-shield';
+    iframeShieldStyleTag.setAttribute('data-adnota-ui', '1');
     iframeShieldStyleTag.textContent = 'iframe { pointer-events: none !important; }';
     document.head.appendChild(iframeShieldStyleTag);
   } else if (!active && iframeShieldStyleTag) {
@@ -495,23 +495,23 @@ function setIframeShield(active) {
   }
 }
 
-// ─── Guard: Vellum-owned elements are invisible to the eraser ─────────────────
-const isVellumElement = window.VellumUI.isVellumElement;
+// ─── Guard: Adnota-owned elements are invisible to the eraser ─────────────────
+const isAdnotaElement = window.AdnotaUI.isAdnotaElement;
 
-// ─── DOM traversal: walk up N parents, skip Vellum elements ─────────────────
+// ─── DOM traversal: walk up N parents, skip Adnota elements ─────────────────
 // At depth=0, bubble past visually-identical parent wrappers so clicking the
 // inner element hits the outer container users almost always actually want.
 // Scroll-wheel traversal walks further up from that bubbled baseline.
 function getEraserTarget(raw, depth) {
-  if (!raw || isVellumElement(raw)) return null;
-  let current = window.VellumUI.bubbleToVisualRoot(raw);
-  if (isVellumElement(current)) return null;
+  if (!raw || isAdnotaElement(raw)) return null;
+  let current = window.AdnotaUI.bubbleToVisualRoot(raw);
+  if (isAdnotaElement(current)) return null;
   let walked = 0;
   while (walked < depth && current.parentElement &&
     current.parentElement !== document.body &&
     current.parentElement !== document.documentElement) {
     current = current.parentElement;
-    if (isVellumElement(current)) return null;
+    if (isAdnotaElement(current)) return null;
     walked++;
   }
   return current;
@@ -546,7 +546,7 @@ function updateEraserOverlay() {
  */
 function spawnFlash(rect) {
   const flash = document.createElement('div');
-  flash.setAttribute('data-vellum-ui', '1');
+  flash.setAttribute('data-adnota-ui', '1');
   Object.assign(flash.style, {
     position: 'fixed',
     left: rect.left + 'px',
@@ -588,12 +588,12 @@ function dissolveTarget(target) {
 // ─── Message routing ──────────────────────────────────────────────────────────
 chrome.runtime.onMessage.addListener((request) => {
   if (request.action === 'toggle-eraser') {
-    window.VellumState.set({ mode: window.VellumState.mode === 'eraser' ? null : 'eraser' });
+    window.AdnotaState.set({ mode: window.AdnotaState.mode === 'eraser' ? null : 'eraser' });
   }
 });
 
 // ─── React to mode changes ────────────────────────────────────────────────────
-window.VellumState.subscribe(state => {
+window.AdnotaState.subscribe(state => {
   const isEraser = state.mode === 'eraser';
   setIframeShield(isEraser);
   if (isEraser) {
@@ -614,17 +614,17 @@ window.VellumState.subscribe(state => {
 // Ads commonly open new tabs from mousedown/pointerdown (before `click` fires),
 // which both bypasses our click-capture handler and steals keyboard focus so
 // Escape stops working. Intercept the earliest pointer events on window-capture
-// and kill them for non-Vellum targets. Right-click is left alone so users can
-// still Inspect. Vellum UI (HUD, drag handle, buttons) passes through normally.
+// and kill them for non-Adnota targets. Right-click is left alone so users can
+// still Inspect. Adnota UI (HUD, drag handle, buttons) passes through normally.
 function blockPageInteraction(e) {
-  if (window.VellumState.mode !== 'eraser') return;
-  if (isVellumElement(e.target)) return;
+  if (window.AdnotaState.mode !== 'eraser') return;
+  if (isAdnotaElement(e.target)) return;
   if (e.button === 2) return;
   e.preventDefault();
   e.stopPropagation();
   // preventDefault blocks the implicit focus transfer, so nothing would bring
   // focus back into our document — pull it home via the shared anchor.
-  window.VellumState.anchorFocus?.();
+  window.AdnotaState.anchorFocus?.();
 }
 window.addEventListener('mousedown', blockPageInteraction, true);
 window.addEventListener('pointerdown', blockPageInteraction, true);
@@ -632,7 +632,7 @@ window.addEventListener('auxclick', blockPageInteraction, true);
 
 // ─── Hover: track raw element and update overlay ─────────────────────────────
 document.addEventListener('mousemove', (e) => {
-  if (window.VellumState.mode !== 'eraser') return;
+  if (window.AdnotaState.mode !== 'eraser') return;
   const raw = document.elementFromPoint(e.clientX, e.clientY);
 
   if (!raw) {
@@ -643,9 +643,9 @@ document.addEventListener('mousemove', (e) => {
     return;
   }
 
-  // When cursor is over Vellum UI (dock, HUD, etc.), hide the hover
+  // When cursor is over Adnota UI (dock, HUD, etc.), hide the hover
   // overlay so our own controls aren't visually framed as erase targets.
-  if (isVellumElement(raw)) {
+  if (isAdnotaElement(raw)) {
     hoveredElement = null;
     rawHoveredEl = null;
     traverseDepth = 0;
@@ -665,7 +665,7 @@ document.addEventListener('mousemove', (e) => {
 
 // ─── Scroll wheel: walk up/down the DOM tree while hovering ─────────────────
 document.addEventListener('wheel', (e) => {
-  if (window.VellumState.mode !== 'eraser') return;
+  if (window.AdnotaState.mode !== 'eraser') return;
   if (!rawHoveredEl) return;
 
   e.preventDefault();
@@ -683,8 +683,8 @@ document.addEventListener('wheel', (e) => {
 
 // ─── Click: erase with animation ─────────────────────────────────────────────
 document.addEventListener('click', async (e) => {
-  if (window.VellumState.mode !== 'eraser') return;
-  if (isVellumElement(e.target)) return;
+  if (window.AdnotaState.mode !== 'eraser') return;
+  if (isAdnotaElement(e.target)) return;
 
   // Always suppress the page's click — no erase target is better than letting
   // an ad navigate. A click without a hovered target (e.g. raced the mousemove)
@@ -711,7 +711,7 @@ document.addEventListener('click', async (e) => {
   const id = Date.now() + Math.random().toString();
 
   // Inject CSS rule so the element stays hidden even if re-created (ad rotation, etc.)
-  window.VellumEraseRules.set(id, cssSelector);
+  window.AdnotaEraseRules.set(id, cssSelector);
   rebuildEraseStyleTag();
 
   highlightOverlay.style.display = 'none';
@@ -727,7 +727,7 @@ document.addEventListener('click', async (e) => {
   activeAnimation.finished.then(() => {
     if (!consumed) {
       target.style.setProperty('display', 'none', 'important');
-      window.VellumErasedElements.add(target);
+      window.AdnotaErasedElements.add(target);
       try { activeAnimation.cancel(); } catch { }
       activeAnimation = null;
     }
@@ -736,8 +736,8 @@ document.addEventListener('click', async (e) => {
   });
 
   // Save to storage immediately (don't block the animation on I/O).
-  if (window.VellumStorage) {
-    window.VellumStorage.saveItem(domain, pathScope, { action: 'ERASE', anchor, selector: cssSelector, _id: id }).catch(() => { });
+  if (window.AdnotaStorage) {
+    window.AdnotaStorage.saveItem(domain, pathScope, { action: 'ERASE', anchor, selector: cssSelector, _id: id }).catch(() => { });
   }
 
   // ── Shared undo closure — used by both toast button and Ctrl+Z ──
@@ -754,14 +754,14 @@ document.addEventListener('click', async (e) => {
 
       // Restore element to exactly where it was.
       target.style.cssText = savedCssText;
-      window.VellumErasedElements.delete(target);
+      window.AdnotaErasedElements.delete(target);
 
       // Remove the CSS rule that prevents re-creation.
-      window.VellumEraseRules.delete(id);
+      window.AdnotaEraseRules.delete(id);
       rebuildEraseStyleTag();
 
       // Delete the erasure record from storage.
-      if (window.VellumStorage) {
+      if (window.AdnotaStorage) {
         const data = await chrome.storage.local.get(domain);
         if (data[domain]) {
           data[domain].items = data[domain].items.filter(i => i._id !== id);
@@ -769,14 +769,14 @@ document.addEventListener('click', async (e) => {
         }
       }
 
-      window.VellumUndo.remove(undoEntry);
+      window.AdnotaUndo.remove(undoEntry);
     }
   };
-  window.VellumUndo.push(undoEntry);
+  window.AdnotaUndo.push(undoEntry);
 
   // ── Toast ──
-  window.VellumUI.showToast('Element erased', {
-    id: 'vellum-eraser-toast',
+  window.AdnotaUI.showToast('Element erased', {
+    id: 'adnota-eraser-toast',
     onUndo: () => undoEntry.undo(),
   });
 

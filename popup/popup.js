@@ -79,8 +79,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   // ─── Live updates — react to keyboard shortcuts while popup is open ────────
   chrome.storage.onChanged.addListener((changes, area) => {
     if (area !== 'local') return;
-    if ('vellumActiveMode' in changes) {
-      setActiveCard(changes.vellumActiveMode.newValue);
+    if ('adnotaActiveMode' in changes) {
+      setActiveCard(changes.adnotaActiveMode.newValue);
     }
   });
 
@@ -140,7 +140,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     };
 
     function sendSoftDelete(payload) {
-      chrome.tabs.sendMessage(tabs[0].id, { action: 'vellum-soft-delete', ...payload }, () => {
+      chrome.tabs.sendMessage(tabs[0].id, { action: 'adnota-soft-delete', ...payload }, () => {
         void chrome.runtime.lastError;
         window.close();
       });
@@ -154,8 +154,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         const count = info.count() ?? 0;
         if (count === 0) return;
 
-        const noun = window.VellumUI.pluralize(count, info.singular, info.plural);
-        const ok = await window.VellumUI.confirmDialog({
+        const noun = window.AdnotaUI.pluralize(count, info.singular, info.plural);
+        const ok = await window.AdnotaUI.confirmDialog({
           message: `Delete ${count} ${noun} from this page?`,
           subtext: 'You\u2019ll have 5 seconds to undo.',
         });
@@ -175,8 +175,8 @@ document.addEventListener('DOMContentLoaded', async () => {
       const total = erasures + notes + highlights + strokes + resizes;
       if (total === 0) return;
 
-      const noun = window.VellumUI.pluralize(total, 'edit', 'edits');
-      const ok = await window.VellumUI.confirmDialog({
+      const noun = window.AdnotaUI.pluralize(total, 'edit', 'edits');
+      const ok = await window.AdnotaUI.confirmDialog({
         message: `Delete ${total} ${noun} from this page?`,
         subtext: 'You\u2019ll have 5 seconds to undo.',
       });
