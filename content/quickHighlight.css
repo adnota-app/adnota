@@ -9,13 +9,13 @@
   align-items: stretch;
   gap: 4px;
   padding: 6px 10px;
-  background: rgba(15, 15, 15, 0.92);
+  background: var(--adnota-hud-bg);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
   border-radius: 10px;
-  border: 1px solid rgba(124, 58, 237, 0.45);
+  border: 1px solid var(--adnota-hud-border);
   box-shadow: 0 4px 24px rgba(0, 0, 0, 0.5);
-  color: #e4e4e7;
+  color: var(--adnota-hud-text);
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   opacity: 0;
   transform: translateY(2px);
@@ -63,7 +63,7 @@
   outline: none !important;
   padding: 3px 0 !important;
   margin: 0 !important;
-  color: #e4e4e7 !important;
+  color: var(--adnota-hud-text) !important;
   font-family: inherit !important;
   font-size: 11px !important;
   font-weight: 500 !important;
@@ -142,7 +142,7 @@
   left: 50%;
   transform: translateX(-50%);
   background: rgba(15, 15, 15, 0.95);
-  color: #e4e4e7;
+  color: var(--adnota-hud-text);
   font-size: 11px;
   font-weight: 500;
   padding: 3px 8px;

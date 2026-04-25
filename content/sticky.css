@@ -292,7 +292,7 @@ html.adnota-hidden .adnota-sticky-container {
   width: 28px;
   height: 28px;
   border-radius: 7px;
-  background: linear-gradient(135deg, #7c3aed 0%, #4f46e5 100%);
+  background: var(--adnota-brand-gradient);
   display: flex;
   align-items: center;
   justify-content: center;
