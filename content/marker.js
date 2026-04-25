@@ -786,10 +786,19 @@ window.AdnotaMarker = {
         textEl.style.top = (rect.top + scrollTop + (payload.textPos.y / 100) * rect.height) + 'px';
       }
 
+      let syncPending = false;
+      function scheduleSync() {
+        if (syncPending) return;
+        syncPending = true;
+        requestAnimationFrame(() => { syncPending = false; syncTextPos(); });
+      }
+
       syncTextPos();
-      window.addEventListener('resize', syncTextPos);
-      window.addEventListener('scroll', syncTextPos, { passive: true });
-      const observer = new ResizeObserver(() => syncTextPos());
+      window.addEventListener('resize', scheduleSync);
+      // Capture phase catches scrolls inside nested overflow containers
+      // (window scroll events don't bubble from inner scrollers).
+      window.addEventListener('scroll', scheduleSync, { passive: true, capture: true });
+      const observer = new ResizeObserver(scheduleSync);
       observer.observe(anchorElement);
       return;
     }
@@ -906,10 +915,19 @@ window.AdnotaMarker = {
       }
     }
 
+    let syncPending = false;
+    function scheduleSync() {
+      if (syncPending) return;
+      syncPending = true;
+      requestAnimationFrame(() => { syncPending = false; syncBounds(); });
+    }
+
     syncBounds();
-    window.addEventListener('resize', syncBounds);
-    window.addEventListener('scroll', syncBounds, { passive: true });
-    const observer = new ResizeObserver(() => syncBounds());
+    window.addEventListener('resize', scheduleSync);
+    // Capture phase catches scrolls inside nested overflow containers
+    // (window scroll events don't bubble from inner scrollers).
+    window.addEventListener('scroll', scheduleSync, { passive: true, capture: true });
+    const observer = new ResizeObserver(scheduleSync);
     observer.observe(anchorElement);
   }
 };

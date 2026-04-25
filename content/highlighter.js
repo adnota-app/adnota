@@ -811,11 +811,19 @@ window.AdnotaHighlighter = {
       }
     }
 
+    let syncPending = false;
+    function scheduleSync() {
+      if (syncPending) return;
+      syncPending = true;
+      requestAnimationFrame(() => { syncPending = false; syncBounds(); });
+    }
+
     syncBounds();
-    window.addEventListener('resize', syncBounds);
-    // Bug 4 fix: Re-sync on scroll so fallback highlight rects don't drift on long pages.
-    window.addEventListener('scroll', syncBounds, { passive: true });
-    const observer = new ResizeObserver(() => syncBounds());
+    window.addEventListener('resize', scheduleSync);
+    // Capture phase catches scrolls inside nested overflow containers
+    // (window scroll events don't bubble from inner scrollers).
+    window.addEventListener('scroll', scheduleSync, { passive: true, capture: true });
+    const observer = new ResizeObserver(scheduleSync);
     observer.observe(anchorElement);
 
     if (payload._id) {
