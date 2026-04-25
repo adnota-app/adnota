@@ -56,6 +56,21 @@ resizerHudInfo.style.alignItems = 'center';
 resizerHudInfo.style.minWidth = '220px';
 resizerBody.appendChild(resizerHudInfo);
 
+// Help (?) button — opens a tail-anchored popover with the full tip list.
+// Replaces the old rotating tip; always reachable, no waiting for the right
+// tip to cycle around.
+const resizerHelpBtn = window.VellumUI.createHelpButton({
+  accent: 'blue',
+  tips: [
+    '<span style="color:#94a3b8">Click to <span style="color:#e4e4e7;font-weight:600">select</span> an element for resizing</span>',
+    '<span style="color:#94a3b8">Scroll ↑↓ to <span style="color:#e4e4e7;font-weight:600">traverse DOM</span> (select parents/children)</span>',
+    '<span style="color:#94a3b8">Drag any <span style="color:#93c5fd;font-weight:600">blue handle</span> to resize from that edge</span>',
+    '<span style="color:#94a3b8">Click the <span style="color:#93c5fd;font-weight:600">↺</span> to completely reset this element</span>',
+    '<span style="color:#94a3b8">Press <span style="background:rgba(59,130,246,0.25);color:#93c5fd;padding:1px 4px;border-radius:3px;font-size:11px;font-weight:600;margin-right:2px">Esc</span> to exit any tool</span>',
+  ],
+});
+resizerBody.appendChild(resizerHelpBtn);
+
 // Divider
 resizerBody.appendChild(Object.assign(document.createElement('div'), { className: 'vellum-toolbar-divider vellum-toolbar-divider-blue' }));
 
@@ -69,36 +84,9 @@ resizerBody.appendChild(window.VellumUI.createTrashButton({
 // Undo
 resizerBody.appendChild(window.VellumUI.createUndoButton());
 
-// ─── Rotating help tips (idle state) ───────────────────────────────────────
-const hudTips = [
-  '<span style="color:#94a3b8">Click to <span style="color:#e4e4e7;font-weight:600">select</span> an element for resizing</span>',
-  '<span style="color:#94a3b8">Scroll \u2191\u2193 to <span style="color:#e4e4e7;font-weight:600">traverse DOM</span> (select parents/children)</span>',
-  '<span style="color:#94a3b8">Drag any <span style="color:#93c5fd;font-weight:600">blue handle</span> to resize from that edge</span>',
-  '<span style="color:#94a3b8">Click the <span style="color:#93c5fd;font-weight:600">blue \u21BA</span> to reset this element\u2019s resizes</span>',
-  '<span style="color:#94a3b8">Press <span style="background:rgba(59,130,246,0.25);color:#93c5fd;padding:1px 4px;border-radius:3px;font-size:11px;font-weight:600;margin-right:2px">Esc</span> to exit resizer</span>',
-];
-let hudTipIndex = 0;
-let hudTipInterval = null;
-
-function stopHudTips() {
-  if (hudTipInterval) { clearInterval(hudTipInterval); hudTipInterval = null; }
-}
-
-function ensureTipRotation() {
-  if (hudTipInterval) return;
-  hudTipInterval = setInterval(() => {
-    hudTipIndex = (hudTipIndex + 1) % hudTips.length;
-    const tipEl = document.getElementById('vellum-resizer-hud-tip');
-    if (tipEl) {
-      tipEl.style.opacity = '0';
-      tipEl.style.transition = 'opacity 0.2s ease';
-      setTimeout(() => {
-        tipEl.innerHTML = hudTips[hudTipIndex];
-        tipEl.style.opacity = '1';
-      }, 200);
-    }
-  }, 4000);
-}
+// Idle-state placeholder for the info section. The full tip list lives behind
+// the ? button — this just keeps the strip from looking empty.
+const IDLE_HUD_LABEL = '<span style="color:#94a3b8">Hover an element to resize</span>';
 
 let resizerDockMounted = false;
 function setHudVisible(visible) {
@@ -124,26 +112,19 @@ function updateHUD() {
     html += dot;
     html += `<span style="color:#94a3b8">Drag a handle to resize \u00b7 <span style="color:#93c5fd">\u21BA</span> to reset</span>`;
     resizerHudInfo.innerHTML = html;
-    stopHudTips();
     return;
   }
 
   if (hoveredEl) {
-    const r = hoveredEl.getBoundingClientRect();
-    html += `<span style="color:#93c5fd;font-weight:600">${Math.round(r.width)}\u00d7${Math.round(r.height)}</span>`;
-    html += `<span style="color:#93c5fd;margin-left:4px">target</span>`;
-    // Scroll hint — always available on hover since parents may be larger.
-    html += dot;
+    // Dimension is shown on the hover overlay’s top-right badge, so the
+    // HUD info area only needs the scroll hint.
     html += `<span style="color:#94a3b8">Scroll \u2191\u2193 to walk the DOM</span>`;
     resizerHudInfo.innerHTML = html;
-    stopHudTips();
     return;
   }
 
-  // Idle — rotating help tips.
-  resizerHudInfo.innerHTML =
-    `<span id="vellum-resizer-hud-tip" style="display:inline-block;min-width:180px">${hudTips[hudTipIndex]}</span>`;
-  ensureTipRotation();
+  // Idle: short static label. Full tip list is behind the ? button.
+  resizerHudInfo.innerHTML = IDLE_HUD_LABEL;
 }
 
 let hoveredEl = null;
@@ -714,8 +695,7 @@ window.VellumState.subscribe((state) => {
     traverseDepth = 0;
     deselectElement();
     setHudVisible(false);
-    stopHudTips();
-    hudTipIndex = 0;
+    if (resizerHelpBtn.close) resizerHelpBtn.close();
   }
 });
 

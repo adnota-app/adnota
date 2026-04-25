@@ -3,25 +3,60 @@
 // ─── Hover overlay ────────────────────────────────────────────────────────────
 const highlightOverlay = window.VellumUI.createHoverOverlay('vellum-highlight-overlay', '#ef4444', 'rgba(239, 68, 68, 0.15)');
 
-// ─── Dimension badge (top-right corner of hover outline) ─────────────────────
-const dimensionBadge = document.createElement('div');
-dimensionBadge.id = 'vellum-dimension-badge';
-dimensionBadge.setAttribute('data-vellum-ui', '1');
-Object.assign(dimensionBadge.style, {
+// ─── Top-right badge cluster on the hover outline ───────────────────────────
+// Lives where the user's eye already is — the element they're hovering — so
+// the most actionable signals (dimensions, "likely ad") don't require a
+// glance down at the HUD strip. The cluster is a flex row pinned to the
+// outline's top-right; badges sit side by side with consistent height and
+// disappear when not relevant.
+const overlayBadgeRow = document.createElement('div');
+overlayBadgeRow.setAttribute('data-vellum-ui', '1');
+Object.assign(overlayBadgeRow.style, {
   position: 'absolute',
   top: '-1px',
   right: '-1px',
   transform: 'translateY(-100%)',
+  display: 'inline-flex',
+  alignItems: 'flex-end',
+  gap: '3px',
+});
+highlightOverlay.appendChild(overlayBadgeRow);
+
+// "likely ad" pill — only shown when getEffectiveAdSignals() returns non-empty
+// (same detection that drives the silent domain-wide promotion on click).
+// Soft red with an opaque background so it reads against any element underneath.
+const adBadge = document.createElement('div');
+adBadge.id = 'vellum-ad-badge';
+adBadge.setAttribute('data-vellum-ui', '1');
+adBadge.textContent = 'likely ad';
+Object.assign(adBadge.style, {
+  background: 'rgba(220, 38, 38, 0.92)',
+  color: '#fff',
+  fontSize: '10px',
+  fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+  fontWeight: '600',
+  lineHeight: '1',
+  padding: '3px 6px',
+  borderRadius: '3px 0 0 3px',
+  whiteSpace: 'nowrap',
+  display: 'none',
+});
+overlayBadgeRow.appendChild(adBadge);
+
+const dimensionBadge = document.createElement('div');
+dimensionBadge.id = 'vellum-dimension-badge';
+dimensionBadge.setAttribute('data-vellum-ui', '1');
+Object.assign(dimensionBadge.style, {
   background: 'rgba(15, 15, 15, 0.85)',
   color: '#e4e4e7',
   fontSize: '10px',
   fontFamily: 'ui-monospace, "SF Mono", Menlo, Consolas, monospace',
   lineHeight: '1',
-  padding: '2px 6px',
+  padding: '3px 6px',
   borderRadius: '3px 3px 0 3px',
   whiteSpace: 'nowrap',
 });
-highlightOverlay.appendChild(dimensionBadge);
+overlayBadgeRow.appendChild(dimensionBadge);
 
 // ─── HUD body (mounts into the unified VellumDock on activation) ───────────
 // The dock owns the chrome (drag handle, V logo, tool row, position).
@@ -38,6 +73,22 @@ eraserHudInfo.style.display = 'inline-flex';
 eraserHudInfo.style.alignItems = 'center';
 eraserHudInfo.style.minWidth = '220px';
 eraserBody.appendChild(eraserHudInfo);
+
+// Help (?) button — opens a tail-anchored popover with the full tip list.
+// Replaces the old rotating tip; always reachable, no waiting for the right
+// tip to cycle around.
+const eraserHelpBtn = window.VellumUI.createHelpButton({
+  accent: 'red',
+  tips: [
+    '<span style="color:#94a3b8">Click to erase on <span style="color:#e4e4e7;font-weight:600">this page</span></span>',
+    '<span style="color:#94a3b8"><span style="background:rgba(239,68,68,0.25);color:#fca5a5;padding:1px 4px;border-radius:3px;font-size:11px;font-weight:600;margin-right:4px">⇧+Click</span>erase across <span style="color:#e4e4e7;font-weight:600">entire domain</span></span>',
+    '<span style="color:#94a3b8">When you see <span style="background:rgba(220,38,38,0.92);color:#fff;padding:1px 5px;border-radius:3px;font-size:11px;font-weight:600">likely ad</span>, erasing it also blocks it across the domain</span>',
+    '<span style="color:#94a3b8">Scroll ↑↓ to <span style="color:#e4e4e7;font-weight:600">traverse DOM</span> (select parents/children)</span>',
+    '<span style="color:#94a3b8">Press <span style="background:rgba(239,68,68,0.25);color:#fca5a5;padding:1px 4px;border-radius:3px;font-size:11px;font-weight:600;margin-right:2px">Esc</span> to exit any tool</span>',
+  ],
+});
+eraserHelpBtn.classList.add('vellum-undo-btn-red');
+eraserBody.appendChild(eraserHelpBtn);
 
 // Divider
 eraserBody.appendChild(Object.assign(document.createElement('div'), {
@@ -58,15 +109,10 @@ const eraserUndoBtn = window.VellumUI.createUndoButton();
 eraserUndoBtn.classList.add('vellum-undo-btn-red');
 eraserBody.appendChild(eraserUndoBtn);
 
-// ─── Rotating help tips ─────────────────────────────────────────────────────
-const hudTips = [
-  '<span style="color:#94a3b8">Click to erase on <span style="color:#e4e4e7;font-weight:600">this page</span></span>',
-  '<span style="color:#94a3b8"><span style="background:rgba(124,58,237,0.25);color:#c084fc;padding:1px 4px;border-radius:3px;font-size:11px;font-weight:600;margin-right:4px">\u21e7+Click</span>erase across <span style="color:#e4e4e7;font-weight:600">entire domain</span></span>',
-  '<span style="color:#94a3b8">Scroll \u2191\u2193 to <span style="color:#e4e4e7;font-weight:600">traverse DOM</span> (select parents/children)</span>',
-  '<span style="color:#94a3b8">Press <span style="background:rgba(124,58,237,0.25);color:#c084fc;padding:1px 4px;border-radius:3px;font-size:11px;font-weight:600;margin-right:2px">Esc</span> to exit eraser</span>',
-];
-let hudTipIndex = 0;
-let hudTipInterval = null;
+// ─── Idle-state info label ──────────────────────────────────────────────────
+// The full tip list lives behind the ? button in the HUD. IDLE_HUD_LABEL is
+// the static placeholder shown in the info section when nothing is hovered.
+const IDLE_HUD_LABEL = '<span style="color:#94a3b8">Hover an element to erase</span>';
 
 function escapeHtml(str) {
   return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -324,17 +370,11 @@ function findBetterTarget(el) {
   return bestCandidate;
 }
 
-function stopHudTips() {
-  if (hudTipInterval) { clearInterval(hudTipInterval); hudTipInterval = null; }
-}
-
-
 function updateHUD(target) {
   if (!target) {
     dimensionBadge.textContent = '';
-    // Idle state: rotating help tip, no confidence/ad info.
-    eraserHudInfo.innerHTML = `<span id="vellum-hud-tip" style="display:inline-block;min-width:180px">${hudTips[hudTipIndex]}</span>`;
-    ensureTipRotation();
+    adBadge.style.display = 'none';
+    eraserHudInfo.innerHTML = IDLE_HUD_LABEL;
     return;
   }
 
@@ -346,6 +386,9 @@ function updateHUD(target) {
   const anchor = getAnchorStrength(target);
   const adSignals = getEffectiveAdSignals(target);
   const betterTarget = findBetterTarget(target);
+
+  // ── Likely-ad badge on the overlay (visible only when ad signals fire) ──
+  adBadge.style.display = adSignals.length > 0 ? 'inline-block' : 'none';
 
   // Confidence label + color
   let confLabel, confColor;
@@ -378,35 +421,15 @@ function updateHUD(target) {
     }
   }
 
-  // Scroll nudge (only when a better target exists) — takes priority over rotating tip
+  // Scroll nudge — contextual hint when a higher parent has a stronger anchor.
   if (betterTarget) {
     html += dot;
     html += `<span style="color:#6ee7b7">\u25b2 Scroll up ${betterTarget.stepsUp}\u00d7 for better target</span>`;
-  } else {
-    // Rotating help tip
-    html += dot;
-    html += `<span id="vellum-hud-tip" style="display:inline-block;min-width:180px">${hudTips[hudTipIndex]}</span>`;
   }
 
   eraserHudInfo.innerHTML = html;
-  ensureTipRotation();
 }
 
-function ensureTipRotation() {
-  if (hudTipInterval) return;
-  hudTipInterval = setInterval(() => {
-    hudTipIndex = (hudTipIndex + 1) % hudTips.length;
-    const tipEl = document.getElementById('vellum-hud-tip');
-    if (tipEl) {
-      tipEl.style.opacity = '0';
-      tipEl.style.transition = 'opacity 0.2s ease';
-      setTimeout(() => {
-        tipEl.innerHTML = hudTips[hudTipIndex];
-        tipEl.style.opacity = '1';
-      }, 200);
-    }
-  }, 4000);
-}
 
 // Show/hide the entire HUD shell. Visible whenever eraser mode is active so
 // the trash/undo buttons stay reachable even when no element is hovered.
@@ -580,8 +603,7 @@ window.VellumState.subscribe(state => {
   } else {
     highlightOverlay.style.display = 'none';
     setHudVisible(false);
-    stopHudTips();
-    hudTipIndex = 0;
+    if (eraserHelpBtn.close) eraserHelpBtn.close();
     hoveredElement = null;
     rawHoveredEl = null;
     traverseDepth = 0;

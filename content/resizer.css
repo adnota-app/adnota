@@ -125,3 +125,13 @@
 #vellum-dock[data-accent="resizer"] .vellum-undo-btn:hover svg {
   stroke: #93c5fd;
 }
+
+/* Help (?) button active state uses a default purple in vellumUI.css; recolor
+   to blue when the dock is in resizer mode so an open popover doesn't read as
+   the wrong tool. */
+#vellum-dock[data-accent="resizer"] .vellum-help-btn.vellum-help-btn-active {
+  background: rgba(59, 130, 246, 0.18);
+}
+#vellum-dock[data-accent="resizer"] .vellum-help-btn.vellum-help-btn-active svg {
+  stroke: #93c5fd;
+}

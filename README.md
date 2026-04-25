@@ -89,12 +89,12 @@ Also exposes `generateCSSSelector(el)` as a shared utility (used by the resizer)
 #### `content/eraser.js`
 - Activated via popup or `Alt+E` keyboard shortcut
 - Red outline hover preview tracks the cursor; Vellum's own UI elements are guarded and invisible to the eraser
-- **Dimension badge**: small `W×H` pixel label in the top-right corner of the red hover outline — useful for gauging element size, especially when parts extend off-screen
+- **Top-right badge cluster on the hover outline**: pinned where the user's eye already is. `W×H` dimension pill plus a soft-red `likely ad` pill that lights up whenever `getEffectiveAdSignals()` fires (same detection that drives silent domain-wide promotion). Both follow the cursor with the outline so the most actionable signals don't require a glance down at the HUD strip
 - **HUD strip**: fixed bottom-center bar (draggable) that stays visible whenever the eraser is active. Layout: drag handle → V logo chip → info section → trash → undo. Info section updates live while hovering:
   - **Confidence score** with contextual label — "likely ad" (red, when ad signals detected), "strong anchor" (green, ≥70), "moderate" (amber, ≥40), "weak anchor" (red, <40)
   - **Ad signal badges** — colored pills (e.g., `ad-keyword`, `iframe`, `ad-network`) shown when detected
   - **Scroll nudge** — "▲ Scroll up N× for better target" shown when `findBetterTarget()` identifies a higher parent with a stronger anchor score
-  - **Rotating help tips** — cycles every 4s with crossfade: click scope (page vs domain), scroll traversal, Escape to exit
+  - **Help (?) button** — opens a tail-anchored popover above the HUD with the shortcut tips: click scope, Shift+Click for domain-wide, the "likely ad" auto-promotion behavior, scroll-to-traverse, and Escape. Click outside or click `?` again to dismiss
   - **Trash button** — deletes every erasure on the current page after a confirm (same action as the popup's "Erased" stat card)
   - **Undo button** — fires the shared `VellumUndo.undo()` stack
   - **Draggable** — grab handle + pointer capture drag; position resets on mode exit
@@ -161,7 +161,7 @@ Also exposes `generateCSSSelector(el)` as a shared utility (used by the resizer)
 - **Dimension badge**: small `W×H` pixel label in the top-right corner of the blue hover outline
 - **Scroll-wheel DOM traversal**: while hovering, scroll up to walk to the next layout-significant parent, scroll down to walk back toward children. Stops before reaching a viewport-dominating container
 - **HUD strip**: fixed bottom-center bar (draggable) that stays visible whenever the resizer is active. Layout: drag handle → V logo chip (blue) → info section → trash → undo. Matches the eraser HUD aesthetic, tinted with the resizer's blue accent. Info section updates live:
-  - **Idle** — rotating help tips (click to select, scroll to traverse, drag handles, ✕ to reset, Esc to exit)
+  - **Idle** — short static label ("Hover an element to resize"); the full tip list lives behind a `?` popover (click to select, scroll to traverse, drag handles, ↺ to reset, Esc to exit)
   - **Hovering** — current target dimensions in `W×H` + scroll-to-walk hint
   - **Selected** — locked target dimensions (live-updated during drag) + reset hint
   - **Trash button** — deletes every resize on the current page (same code path as the popup's Resized stat card)
