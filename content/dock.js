@@ -360,6 +360,14 @@
     setVisibilityIcon(false);
   }
 
+  // The body's CSS uses overflow-x: clip during the slide-in so contents don't
+  // bleed past the growing max-width box. Once expanded, we lift the clip so
+  // tooltips on the leftmost/rightmost buttons (which are wider than their
+  // host buttons) can render past the body's edges. Matches the max-width
+  // transition duration in dock.css.
+  const SLIDE_MS = 180;
+  let unclipTimer = null;
+
   // ── Public API ────────────────────────────────────────────────────────────
   window.VellumDock = {
     // Lock the dock to its current pixel coordinates BEFORE filling the
@@ -373,12 +381,17 @@
       if (frag) body.appendChild(frag);
       dock.classList.add('vellum-dock-active');
       dock.setAttribute('data-accent', toolId);
+      body.style.overflow = '';
+      clearTimeout(unclipTimer);
+      unclipTimer = setTimeout(() => { body.style.overflow = 'visible'; }, SLIDE_MS);
     },
     // toolId gates unmount so the outgoing tool's subscriber (which fires
     // after the incoming tool's when switching modes) doesn't clear the body
     // the new tool just installed.
     unmount(toolId) {
       if (toolId && dock.getAttribute('data-accent') !== toolId) return;
+      clearTimeout(unclipTimer);
+      body.style.overflow = '';
       body.replaceChildren();
       dock.classList.remove('vellum-dock-active');
       dock.removeAttribute('data-accent');
