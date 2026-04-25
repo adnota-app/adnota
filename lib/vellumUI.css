@@ -1,112 +1,5 @@
-/* lib/vellumUI.css — shared UI styles loaded in both content scripts
-   (via manifest content_scripts.css) and the extension popup/sites pages
-   (via <link>). Consumes design tokens from lib/adnotaTokens.css.
-
-   Two surface families live here:
-     • Dashboard surfaces (modal, brand block, search) — use --surface tokens
-       and Lato fonts.
-     • HUD overlays (tooltips, help popover, tag autocomplete) — use --hud-*
-       tokens with system fonts (no Google Fonts on host pages — CSP risk). */
-
-/* ─── Shared brand block ─────────────────────────────────────────────────── */
-/* Identical DOM in popup/index.html and pages/sites.html — define once. */
-
-.brand {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  flex-shrink: 0;
-}
-
-.brand-monogram {
-  width: 40px;
-  height: 40px;
-  border-radius: var(--r-sm);
-  background: var(--brand-gradient);
-  display: grid;
-  place-items: center;
-  font-family: var(--font-display);
-  font-weight: 900;
-  font-size: 20px;
-  color: #fff;
-  letter-spacing: -0.5px;
-  flex-shrink: 0;
-  box-shadow: var(--shadow-glow);
-  user-select: none;
-}
-
-.brand-name {
-  font-family: var(--font-display);
-  font-size: 16px;
-  font-weight: 700;
-  color: var(--text);
-  letter-spacing: -0.3px;
-  line-height: 1.1;
-}
-
-.brand-sub {
-  font-family: var(--font-mono);
-  font-size: 11px;
-  color: var(--text-dim);
-  margin-top: 3px;
-  letter-spacing: 0.02em;
-}
-
-/* ─── Shared search input ────────────────────────────────────────────────── */
-/* Used in pages/sites.html header. Pattern is generic enough that future
-   surfaces (popup search, modal search) can reuse it. */
-
-.search-wrap {
-  position: relative;
-  display: flex;
-  align-items: center;
-}
-
-.search-icon {
-  position: absolute;
-  left: 11px;
-  color: var(--text-dim);
-  pointer-events: none;
-  flex-shrink: 0;
-}
-
-.search-input {
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  border-radius: var(--r-sm);
-  color: var(--text);
-  font-family: var(--font-mono);
-  font-size: 12.5px;
-  padding: 8px 34px 8px 33px;
-  width: 230px;
-  outline: none;
-  transition: background var(--t-fast), border-color var(--t-fast), box-shadow var(--t-fast);
-}
-
-.search-input::placeholder { color: var(--text-dim); }
-
-.search-input:focus {
-  background: var(--surface-3);
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--accent-soft);
-}
-
-.search-clear {
-  position: absolute;
-  right: 9px;
-  background: none;
-  border: none;
-  cursor: pointer;
-  color: var(--text-dim);
-  display: flex;
-  align-items: center;
-  padding: 2px;
-  border-radius: 4px;
-  transition: color var(--t-fast);
-}
-
-.search-clear:hover { color: var(--text); }
-.search-clear[hidden] { display: none; }
+/* lib/vellumUI.css — shared Vellum UI styles loaded in both content scripts
+   (via manifest content_scripts.css) and the extension popup (via <link>). */
 
 /* ─── Confirmation modal ─────────────────────────────────────────────────── */
 
@@ -132,10 +25,10 @@
 .vellum-modal {
   min-width: 280px;
   max-width: 380px;
-  background: linear-gradient(135deg, var(--surface) 0%, var(--bg) 100%);
-  border: 1px solid var(--border-strong);
-  border-radius: var(--r);
-  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.6), 0 0 0 1px var(--accent-soft);
+  background: linear-gradient(135deg, #12082b 0%, #0c0519 100%);
+  border: 1px solid rgba(124, 58, 237, 0.35);
+  border-radius: 14px;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(124, 58, 237, 0.1);
   padding: 18px 20px 16px;
   animation: vellum-modal-pop 0.18s cubic-bezier(.2,.8,.3,1);
 }
@@ -155,37 +48,36 @@
 .vellum-modal-logo {
   width: 28px;
   height: 28px;
-  border-radius: var(--r-xs);
-  background: var(--brand-gradient);
+  border-radius: 7px;
+  background: linear-gradient(135deg, #7c3aed 0%, #4f46e5 100%);
   display: flex;
   align-items: center;
   justify-content: center;
-  font-family: var(--font-display);
-  font-weight: 900;
+  font-weight: 700;
   font-size: 14px;
   color: #fff;
   letter-spacing: -0.5px;
-  box-shadow: var(--shadow-glow);
+  box-shadow: 0 2px 8px rgba(124, 58, 237, 0.45);
   flex-shrink: 0;
   user-select: none;
 }
 
 .vellum-modal-title {
-  color: var(--text);
+  color: rgba(255, 255, 255, 0.95);
   font-size: 14px;
   font-weight: 600;
   letter-spacing: 0.01em;
 }
 
 .vellum-modal-message {
-  color: var(--text);
+  color: rgba(255, 255, 255, 0.9);
   font-size: 13.5px;
   line-height: 1.5;
   margin: 4px 0 2px;
 }
 
 .vellum-modal-subtext {
-  color: var(--text-muted);
+  color: rgba(255, 255, 255, 0.55);
   font-size: 12px;
   line-height: 1.45;
   margin-bottom: 16px;
@@ -207,23 +99,23 @@
   cursor: pointer;
   border: 1px solid transparent;
   letter-spacing: 0.02em;
-  transition: background var(--t-fast), border-color var(--t-fast), color var(--t-fast);
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
 }
 
 .vellum-modal-btn:focus {
   outline: none;
-  box-shadow: 0 0 0 2px var(--accent);
+  box-shadow: 0 0 0 2px rgba(124, 58, 237, 0.55);
 }
 
 .vellum-modal-cancel {
   background: transparent;
   border-color: rgba(255, 255, 255, 0.18);
-  color: var(--text-muted);
+  color: rgba(255, 255, 255, 0.8);
 }
 .vellum-modal-cancel:hover {
   background: rgba(255, 255, 255, 0.06);
   border-color: rgba(255, 255, 255, 0.3);
-  color: var(--text);
+  color: #fff;
 }
 
 .vellum-modal-danger {
@@ -248,8 +140,8 @@
   bottom: calc(100% + 8px);
   left: 50%;
   transform: translateX(-50%);
-  background: var(--hud-bg-strong);
-  color: var(--hud-text);
+  background: rgba(15, 15, 15, 0.95);
+  color: #e4e4e7;
   /* Reset typography that hosts like .vellum-toolbar-drag bake in (bold +
      tight letter-spacing for the braille dot glyph) — otherwise the tooltip
      inherits them and doesn't match the rest of the HUD tooltips. */
@@ -311,17 +203,17 @@
 .vellum-help-popover {
   position: fixed;
   z-index: 2147483647;
-  background: var(--hud-bg-strong);
+  background: rgba(15, 15, 15, 0.96);
   -webkit-backdrop-filter: blur(10px);
   backdrop-filter: blur(10px);
-  border: 1px solid var(--hud-border);
+  border: 1px solid rgba(124, 58, 237, 0.45);
   border-radius: 10px;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.55);
   padding: 10px 12px;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   font-size: 12px;
   line-height: 1.4;
-  color: var(--hud-text);
+  color: #e4e4e7;
   min-width: 220px;
   max-width: 360px;
   animation: vellum-help-pop 0.14s cubic-bezier(.2,.8,.3,1);
@@ -364,11 +256,11 @@
 }
 /* Border layer (1px below the fill so the seam disappears). */
 .vellum-help-tail::before {
-  border-top: 7px solid var(--hud-border);
+  border-top: 7px solid rgba(124, 58, 237, 0.45);
   top: 1px;
 }
 .vellum-help-tail::after {
-  border-top: 7px solid var(--hud-bg-strong);
+  border-top: 7px solid rgba(15, 15, 15, 0.96);
 }
 
 .vellum-help-popover-red    { border-color: rgba(239, 68, 68, 0.5); }
@@ -395,15 +287,15 @@
   display: none;
   max-height: 240px;
   overflow-y: auto;
-  background: var(--hud-bg) !important;
+  background: rgba(15, 15, 15, 0.92) !important;
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
-  border: 1px solid var(--hud-border) !important;
+  border: 1px solid rgba(124, 58, 237, 0.45) !important;
   border-radius: 10px !important;
   box-shadow: 0 4px 24px rgba(0, 0, 0, 0.5);
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   font-size: 12px;
-  color: var(--hud-text);
+  color: #e4e4e7;
   padding: 5px;
   margin: 0 !important;
   min-width: 160px;
