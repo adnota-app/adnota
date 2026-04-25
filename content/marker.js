@@ -1088,10 +1088,22 @@ document.addEventListener('mousemove', (e) => {
       hideHoverDeleteBtn();
       return;
     }
+    // Mid-stroke (active freehand path or shape drag) — never paint UI on top.
+    if (capturePath || captureShape) {
+      hideHoverDeleteBtn();
+      return;
+    }
     // Cursor on the ✕ itself → keep it visible.
     if (hoverDeleteBtnEl && lastMarkerPointer.target === hoverDeleteBtnEl) return;
-    // Any other Vellum UI (dock, sticky, toolbar) → stand down.
-    if (window.VellumUI?.isVellumElement(lastMarkerPointer.target)) {
+    // Stand down on Vellum UI surfaces (dock, sticky, toolbar) — but allow
+    // marker wrappers AND the captureSvg drawing overlay through, so hover-✕
+    // works in pen / arrow / rect / ellipse modes too. In those modes wrappers
+    // are pointer-events: none and the captureSvg owns the pointer, so without
+    // these carve-outs the ✕ would never appear while a paint tool is active.
+    const target = lastMarkerPointer.target;
+    const isMarkerWrapper = target?.closest?.('.vellum-marker-wrapper');
+    const isCaptureSvg = target === captureSvg;
+    if (window.VellumUI?.isVellumElement(target) && !isMarkerWrapper && !isCaptureSvg) {
       hideHoverDeleteBtn();
       return;
     }
