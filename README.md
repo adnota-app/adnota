@@ -70,6 +70,9 @@ Single source of truth for the optional tag layer on NOTE and HIGHLIGHT items. C
 - `getAllTags()` — async; reads all storage, flattens `items[]`, returns `[{ tag, count }]` sorted by count desc then alphabetically. No caching (single read per tag-input focus; bounded by the 10 MB storage cap).
 - `buildAutocompleteDropdown(inputEl, { onPick })` — attaches a dropdown under an input: prefix+substring match against existing tags, keyboard nav (Arrow↑/↓/Enter/Escape), mousedown-pick (so blur doesn't hide before the click lands). Dropdown is appended to `<body>` with `position: fixed !important` + max z-index so it escapes every parent stacking context and host-site CSS bleed. Styling lives in `lib/adnotaUI.css` under `.adnota-tag-suggest*`.
 
+#### `lib/adnotaTokens.css` — design tokens
+Single source of truth for HUD surface colors (`--adnota-hud-bg`, `--adnota-hud-bg-strong`, `--adnota-hud-border`, `--adnota-hud-text`), brand accent (`--adnota-accent`, `--adnota-brand-gradient`), and semantic tool colors (`--adnota-red`, `--adnota-amber`, `--adnota-blue`, `--adnota-green`, `--adnota-pink`). Loaded by both content_scripts and the popup/sites pages. All custom properties are namespaced `--adnota-*` because this file ships into every host page and would otherwise collide with host design systems. The popup and sites pages still keep their own un-prefixed `:root` blocks for surface/text/shadow tokens — pending consolidation on the next dashboard visual pass.
+
 ---
 
 ### Content Scripts
@@ -128,7 +131,7 @@ Also exposes `generateCSSSelector(el)` as a shared utility (used by the resizer)
 
 #### `content/highlighter.js` — `window.AdnotaHighlighter`
 - Activated via popup or `Alt+H`
-- **Dark frosted-glass toolbar** (fixed, bottom-center, draggable) — matches eraser HUD aesthetic with `rgba(15,15,15,0.92)` background, `backdrop-filter: blur(8px)`, and purple accent border
+- **Dark frosted-glass toolbar** (fixed, bottom-center, draggable) — matches eraser HUD aesthetic with `var(--adnota-hud-bg)` background, `backdrop-filter: blur(8px)`, and purple accent border
 - **Toolbar layout**: drag handle → A logo chip → tool icons → color swatches → stroke width presets → trash → undo. Trash clears every highlight and marker shape on the current page after a confirm.
 - **Seven tool buttons** (SVG icons with purple hover/active states):
   - **Select** — click to select existing annotations; delete via red ✕ or Delete/Backspace key; double-click text to re-edit
