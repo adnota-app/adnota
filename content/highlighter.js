@@ -207,8 +207,10 @@ for (const preset of strokePresets) {
   highlightToolbar.appendChild(btn);
 }
 
-// Divider
-highlightToolbar.appendChild(Object.assign(document.createElement('div'), { className: 'vellum-toolbar-divider' }));
+// Divider — trailing edge of the stroke-width group; hides with the strokes.
+const strokeGroupDivider = Object.assign(document.createElement('div'), { className: 'vellum-toolbar-divider' });
+highlightToolbar.appendChild(strokeGroupDivider);
+const strokeGroupEls = [...Object.values(strokeBtns), strokeGroupDivider];
 
 // Trash — clears every drawing annotation on this page (highlights + markers)
 highlightToolbar.appendChild(window.VellumUI.createTrashButton({
@@ -357,14 +359,23 @@ window.VellumState.subscribe(state => {
   fillGroupEls.forEach(el => { el.style.display = isFillableShape ? '' : 'none'; });
   fillOutlineBtn.classList.toggle('active', !state.filled);
   fillSolidBtn.classList.toggle('active', !!state.filled);
+
+  // Stroke width: hidden when width has no effect — select mode draws nothing,
+  // and solid-filled rect/ellipse render with stroke=none. Text still uses
+  // strokeWidth to derive font size, so it stays visible there.
+  const isSolidShape = isFillableShape && !!state.filled;
+  const strokeUnused = state.mode === 'select' || isSolidShape;
+  strokeGroupEls.forEach(el => { el.style.display = strokeUnused ? 'none' : ''; });
 });
 
-// Keyboard shortcut / popup toggle — switches to highlight mode, or off if already active.
+// Keyboard shortcut / popup toggle — opens the drawing palette in pen mode, or
+// closes it if any drawing tool is already active. Pen is the default because
+// it's the most natural "I want to draw" action; the old default ('highlight')
+// no longer has a toolbar button.
 chrome.runtime.onMessage.addListener((request) => {
   if (request.action === 'toggle-highlighter') {
-    // If any drawing tool is active, deactivate. Otherwise activate highlight mode.
     const isDrawing = _drawingModes.has(window.VellumState.mode);
-    window.VellumState.set({ mode: isDrawing ? null : 'highlight' });
+    window.VellumState.set({ mode: isDrawing ? null : 'pen' });
   }
 });
 
