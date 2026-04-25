@@ -30,7 +30,7 @@
 .adnota-resizer-handle-bottom:hover,
 .adnota-resizer-handle-corner:hover {
   transform: scale(1.25);
-  background: #2563eb;
+  background: var(--adnota-blue);
 }
 
 /* Left edge: tall narrow bar */
@@ -103,7 +103,7 @@
 
 .adnota-resizer-dismiss:hover {
   transform: scale(1.3);
-  background: #2563eb;
+  background: var(--adnota-blue);
 }
 
 /* ─── Drag overlay (captures mouse during drag) ──────────────────────────── */

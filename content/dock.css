@@ -21,16 +21,16 @@
   min-height: 42px;
   box-sizing: border-box;
 
-  background: rgba(15, 15, 15, 0.92);
+  background: var(--adnota-hud-bg);
   -webkit-backdrop-filter: blur(8px);
   backdrop-filter: blur(8px);
-  color: #e4e4e7;
+  color: var(--adnota-hud-text);
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   font-size: 12.5px;
   line-height: 1;
 
   border-radius: 10px;
-  border: 1px solid var(--dock-accent-border, rgba(124, 58, 237, 0.45));
+  border: 1px solid var(--dock-accent-border, var(--adnota-hud-border));
   box-shadow: 0 4px 24px rgba(0, 0, 0, 0.5);
 
   pointer-events: auto;
@@ -182,7 +182,7 @@
 /* Per-tool accent for the idle row buttons */
 .adnota-dock-tool[data-accent="eraser"]    { --tool-color: #ef4444; --tool-glow: rgba(239, 68, 68, 0.3); }
 .adnota-dock-tool[data-accent="sticky"]    { --tool-color: #f59e0b; --tool-glow: rgba(245, 158, 11, 0.3); }
-.adnota-dock-tool[data-accent="highlight"] { --tool-color: #7c3aed; --tool-glow: rgba(124, 58, 237, 0.3); }
+.adnota-dock-tool[data-accent="highlight"] { --tool-color: var(--adnota-accent); --tool-glow: rgba(124, 58, 237, 0.3); }
 .adnota-dock-tool[data-accent="resizer"]   { --tool-color: #3b82f6; --tool-glow: rgba(59, 130, 246, 0.3); }
 
 /* Tool buttons need position:relative so the shared [data-tooltip]::after
