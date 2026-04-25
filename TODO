@@ -150,6 +150,8 @@ Add ability to delete all storage for entire domain from HOME page (you can alre
 
 TODO:
 
+in ERASE, shift+click to scroll?
+
 
 get rid of highlighter from PAINT hud. change PAINT to DRAW and consider having an alt+e for ERASE, alt+r for RESIZE, alt+s for STICKY, and alt+d for DRAW. Thoughts?
 Should these shortcuts even be alt? Or just the keys e, r, s, d? 
