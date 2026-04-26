@@ -496,6 +496,31 @@ function startDrag(e, axis) {
   startMarginLeft = parseFloat(cs.marginLeft) || 0;
   startMarginTop = parseFloat(cs.marginTop) || 0;
 
+  // Snapshot the page's pre-drag inline values for the props we'll touch.
+  // A blanket removeProperty on release would strip longhands the page's own
+  // shorthand expanded into — e.g. inline `margin: 24px auto 0` becomes
+  // margin-left:auto / margin-top:24px, and dropping those snaps the element.
+  const savedInline = {
+    width: selectedEl.style.width,
+    maxWidth: selectedEl.style.maxWidth,
+    height: selectedEl.style.height,
+    maxHeight: selectedEl.style.maxHeight,
+    marginLeft: selectedEl.style.marginLeft,
+    marginTop: selectedEl.style.marginTop,
+  };
+  const restoreInline = () => {
+    const apply = (prop, value) => {
+      if (value) selectedEl.style.setProperty(prop, value);
+      else selectedEl.style.removeProperty(prop);
+    };
+    apply('width', savedInline.width);
+    apply('max-width', savedInline.maxWidth);
+    apply('height', savedInline.height);
+    apply('max-height', savedInline.maxHeight);
+    apply('margin-left', savedInline.marginLeft);
+    apply('margin-top', savedInline.marginTop);
+  };
+
   // Add a full-viewport overlay to capture all mouse events during drag
   const dragOverlay = document.createElement('div');
   dragOverlay.id = 'adnota-resizer-drag-overlay';
@@ -514,9 +539,14 @@ function startDrag(e, axis) {
     const dy = ev.clientY - dragStartY;
 
     if (axis === 'x' || axis === 'xy') {
+      // Right handle: grow/shrink from the right edge, left edge pinned.
+      // Pinning lets users move auto-centered elements via two operations
+      // (drag left handle out, drag right handle in) instead of having the
+      // element re-center every release.
       const newW = Math.max(60, startWidth + dx);
       selectedEl.style.setProperty('width', newW + 'px', 'important');
       selectedEl.style.setProperty('max-width', 'none', 'important');
+      selectedEl.style.setProperty('margin-left', startMarginLeft + 'px', 'important');
     }
     if (axis === 'x-left') {
       // Left handle: grow/shrink from the left edge, right edge stays fixed.
@@ -528,9 +558,11 @@ function startDrag(e, axis) {
       selectedEl.style.setProperty('margin-left', (startMarginLeft - widthDelta) + 'px', 'important');
     }
     if (axis === 'y' || axis === 'xy') {
+      // Bottom handle: grow/shrink from the bottom edge, top edge pinned.
       const newH = Math.max(40, startHeight + dy);
       selectedEl.style.setProperty('height', newH + 'px', 'important');
       selectedEl.style.setProperty('max-height', 'none', 'important');
+      selectedEl.style.setProperty('margin-top', startMarginTop + 'px', 'important');
     }
     if (axis === 'y-top') {
       // Top handle: grow/shrink from the top edge, bottom edge stays pinned via
@@ -555,17 +587,14 @@ function startDrag(e, axis) {
 
     // Only persist if the user actually dragged (not just a click on a handle)
     if (Math.abs(dx) < 3 && Math.abs(dy) < 3) {
+      restoreInline();
       dragAxis = null;
       return;
     }
 
-    // Revert inline styles — the persisted <style> rule takes over
-    selectedEl.style.removeProperty('width');
-    selectedEl.style.removeProperty('max-width');
-    selectedEl.style.removeProperty('height');
-    selectedEl.style.removeProperty('max-height');
-    selectedEl.style.removeProperty('margin-left');
-    selectedEl.style.removeProperty('margin-top');
+    // Revert inline styles to the page's originals — the persisted <style>
+    // rule's !important takes over for the props we resized.
+    restoreInline();
 
     // Build CSS rule from final dimensions
     const cssParts = [];
@@ -574,6 +603,7 @@ function startDrag(e, axis) {
       const newW = Math.max(60, startWidth + dx);
       cssParts.push(`width: ${newW}px !important`);
       cssParts.push(`max-width: none !important`);
+      cssParts.push(`margin-left: ${startMarginLeft}px !important`);
     }
     if (axis === 'x-left') {
       const newW = Math.max(60, startWidth - dx);
@@ -586,6 +616,7 @@ function startDrag(e, axis) {
       const newH = Math.max(40, startHeight + dy);
       cssParts.push(`height: ${newH}px !important`);
       cssParts.push(`max-height: none !important`);
+      cssParts.push(`margin-top: ${startMarginTop}px !important`);
     }
     if (axis === 'y-top') {
       const newH = Math.max(40, startHeight - dy);
@@ -683,9 +714,30 @@ chrome.runtime.onMessage.addListener((request) => {
   }
 });
 
+// ─── Iframe pointer shield ──────────────────────────────────────────────────
+// Cross-origin iframes swallow pointer events — the parent doc never sees the
+// hover, so the resizer can't outline the iframe's wrapper. Disabling
+// pointer-events on every iframe while resizer is active routes hover/click
+// through to the iframe's container, which is the resizable layout element.
+let iframeShieldStyleTag = null;
+function setIframeShield(active) {
+  if (active && !iframeShieldStyleTag) {
+    iframeShieldStyleTag = document.createElement('style');
+    iframeShieldStyleTag.id = 'adnota-resizer-iframe-shield';
+    iframeShieldStyleTag.setAttribute('data-adnota-ui', '1');
+    iframeShieldStyleTag.textContent = 'iframe { pointer-events: none !important; }';
+    document.head.appendChild(iframeShieldStyleTag);
+  } else if (!active && iframeShieldStyleTag) {
+    iframeShieldStyleTag.remove();
+    iframeShieldStyleTag = null;
+  }
+}
+
 // ─── React to mode changes ──────────────────────────────────────────────────
 window.AdnotaState.subscribe((state) => {
-  if (state.mode === 'resizer') {
+  const isResizer = state.mode === 'resizer';
+  setIframeShield(isResizer);
+  if (isResizer) {
     setHudVisible(true);
     updateHUD();
   } else {
