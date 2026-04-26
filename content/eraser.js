@@ -13,18 +13,18 @@ const overlayBadgeRow = document.createElement('div');
 overlayBadgeRow.setAttribute('data-adnota-ui', '1');
 Object.assign(overlayBadgeRow.style, {
   position: 'absolute',
-  top: '-1px',
-  right: '-1px',
-  transform: 'translateY(-100%)',
+  top: '-2px',
+  right: '-3px',
+  transform: 'translateY(-50%)',
   display: 'inline-flex',
-  alignItems: 'flex-end',
-  gap: '3px',
+  alignItems: 'center',
+  gap: '4px',
 });
 highlightOverlay.appendChild(overlayBadgeRow);
 
 // "likely ad" pill — only shown when getEffectiveAdSignals() returns non-empty
 // (same detection that drives the silent domain-wide promotion on click).
-// Soft red with an opaque background so it reads against any element underneath.
+// Sits to the left of the dimension chip; small text pill, no border.
 const adBadge = document.createElement('div');
 adBadge.id = 'adnota-ad-badge';
 adBadge.setAttribute('data-adnota-ui', '1');
@@ -37,23 +37,25 @@ Object.assign(adBadge.style, {
   fontWeight: '600',
   lineHeight: '1',
   padding: '3px 6px',
-  borderRadius: '3px 0 0 3px',
+  borderRadius: '4px',
   whiteSpace: 'nowrap',
   display: 'none',
 });
 overlayBadgeRow.appendChild(adBadge);
 
+// Dimension chip — mirrors the resizer's blue chip in red so the two tools
+// share a consistent W×H readout style.
 const dimensionBadge = document.createElement('div');
 dimensionBadge.id = 'adnota-dimension-badge';
 dimensionBadge.setAttribute('data-adnota-ui', '1');
 Object.assign(dimensionBadge.style, {
-  background: 'rgba(15, 15, 15, 0.85)',
-  color: '#e4e4e7',
-  fontSize: '10px',
-  fontFamily: 'ui-monospace, "SF Mono", Menlo, Consolas, monospace',
-  lineHeight: '1',
-  padding: '3px 6px',
-  borderRadius: '3px 3px 0 3px',
+  background: '#ef4444',
+  color: '#fff',
+  font: '600 11px/1 ui-monospace, "SF Mono", Menlo, Consolas, monospace',
+  padding: '3px 8px 2px',
+  borderRadius: '4px',
+  border: '2px solid #fff',
+  boxShadow: '0 1px 4px rgba(0, 0, 0, 0.3)',
   whiteSpace: 'nowrap',
 });
 overlayBadgeRow.appendChild(dimensionBadge);
