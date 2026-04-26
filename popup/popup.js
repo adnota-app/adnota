@@ -4,12 +4,15 @@ document.addEventListener('DOMContentLoaded', async () => {
   const btnClear      = document.getElementById('btn-clear');
   const btnVisibility = document.getElementById('btn-visibility');
   const btnMySites    = document.getElementById('btn-my-sites');
+  const brand         = document.querySelector('.brand');
 
   // ─── Open the Sites history page ──────────────────────────────────────────
-  btnMySites.addEventListener('click', () => {
+  function openSites() {
     chrome.tabs.create({ url: chrome.runtime.getURL('pages/sites.html') });
     window.close();
-  });
+  }
+  btnMySites.addEventListener('click', openSites);
+  brand.addEventListener('click', openSites);
 
   // ─── Utility: mark the active tool card by mode string ───────────────────
   function setActiveCard(mode) {
