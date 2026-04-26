@@ -240,7 +240,7 @@ body {
   top: 0;
   bottom: 0;
   width: 3px;
-  background: var(--adnota-accent);
+  background: var(--accent);
   border-radius: 12px 0 0 12px;
   opacity: 0;
   transition: opacity 0.18s;

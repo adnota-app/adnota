@@ -42,33 +42,19 @@
     }
   },
   "commands": {
-    "toggle-eraser": {
+    "toggle-dock": {
       "suggested_key": {
-        "default": "Alt+E",
-        "mac": "Alt+E"
+        "default": "Alt+A",
+        "mac": "Alt+A"
       },
-      "description": "Toggle Eraser Mode"
+      "description": "Toggle Adnota dock"
     },
-    "toggle-sticky": {
+    "toggle-view": {
       "suggested_key": {
         "default": "Alt+S",
         "mac": "Alt+S"
       },
-      "description": "Toggle Sticky Notes Mode"
-    },
-    "toggle-highlighter": {
-      "suggested_key": {
-        "default": "Alt+H",
-        "mac": "Alt+H"
-      },
-      "description": "Toggle Highlighter Mode"
-    },
-    "toggle-view": {
-      "suggested_key": {
-        "default": "Alt+V",
-        "mac": "Alt+V"
-      },
-      "description": "Toggle Annotations Visibility"
+      "description": "Show / hide all annotations"
     }
   },
   "content_scripts": [
