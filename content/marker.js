@@ -79,14 +79,85 @@ function findAnchorBlock(screenX, screenY) {
   return blockElement;
 }
 
+// Walk up to the nearest *inner* scrolling ancestor. App shells (claude.ai,
+// Notion, etc.) have body { overflow: hidden } and a scrollable inner div —
+// that's what we want to anchor against. Returns null when no inner scroller
+// exists; the page itself is the scroll context, and the doc-pixel fallback
+// (which uses window.scrollY directly) handles that case correctly without
+// needing a synthetic anchor.
+function findScrollContainer(el) {
+  let cur = el && el.parentElement;
+  while (cur && cur !== document.documentElement && cur !== document.body) {
+    const cs = getComputedStyle(cur);
+    const oy = cs.overflowY, ox = cs.overflowX;
+    const yScrolls = (oy === 'auto' || oy === 'scroll' || oy === 'overlay') && cur.scrollHeight > cur.clientHeight;
+    const xScrolls = (ox === 'auto' || ox === 'scroll' || ox === 'overlay') && cur.scrollWidth  > cur.clientWidth;
+    if (yScrolls || xScrolls) return cur;
+    cur = cur.parentElement;
+  }
+  return null;
+}
+
+// Fallback positioning data for restorer.js when FuzzyAnchor can't resolve
+// the original block. Two layers, tried in order:
+//
+//   1. Container-anchored — render relative to the nearest *inner* scrolling
+//      ancestor (offset within its scroll-content). Only written when an
+//      inner scroller exists; window.scroll-capture fires on its scroll, so
+//      syncBounds re-reads container rect + scrollTop and the marker tracks
+//      content. The whole point is app shells where the page itself doesn't
+//      scroll.
+//
+//   2. Doc-pixel — absolute (docLeft, docTop, docWidth, docHeight). Used
+//      both when the inner scroller can't be re-resolved AND as the *only*
+//      fallback when the page itself is the scroll context (no inner
+//      scroller — `fb.docTop - window.scrollY` already tracks page scroll
+//      correctly via the fixed overlay).
+function computeFallbackBox(blockElement) {
+  const rect = blockElement.getBoundingClientRect();
+  const scrollTop  = window.pageYOffset || document.documentElement.scrollTop;
+  const scrollLeft = window.pageXOffset || document.documentElement.scrollLeft;
+
+  const out = {
+    docLeft:   parseFloat((rect.left + scrollLeft).toFixed(1)),
+    docTop:    parseFloat((rect.top  + scrollTop).toFixed(1)),
+    docWidth:  parseFloat(rect.width.toFixed(1)),
+    docHeight: parseFloat(rect.height.toFixed(1)),
+  };
+
+  const sc = findScrollContainer(blockElement);
+  if (sc) {
+    const scRect = sc.getBoundingClientRect();
+    out.containerAnchor  = window.FuzzyAnchor.generate(sc);
+    out.containerOffsetX = parseFloat((rect.left - scRect.left + sc.scrollLeft).toFixed(1));
+    out.containerOffsetY = parseFloat((rect.top  - scRect.top  + sc.scrollTop ).toFixed(1));
+  }
+
+  return out;
+}
+
 function restoreOverlay() {
   const stillActive = window.AdnotaState.isVisible && _overlayModes.has(window.AdnotaState.mode);
   captureSvg.style.display = stillActive ? 'block' : 'none';
   captureSvg.style.pointerEvents = stillActive ? 'auto' : 'none';
 }
 
+// Fixed-position container for every marker wrapper. Lazily created on first
+// render. See #adnota-marker-overlay in marker.css for why this exists.
+function getMarkerOverlay() {
+  let overlay = document.getElementById('adnota-marker-overlay');
+  if (!overlay) {
+    overlay = document.createElement('div');
+    overlay.id = 'adnota-marker-overlay';
+    overlay.setAttribute('data-adnota-ui', '1');
+    document.documentElement.appendChild(overlay);
+  }
+  return overlay;
+}
+
 // ── Save + undo helper ──────────────────────────────────────────────────────
 async function saveMarkerPayload(blockElement, payload) {
+  payload.fallbackBox = computeFallbackBox(blockElement);
   window.AdnotaMarker.renderMarker(blockElement, payload);
   restoreOverlay();
 
@@ -730,6 +801,48 @@ async function handlePointerUp(e) {
 // ═════════════════════════════════════════════════════════════════════════════
 
 // Bug 1 fix: Define AdnotaMarker BEFORE initCaptureOverlay and AdnotaState.subscribe
+//
+// resolveAnchorRect — viewport-coords bounding box of the marker's anchor.
+// Normally just `anchorElement.getBoundingClientRect()`, but when the restorer
+// is rendering via fallback (FuzzyAnchor missed the original block), we
+// reconstruct the rect from persisted offsets:
+//
+//   - Container fallback: anchorElement is the scroll-container ancestor and
+//     payload._fallbackContainer === anchorElement is the in-memory sentinel.
+//     Rect = container's viewport rect + stored offset - current scroll.
+//     Tracks the user's scroll naturally on every site.
+//
+//   - Doc-pixel fallback: anchorElement === document.documentElement and we
+//     return absolute document-pixel coords. Used only when the scroll
+//     container can't be re-found.
+function resolveAnchorRect(anchorElement, payload) {
+  const fb = payload.fallbackBox;
+  if (!fb) return anchorElement.getBoundingClientRect();
+
+  if (anchorElement === payload._fallbackContainer && fb.containerOffsetY != null) {
+    const scRect = anchorElement.getBoundingClientRect();
+    return {
+      left:   scRect.left + fb.containerOffsetX - anchorElement.scrollLeft,
+      top:    scRect.top  + fb.containerOffsetY - anchorElement.scrollTop,
+      width:  fb.docWidth,
+      height: fb.docHeight,
+    };
+  }
+
+  if (anchorElement === document.documentElement && fb.docLeft != null) {
+    const scrollTop  = window.pageYOffset || document.documentElement.scrollTop;
+    const scrollLeft = window.pageXOffset || document.documentElement.scrollLeft;
+    return {
+      left:   fb.docLeft - scrollLeft,
+      top:    fb.docTop  - scrollTop,
+      width:  fb.docWidth,
+      height: fb.docHeight,
+    };
+  }
+
+  return anchorElement.getBoundingClientRect();
+}
+
 window.AdnotaMarker = {
   renderMarker: function (anchorElement, payload) {
     const shapeType = payload.shapeType || (payload.isArrow ? 'arrow' : 'freehand');
@@ -777,15 +890,15 @@ window.AdnotaMarker = {
       wrapper.appendChild(textEl);
       wrapper._adnotaPayload = payload;
       wrapper._adnotaAnchorElement = anchorElement;
-      document.documentElement.appendChild(wrapper);
+      getMarkerOverlay().appendChild(wrapper);
 
       function syncTextPos() {
         if (!wrapper.parentNode) return;
-        const rect = anchorElement.getBoundingClientRect();
-        const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
-        const scrollLeft = window.pageXOffset || document.documentElement.scrollLeft;
-        textEl.style.left = (rect.left + scrollLeft + (payload.textPos.x / 100) * rect.width) + 'px';
-        textEl.style.top = (rect.top + scrollTop + (payload.textPos.y / 100) * rect.height) + 'px';
+        const rect = resolveAnchorRect(anchorElement, payload);
+        // Wrapper lives in the fixed-position #adnota-marker-overlay, so its
+        // children use viewport coords (no scrollY/X addition needed).
+        textEl.style.left = (rect.left + (payload.textPos.x / 100) * rect.width) + 'px';
+        textEl.style.top  = (rect.top  + (payload.textPos.y / 100) * rect.height) + 'px';
       }
 
       let syncPending = false;
@@ -874,16 +987,15 @@ window.AdnotaMarker = {
     // Stash payload + anchor for select-tool operations (delete, undo, move).
     wrapper._adnotaPayload = payload;
     wrapper._adnotaAnchorElement = anchorElement;
-    document.documentElement.appendChild(wrapper);
+    getMarkerOverlay().appendChild(wrapper);
 
     function syncBounds() {
       if (!wrapper.parentNode) return;
-      const rect = anchorElement.getBoundingClientRect();
-      const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
-      const scrollLeft = window.pageXOffset || document.documentElement.scrollLeft;
-
-      wrapper.style.top = `${rect.top + scrollTop}px`;
-      wrapper.style.left = `${rect.left + scrollLeft}px`;
+      const rect = resolveAnchorRect(anchorElement, payload);
+      // Wrapper lives in the fixed-position #adnota-marker-overlay, so its
+      // top/left use viewport coords directly — no scrollY/X addition.
+      wrapper.style.top = `${rect.top}px`;
+      wrapper.style.left = `${rect.left}px`;
       wrapper.style.width = `${rect.width}px`;
       wrapper.style.height = `${rect.height}px`;
 
@@ -1309,8 +1421,10 @@ async function handleSelectPointerUp(e) {
   }
 
   // Convert pixel delta to a percentage of the anchor rect, matching the
-  // anchor-relative coord system used everywhere else.
-  const rect = anchorElement.getBoundingClientRect();
+  // anchor-relative coord system used everywhere else. Route through
+  // resolveAnchorRect so fallback-rendered markers (anchor = scroll
+  // container, but coords are still original-block-relative) drag correctly.
+  const rect = resolveAnchorRect(anchorElement, payload);
   if (rect.width === 0 || rect.height === 0) {
     wrapper.style.transform = '';
     return;

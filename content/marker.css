@@ -13,6 +13,22 @@
   background: transparent; /* Invisible overlay */
 }
 
+/* Single fixed overlay that hosts every marker wrapper. Fixed positioning
+   keeps wrapper bounds out of documentElement's scroll size, so a shape
+   placed near a page edge can't trigger a body-level scrollbar on app
+   shells (claude.ai, Notion, etc.). All wrappers inside use viewport
+   coordinates as a result. */
+#adnota-marker-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  overflow: visible;
+  z-index: 2147483640;
+}
+
 .adnota-marker-wrapper {
   position: absolute;
   pointer-events: none;
