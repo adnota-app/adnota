@@ -150,6 +150,7 @@ Add ability to delete all storage for entire domain from HOME page (you can alre
 - redo tooltips again on the HUDs....
 
 TODO:
+- Add bug popup button in bottom right corner of HOME with a message saying send me a screenshot or note if you find a bug and has my email etc...
 - RESIZE can't click on iframe in adnota.app
 
 Why don't paint images stick well to the screen? On page reload the are the last and often take a LONG time to load or they just fail.
