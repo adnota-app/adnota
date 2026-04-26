@@ -152,6 +152,8 @@ Add ability to delete all storage for entire domain from HOME page (you can alre
 TODO:
 - RESIZE can't click on iframe in adnota.app
 
+Why don't paint images stick well to the screen? On page reload the are the last and often take a LONG time to load or they just fail.
+
  - const BETTER_TARGET_MAX_AREA_RATIO = 2.0;
  - const BETTER_TARGET_MAX_HOP_RATIO = 1.5;
  + const BETTER_TARGET_MAX_AREA_RATIO = 1.4;

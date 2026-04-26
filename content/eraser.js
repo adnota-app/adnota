@@ -186,12 +186,14 @@ const dominatesViewport = window.AdnotaUI.dominatesViewport;
 // Scroll-up nudge won't suggest a parent that's this many times larger than
 // the element the user is actually hovering — at that point we've walked past
 // the ad and into real content regardless of what the ad-density heuristic says.
-const BETTER_TARGET_MAX_AREA_RATIO = 2.0;
+// 1.4× area ≈ 1.18× linear, i.e. roughly "an 18% wider/taller wrapper" — small
+// enough that it's plausibly the ad slot wrapper, not the surrounding column.
+const BETTER_TARGET_MAX_AREA_RATIO = 1.4;
 // Per-hop growth cap — a single step-up that grows this much usually means
 // we've crossed a layout boundary (ad slot → sidebar column, card → grid row).
 // The visual-root auto-bubble already nails the starting element most of the
 // time, so big jumps between recommended levels are almost always wrong.
-const BETTER_TARGET_MAX_HOP_RATIO = 1.5;
+const BETTER_TARGET_MAX_HOP_RATIO = 1.25;
 
 // Ad signals used for both HUD display and click-scope decisions. Page-level
 // containers are exempt — their subtrees always happen to contain an iframe
