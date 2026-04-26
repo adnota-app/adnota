@@ -12,6 +12,8 @@ NOTE: WE ARE NOT IN PRODUCTION YET, SO MAKE AN EFFORT TO CLEAN UP CODE AND REDUC
 
 NOTE 2: This project was originally written with a name of VELLUM, but that name is taken, so we are rebranding to ADNOTA.
 
+NOTE: I think my brand color purple is: #7c3aed ?
+
 Annotate your web, your way.
 
 Adnota: Annotate the web.
