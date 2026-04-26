@@ -178,33 +178,69 @@ function findLayoutTarget(raw, extraLevels = 0) {
   if (!raw || isAdnotaElement(raw)) return null;
 
   // Step 1: climb to the nearest layout-significant block-level ancestor.
-  let current = raw;
-  while (current && current !== document.body && current !== document.documentElement) {
-    if (isAdnotaElement(current)) return null;
-    if (isLayoutSignificant(current)) break;
-    current = current.parentElement;
+  let layoutSig = raw;
+  while (layoutSig && layoutSig !== document.body && layoutSig !== document.documentElement) {
+    if (isAdnotaElement(layoutSig)) return null;
+    if (isLayoutSignificant(layoutSig)) break;
+    layoutSig = layoutSig.parentElement;
   }
-  if (!current || current === document.body || current === document.documentElement) return null;
+  if (!layoutSig || layoutSig === document.body || layoutSig === document.documentElement) return null;
 
   // Step 2: bubble past visually-identical wrappers, seeded from the layout-
   // significant ancestor (not the raw hover). This is the key fix for the
   // "hovering a menu link returns the UL instead of the NAV" case.
-  current = window.AdnotaUI.bubbleToVisualRoot(current);
-  if (isAdnotaElement(current)) return null;
+  const baseline = window.AdnotaUI.bubbleToVisualRoot(layoutSig);
+  if (isAdnotaElement(baseline)) return null;
 
-  // Step 3: scroll-wheel walk — each level up must also be layout-significant.
-  let walked = 0;
-  while (walked < extraLevels && current.parentElement &&
-         current.parentElement !== document.body &&
-         current.parentElement !== document.documentElement) {
-    const parent = current.parentElement;
-    if (isAdnotaElement(parent)) return null;
-    current = parent;
-    // Stop before reaching a page-dominating container.
-    if (window.AdnotaUI.dominatesViewport(current.getBoundingClientRect())) return current;
-    if (isLayoutSignificant(current)) walked++;
+  // Step 3a (positive extraLevels): scroll-wheel walk up — each level up must
+  // also be layout-significant.
+  if (extraLevels > 0) {
+    let current = baseline;
+    let walked = 0;
+    while (walked < extraLevels && current.parentElement &&
+           current.parentElement !== document.body &&
+           current.parentElement !== document.documentElement) {
+      const parent = current.parentElement;
+      if (isAdnotaElement(parent)) return null;
+      current = parent;
+      // Stop before reaching a page-dominating container.
+      if (window.AdnotaUI.dominatesViewport(current.getBoundingClientRect())) return current;
+      if (isLayoutSignificant(current)) walked++;
+    }
+    return current;
   }
-  return current;
+
+  // Step 3b (negative extraLevels): walk back DOWN from the bubbled baseline
+  // toward raw, then optionally one step further into a single iframe
+  // descendant. The iframe shield masks iframes from elementFromPoint, so this
+  // is the only way to reach an iframe child as the hover target.
+  if (extraLevels < 0) {
+    const chain = [baseline];
+    if (baseline !== layoutSig) chain.push(layoutSig);  // un-bubble step
+    if (raw !== layoutSig) {
+      // Path from raw up to (but not including) layoutSig, reversed so we
+      // descend in DOM order.
+      const descent = [];
+      let cur = raw;
+      while (cur && cur !== layoutSig) {
+        if (isAdnotaElement(cur)) { descent.length = 0; break; }
+        descent.unshift(cur);
+        cur = cur.parentElement;
+      }
+      for (const el of descent) chain.push(el);
+    }
+    // Iframe child special case: when the deepest reachable target contains
+    // exactly one iframe in its subtree, one more scroll-down targets it.
+    const last = chain[chain.length - 1];
+    const iframes = last.querySelectorAll('iframe');
+    if (iframes.length === 1 && !isAdnotaElement(iframes[0])) {
+      chain.push(iframes[0]);
+    }
+    const idx = Math.min(-extraLevels, chain.length - 1);
+    return chain[idx];
+  }
+
+  return baseline;
 }
 
 // ─── CSS selector generation (shared from FuzzyAnchor) ──────────────────────
@@ -825,12 +861,15 @@ document.addEventListener('wheel', (e) => {
 
   e.preventDefault();
 
-  if (e.deltaY < 0) {
-    // Scroll up → walk to parent
-    traverseDepth++;
-  } else {
-    // Scroll down → walk back toward child
-    traverseDepth = Math.max(0, traverseDepth - 1);
+  // Only commit the depth change when it actually moves to a different
+  // target. Keeps traverseDepth bounded by the real chain in both directions
+  // — otherwise over-scrolling past the top (or bottom) inflates the value
+  // and reversing direction takes the same number of clicks to "spend down"
+  // before any visual change.
+  const tentative = traverseDepth + (e.deltaY < 0 ? 1 : -1);
+  const newTarget = findLayoutTarget(rawHoveredEl, tentative);
+  if (newTarget && newTarget !== hoveredEl) {
+    traverseDepth = tentative;
   }
 
   updateHoverTarget();
