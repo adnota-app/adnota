@@ -901,20 +901,7 @@ window.AdnotaMarker = {
         textEl.style.top  = (rect.top  + (payload.textPos.y / 100) * rect.height) + 'px';
       }
 
-      let syncPending = false;
-      function scheduleSync() {
-        if (syncPending) return;
-        syncPending = true;
-        requestAnimationFrame(() => { syncPending = false; syncTextPos(); });
-      }
-
-      syncTextPos();
-      window.addEventListener('resize', scheduleSync);
-      // Capture phase catches scrolls inside nested overflow containers
-      // (window scroll events don't bubble from inner scrollers).
-      window.addEventListener('scroll', scheduleSync, { passive: true, capture: true });
-      const observer = new ResizeObserver(scheduleSync);
-      observer.observe(anchorElement);
+      window.AdnotaUI.bindAnchorSync(wrapper, anchorElement, syncTextPos);
       return;
     }
 
@@ -1029,20 +1016,7 @@ window.AdnotaMarker = {
       }
     }
 
-    let syncPending = false;
-    function scheduleSync() {
-      if (syncPending) return;
-      syncPending = true;
-      requestAnimationFrame(() => { syncPending = false; syncBounds(); });
-    }
-
-    syncBounds();
-    window.addEventListener('resize', scheduleSync);
-    // Capture phase catches scrolls inside nested overflow containers
-    // (window scroll events don't bubble from inner scrollers).
-    window.addEventListener('scroll', scheduleSync, { passive: true, capture: true });
-    const observer = new ResizeObserver(scheduleSync);
-    observer.observe(anchorElement);
+    window.AdnotaUI.bindAnchorSync(wrapper, anchorElement, syncBounds);
   }
 };
 
@@ -1125,8 +1099,13 @@ function isPointNearShape(wrapper, screenX, screenY) {
 async function deleteSelectedMarker(wrapper) {
   const uuid = wrapper.dataset.uuid;
   const payload = wrapper._adnotaPayload;
+  const anchorElement = wrapper._adnotaAnchorElement;
 
-  wrapper.style.display = 'none';
+  // Hard remove (was display:none) so the wrapper's listener bag — window
+  // scroll/resize + ResizeObserver — actually tears down. Hidden wrappers kept
+  // those alive across the session and accumulated on long-lived tabs.
+  wrapper._adnotaCleanup?.();
+  wrapper.remove();
   clearSelection();
   hideHoverDeleteBtn();
 
@@ -1139,9 +1118,11 @@ async function deleteSelectedMarker(wrapper) {
     undo: async () => {
       if (consumed) return;
       consumed = true;
-      wrapper.style.display = '';
       if (window.AdnotaStorage && payload) {
         await window.AdnotaStorage.saveItem(location.hostname, location.pathname, payload);
+      }
+      if (anchorElement && payload) {
+        window.AdnotaMarker.renderMarker(anchorElement, payload);
       }
       window.AdnotaUndo.remove(undoEntry);
     }

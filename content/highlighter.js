@@ -570,6 +570,7 @@ async function deleteHighlight(id) {
   if (!payload) return null;
 
   if (entry.fallbackEl) {
+    entry.fallbackEl._adnotaCleanup?.();
     entry.fallbackEl.remove();
   } else if (entry.range) {
     highlightRegistries[entry.color]?.delete(entry.range);
@@ -811,20 +812,7 @@ window.AdnotaHighlighter = {
       }
     }
 
-    let syncPending = false;
-    function scheduleSync() {
-      if (syncPending) return;
-      syncPending = true;
-      requestAnimationFrame(() => { syncPending = false; syncBounds(); });
-    }
-
-    syncBounds();
-    window.addEventListener('resize', scheduleSync);
-    // Capture phase catches scrolls inside nested overflow containers
-    // (window scroll events don't bubble from inner scrollers).
-    window.addEventListener('scroll', scheduleSync, { passive: true, capture: true });
-    const observer = new ResizeObserver(scheduleSync);
-    observer.observe(anchorElement);
+    window.AdnotaUI.bindAnchorSync(wrapper, anchorElement, syncBounds);
 
     if (payload._id) {
       registerLiveHighlight(payload._id, {

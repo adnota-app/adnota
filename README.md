@@ -65,6 +65,8 @@ Shared UI utilities that prevent duplication across content scripts.
 
 **Shared DOM-walk helpers**: `bubbleToVisualRoot(el, opts)` walks up parents whose bounding box matches `el` within a small tolerance — the "visually-identical wrapper" climb used by both the eraser and resizer so a hover/click on an inner element lands on the outer container users almost always actually mean. `dominatesViewport(rect, threshold)` guards the walk (and the eraser's better-target nudge) against ever promoting to a page-level container.
 
+**Anchor-sync listener triad**: `bindAnchorSync(wrapper, anchorElement, syncFn)` is the single source of the `window.resize` + capture-phase `window.scroll` + `ResizeObserver` listener bag every persisted overlay needs (highlighter fallback wrappers, marker text wrappers, marker SVG wrappers). Registers all three, returns an idempotent cleanup that tears them down, stashes the cleanup as `wrapper._adnotaCleanup` for the delete paths, and installs a parent-childList `MutationObserver` that auto-cleans when the wrapper is detached by anything else (bulk-delete sweeps, page mutations). Without this the listener bag outlived the wrapper for the life of the tab — fine on a single article page, painful on a long-lived SPA tab where every undone or re-rendered annotation left a permanent scroll-listener tax.
+
 #### `lib/tagIndex.js` — `window.AdnotaTags`
 Single source of truth for the optional tag layer on NOTE and HIGHLIGHT items. Consumed by the sticky note tag input, the quick-highlight popup tag input, and the Sites page filter chip row.
 
