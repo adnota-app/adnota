@@ -149,6 +149,7 @@ Add ability to delete all storage for entire domain from HOME page (you can alre
 - some styles from sites are still bleeding into sticky notes.
 
 TODO:
+- RESIZE can't click on iframe in adnota.app
 
 create a SHARE feature, using IFRAMES? Would this be possible? (probably not without a server? Not sure.)
 in ERASE, shift+click to scroll?

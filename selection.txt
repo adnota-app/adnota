@@ -1,0 +1,297 @@
+ DOM Selection Logic — Cross-Tool Review
+
+ Context
+
+ Adnota has five tools that each pick a DOM element to anchor against: eraser,
+ resizer, sticky, marker (paint), and highlighter. Each was written to its own
+ needs, and three substantially different "find an anchor" strategies have
+ grown in parallel. The user's questions are:
+
+ 1. Are there inconsistencies between tools that shouldn't exist?
+ 2. Are there lessons one tool has learned that others should adopt?
+ 3. Is the eraser's "scroll up N× for better target" suggestion as smart as it
+ could be?
+ 4. What guarantees reproducibility on reload across all five tools?
+
+ This document is a review with prioritized recommendations, not an
+ implementation plan. Each item is sized so the user can pick what (if
+ anything) to actually do.
+
+ ---
+ What each tool actually does today
+
+ Tool: Eraser (content/eraser.js:507)
+ First step (raw hit): elementFromPoint
+ Block / wrapper climb: bubbleToVisualRoot(raw) (IoU ≥ 0.85, max 8 hops)
+ Min size: none
+ Viewport-dom guard: yes (in bubble + scroll)
+ Anchor written: FuzzyAnchor.generate() + generateCSSSelector
+ Coords: n/a (CSS rule + inline display:none)
+ ────────────────────────────────────────
+ Tool: Resizer (content/resizer.js:180)
+ First step (raw hit): elementFromPoint
+ Block / wrapper climb: climb to isLayoutSignificant (≥120×60, non-inline),
+ then
+    bubbleToVisualRoot
+ Min size: 120×60
+ Viewport-dom guard: yes (in scroll)
+ Anchor written: only generateCSSSelector
+ Coords: n/a (CSS rule)
+ ────────────────────────────────────────
+ Tool: Sticky (content/sticky.js:35) — findAnchorTarget
+ First step (raw hit): elementFromPoint
+ Block / wrapper climb: walk up past _inlineTags, return first non-inline block
+ Min size: offsetHeight >= 20
+ Viewport-dom guard: none
+ Anchor written: FuzzyAnchor.generate()
+ Coords: hybrid: {dx,dy} from anchor + {xPct,yScrollPct} doc-percent fallback
+ ────────────────────────────────────────
+ Tool: Marker (content/marker.js:71) — findAnchorBlock
+ First step (raw hit): elementFromPoint
+ Block / wrapper climb: .closest('p, div, section, article, main, li, h1, h2,
+   h3, h4, td') → fallback document.body
+ Min size: none
+ Viewport-dom guard: none
+ Anchor written: FuzzyAnchor.generate()
+ Coords: percent of anchor rect
+ ────────────────────────────────────────
+ Tool: Highlighter (content/highlighter.js:640)
+ First step (raw hit): range.commonAncestorContainer
+ Block / wrapper climb: identical tag whitelist .closest('p, div, ...') →
+   fallback document.body
+ Min size: none
+ Viewport-dom guard: none
+ Anchor written: FuzzyAnchor.generate()
+ Coords: text + occurrence index (geometry-free), or fallback rects as % of
+   anchor
+
+ ---
+ What sticks out
+
+ 1. Three parallel implementations of "find the block ancestor"
+
+ - sticky.js:35 — findAnchorTarget(), inline-tag exclusion + offsetHeight >= 20
+ - marker.js:71 — findAnchorBlock(), hardcoded tag whitelist + document.body
+ fallback
+ - highlighter.js:640 — inline duplicate of marker's whitelist
+
+ The whitelist 'p, div, section, article, main, li, h1, h2, h3, h4, td' is
+ literally duplicated between marker and highlighter. Sticky has a more
+ thoughtful version that nobody else uses.
+
+ The whitelist also misses several common semantic blocks: aside, header,
+ footer, nav, figure, blockquote, dialog, details, form. When the click lands
+ inside one of those without a matching descendant, the code silently falls
+ through to document.body — which is the worst possible anchor for stability
+ (its rect drifts as content reflows; percentage offsets become meaningless).
+
+ Fix: Promote sticky's findAnchorTarget (or a small superset) into
+ lib/adnotaUI.js as AdnotaUI.findStableBlockAnchor(el). Marker and highlighter
+ call it. Marker stops falling back to body.
+
+ 2. Marker's anchor selection is the weakest link for "page refresh just works"
+
+ Three concrete reproducibility risks, all in findAnchorBlock:
+
+ - Tag whitelist misses real blocks. A drawing on top of an <aside> ad slot
+ will skip past it and land on <body>.
+ - Body fallback is silent. No toast, no warning — but on reload, the marker
+ re-renders relative to body's rect and ends up wherever the page happens to
+ be.
+ - No size filter. Could anchor to a 0×0 wrapper that happens to match
+ .closest('div') early.
+
+ By contrast, sticky has a percentage-of-document fallback (xPct, yScrollPct)
+ when its anchor fails — so a sticky never disappears, even on heavily
+ restructured pages. Marker has no equivalent: if findMatch returns < 40
+ confidence, the marker just doesn't render and the user gets a generic "N
+ edits couldn't be reapplied" toast.
+
+ Fix: Adopt sticky's hybrid model in marker. Store {xPct, yScrollPct} of the
+ document (or scroll-region) alongside the anchor. On reload, if FuzzyAnchor <
+ 40, render at the percent fallback instead of disappearing.
+
+ 3. The eraser's "scroll up N× for better target" is bounded but still feels
+ noisy
+
+ The user's perception that the nudge points to elements "more than twice your
+ size" matches the literal cap in the code (eraser.js:189):
+
+ const BETTER_TARGET_MAX_AREA_RATIO = 2.0;
+ const BETTER_TARGET_MAX_HOP_RATIO = 1.5;
+
+ So the nudge can recommend a parent up to 2× area of the hovered element —
+ which in linear terms is ~1.4× wider/taller. That's a noticeable jump even
+ when "bounded." Three issues compound it:
+
+ - The auto-bubble (bubbleToVisualRoot) already promotes through any
+ visually-identical wrapper. By the time findBetterTarget runs, the hovered
+ element is already the bubbled target — so any further parent is by definition
+  geometrically different. The suggestion is therefore always recommending a
+ layout-different element.
+ - The walk loops up to 6 levels and keeps updating bestCandidate, so the
+ outermost match wins, not the closest. That maximizes the perceived size jump,
+  not minimizes it.
+ - The criteria are "stronger anchor + ad-scoped + density ≥ 0.5" but don't
+ penalize size growth at all once you're under the 2.0× cap.
+
+ Fix options (pick one):
+
+ A) Tighten the constants. MAX_AREA_RATIO = 1.4, MAX_HOP_RATIO = 1.25. One-line
+  change. Likely closest to what the user wants today.
+
+ B) Prefer the first qualifying parent, not the outermost. Replace the loop's
+ "keep walking past matches" with break on first match. The nudge then suggests
+  the smallest viable promotion.
+
+ C) Scrap the nudge and rely on the auto-bubble + scroll-wheel. The bubble
+ already handles the common case; scroll-up is right there for the rest. This
+ is a half-line change (don't render the nudge) and removes a UI element the
+ user feels is unhelpful. Most aggressive simplification.
+
+ My recommendation is B — first-qualifying — since it preserves the feature for
+  the cases where it does help (small inner ad asset → ad slot wrapper) without
+  recommending huge jumps. A is the safer one-line trim if the user wants
+ minimum risk.
+
+ 4. Eraser and resizer share the right helpers but parallel-implement the
+ wrappers
+
+ The shared logic (bubbleToVisualRoot, dominatesViewport) lives in
+ lib/adnotaUI.js and both tools use it correctly. But the mousemove +
+ scroll-wheel + traverseDepth state machine is independently implemented in
+ each:
+
+ - eraser.js:634–682 — mousemove (elementFromPoint → bubble → traverseDepth) +
+ wheel (clamp depth).
+ - resizer.js:703–770 — mousemove (elementFromPoint → layout-sig + bubble →
+ traverseDepth) + wheel (clamp depth, only count layout-sig).
+
+ Both tools are computing the same overlay, the same dimension badge, the same
+ scroll-wheel walk — just with different "what counts as a step up" rules. This
+  is roughly 100 lines of near-duplicate code per tool.
+
+ Fix: Extract a HoverEngine in lib/adnotaUI.js that takes a
+ targetSelector(rawEl, depth) callback and owns mousemove + wheel + overlay
+ positioning. Eraser passes (raw, d) => bubble + d parents. Resizer passes
+ (raw, d) => layoutSig + bubble + d layout-sig parents. Lower-impact win than
+ the anchor unification, but cleans up the most duplicated code in the project.
+
+ 5. Sticky's drag-re-anchor uses the note's center; markers' drag-move keeps
+ the original anchor
+
+ Two different drag philosophies:
+
+ - Sticky (sticky.js:464-481): on drop, raycasts from the note's center, calls
+ findAnchorTarget, and re-anchors to the new element. Offset is recomputed from
+  the new anchor's rect.
+ - Marker (marker.js:1311-1326): on drop, computes dxPct, dyPct against the
+ original anchor rect and shifts the percentage coords. The anchor element
+ never changes.
+
+ Both are defensible. But the marker's approach has a failure mode: drag a
+ marker far enough that it leaves its anchor's bounding box, and the
+ percentages go negative or > 100. On reload it'll render outside the anchor.
+ Sticky doesn't have that problem because it re-anchors.
+
+ Fix: Either make the marker behave like sticky (re-anchor on drag-drop,
+ similar to the findAnchorBlock raycast at the new center), or clamp/document
+ the percent-outside-rect case. Sticky's approach is more robust and lets a
+ paint object naturally migrate to the element it now overlays.
+
+ 6. Anchor inconsistency for the same click point
+
+ If the user clicks at exactly the same pixel with three different tools:
+
+ - Sticky picks the first non-inline ancestor with offsetHeight >= 20
+ - Marker picks the first ancestor matching the tag whitelist (or body)
+ - Highlighter picks based on range.commonAncestorContainer (text-driven), then
+  the same whitelist
+
+ These can resolve to three different elements. The user's mental model is "I'm
+  marking this thing"; the tools' mental models diverge. After a refactor on
+ the host page, it's possible for the highlight to survive but the sticky note
+ to fall back to percent placement, even though they were "on" the same
+ paragraph.
+
+ This is the strongest argument for unifying on a single findStableBlockAnchor.
+  Same click → same element → same restoration outcome.
+
+ ---
+ Recommendations, ranked
+
+ #: 1
+ Change: Unify findStableBlockAnchor in lib/adnotaUI.js; marker + highlighter
+   call it; marker stops falling back to body
+ Impact: High (consistency + reload reliability)
+ Effort: ~30 min
+ Risk: Low — well-isolated
+ ────────────────────────────────────────
+ #: 2
+ Change: Add hybrid percent-of-document fallback to markers (mirror sticky)
+ Impact: High (markers no longer disappear on heavy page refactors)
+ Effort: ~45 min
+ Risk: Low — additive
+ ────────────────────────────────────────
+ #: 3
+ Change: Tweak eraser findBetterTarget: prefer first match (option B) or trim
+   ratios (option A)
+ Impact: Medium (UX only)
+ Effort: ~5 min
+ Risk: Low
+ ────────────────────────────────────────
+ #: 4
+ Change: Marker drag-move: re-anchor to element under new center (mirror sticky
+
+   drag)
+ Impact: Medium (avoids out-of-rect percentages)
+ Effort: ~20 min
+ Risk: Medium — changes save shape, watch undo
+ ────────────────────────────────────────
+ #: 5
+ Change: Extract HoverEngine shared by eraser + resizer
+ Impact: Medium (~150 lines deduped)
+ Effort: ~2 hr
+ Risk: Medium — touches hot path
+
+ Items 1–3 are the natural "easy wins" the user asked for. 4 is a real bug fix
+ that becomes obvious once you compare the two drag implementations. 5 is
+ structural cleanup, lower-priority.
+
+ ---
+ Critical files
+
+ - lib/adnotaUI.js — destination for shared findStableBlockAnchor; current home
+  of bubbleToVisualRoot, dominatesViewport
+ - content/sticky.js — source of findAnchorTarget + hybrid percent fallback
+ model to mirror
+ - content/marker.js — findAnchorBlock to replace; drag handler at
+ handleSelectPointerUp; renderer needs percent fallback path
+ - content/highlighter.js:640 — call site of duplicated whitelist
+ - content/eraser.js:189–194, 320–371 — findBetterTarget constants and walk
+ - content/restorer.js — needs no changes for items 1–4 (it already calls
+ FuzzyAnchor and dispatches to the tool's render); item 2 may want the marker
+ render path to accept percentFallback in payload
+
+ ---
+ Verification
+
+ For any of the above changes:
+
+ 1. Unit-style sanity (manual): open a simple article, drop a sticky + a marker
+  on the same paragraph, reload, confirm both restore in place.
+ 2. Whitelist regression: a page where the click target's nearest block is
+ <aside> / <nav> / <figure> (e.g. NYTimes sidebar). Before: marker falls to
+ body. After: marker anchors to the semantic block.
+ 3. Percent fallback (item 2): dump a marker, then in DevTools rename the
+ anchor's class to break FuzzyAnchor below 40, reload, confirm marker renders
+ at the document-percent fallback.
+ 4. Eraser nudge (item 3): hover small inner ad asset on a known ad-heavy page,
+  observe the suggestion's stepsUp and the parent it points to. Should be the
+ smallest useful promotion, not a 1.9× outer wrapper.
+ 5. Marker drag (item 4): drag a paint shape across a paragraph boundary,
+ reload, confirm it re-anchored to the new paragraph instead of rendering at
+ percent > 100% of the original.
+
+ No automated tests in the repo; all verification is manual against a real
+ page.
