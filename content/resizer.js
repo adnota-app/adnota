@@ -337,7 +337,7 @@ function selectElement(el) {
     '<path d="M3 3v4h4"/>' +
     '<path d="M3 7a5.5 5.5 0 1 1 1.6 3.9"/>' +
     '</svg>';
-  dismissBtn.setAttribute('data-tooltip', 'Reset all resizes on this element');
+  dismissBtn.setAttribute('data-tooltip', 'Reset to original');
   positionDismiss(dismissBtn, rect, scrollX, scrollY);
   dismissBtn.addEventListener('mousedown', (e) => {
     e.preventDefault();
