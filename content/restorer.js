@@ -155,6 +155,32 @@ async function performRestoration() {
         erasuresCount++;
       }
       processedItems.add(id);
+    } else if (
+      item.action === 'MARKER' &&
+      item.fallbackBox &&
+      window.AdnotaMarker
+    ) {
+      // FuzzyAnchor missed the original block. Try the scroll-container
+      // ancestor first — it's usually a stable layout shell (main, app
+      // wrapper) that FuzzyAnchor can resolve, and rendering against it
+      // means the marker scrolls with content on app shells where the body
+      // doesn't scroll. Fall through to documentElement only if that misses
+      // too, so the marker still appears (drifted, doesn't follow scroll).
+      let rendered = false;
+      if (item.fallbackBox.containerAnchor) {
+        const cMatch = window.FuzzyAnchor.findMatch(item.fallbackBox.containerAnchor);
+        if (cMatch.confidence >= 40 && cMatch.element) {
+          item._fallbackContainer = cMatch.element;
+          window.AdnotaMarker.renderMarker(cMatch.element, item);
+          rendered = true;
+        }
+      }
+      if (!rendered && item.fallbackBox.docLeft != null) {
+        window.AdnotaMarker.renderMarker(document.documentElement, item);
+        rendered = true;
+      }
+      if (rendered) processedItems.add(id);
+      else brokenThisPass++;
     } else {
       // Item hasn't been successfully applied yet — count it as broken for this pass.
       brokenThisPass++;
@@ -182,13 +208,30 @@ if (document.readyState === 'complete' || document.readyState === 'interactive')
   window.addEventListener('load', performRestoration);
 }
 
-// Protect against dynamic SPAs fetching data late
+// Protect against dynamic SPAs fetching data late.
+// Trailing 1s debounce so we wait for a mutation burst to settle, but with a
+// hard 2.5s max-wait clamp: on heavy SPAs that mutate continuously, the plain
+// debounce would keep resetting and never fire, leaving paint markers absent
+// for the full hydration window. The clamp guarantees we run periodically
+// even while mutations keep coming.
 let mutationTimeout;
+let mutationFirstPending = 0;
+const MUTATION_DEBOUNCE_MS = 1000;
+const MUTATION_MAX_WAIT_MS = 2500;
+
 const observer = new MutationObserver(() => {
+  const now = Date.now();
+  if (mutationFirstPending === 0) mutationFirstPending = now;
+
+  const elapsed = now - mutationFirstPending;
+  const remaining = Math.max(0, MUTATION_MAX_WAIT_MS - elapsed);
+  const wait = Math.min(MUTATION_DEBOUNCE_MS, remaining);
+
   clearTimeout(mutationTimeout);
   mutationTimeout = setTimeout(() => {
+    mutationFirstPending = 0;
     performRestoration();
-  }, 1000); // 1-second debounce for DOM mutations guarantees smooth performance
+  }, wait);
 });
 
 observer.observe(document.body, { childList: true, subtree: true });
