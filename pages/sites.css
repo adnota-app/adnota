@@ -580,6 +580,10 @@ body {
   z-index: 1;
 }
 
+/* Author `display: flex` above outranks the UA `[hidden]` rule, so the bar
+   stays a thin empty band when no tags exist. Restore the intended hide. */
+.tag-filter-bar[hidden] { display: none; }
+
 .tag-filter-label {
   font-size: 10.5px;
   font-weight: 500;

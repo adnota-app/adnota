@@ -62,7 +62,11 @@ body {
   display: flex;
   align-items: center;
   gap: 11px;
+  cursor: pointer;
+  user-select: none;
+  transition: opacity 0.12s;
 }
+.brand:hover { opacity: 0.85; }
 
 .brand-monogram {
   width: 38px;
