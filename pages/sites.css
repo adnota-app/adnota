@@ -106,12 +106,8 @@ body {
 
 .brand-monogram {
   width: 40px; height: 40px;
-  border-radius: 11px;
-  background: linear-gradient(135deg, #7c3aed, #d946ef);
-  display: flex; align-items: center; justify-content: center;
-  font-weight: 700; font-size: 22px; color: #fff; letter-spacing: -0.5px;
-  box-shadow: 0 0 30px rgba(124, 58, 237, 0.35);
   flex-shrink: 0;
+  filter: drop-shadow(0 0 15px rgba(124, 58, 237, 0.45));
 }
 
 .brand-name {
