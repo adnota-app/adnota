@@ -31,11 +31,11 @@
   // resizer) come first as a group, then Show/Hide at the end — it's a
   // global toggle, not a tool mode, and sits visually apart for that reason.
   const toolDefs = [
-    { id: 'eraser',  tooltip: 'Eraser',          icon: 'eraser',     action: 'toggle-eraser',      mode: 'eraser',    accent: 'eraser'    },
-    { id: 'sticky',  tooltip: 'Sticky Note',     icon: 'sticky',     action: 'toggle-sticky',      mode: 'sticky',    accent: 'sticky'    },
-    { id: 'marker',  tooltip: 'Drawing Palette', icon: 'marker',     action: 'toggle-highlighter', mode: 'highlight', accent: 'highlight' },
-    { id: 'resizer', tooltip: 'Resizer',         icon: 'resizer',    action: 'toggle-resizer',     mode: 'resizer',   accent: 'resizer'   },
-    { id: 'vis',     tooltip: 'Show / Hide All', icon: 'visibility', action: 'toggle-view' },
+    { id: 'eraser',  tooltip: 'Eraser (e)',              icon: 'eraser',     action: 'toggle-eraser',      mode: 'eraser',    accent: 'eraser'    },
+    { id: 'sticky',  tooltip: 'Sticky Note (s)',         icon: 'sticky',     action: 'toggle-sticky',      mode: 'sticky',    accent: 'sticky'    },
+    { id: 'marker',  tooltip: 'Draw (d)',                icon: 'marker',     action: 'toggle-highlighter', mode: 'highlight', accent: 'highlight' },
+    { id: 'resizer', tooltip: 'Resizer (r)',             icon: 'resizer',    action: 'toggle-resizer',     mode: 'resizer',   accent: 'resizer'   },
+    { id: 'vis',     tooltip: 'Show / Hide All (Alt+S)', icon: 'visibility', action: 'toggle-view' },
   ];
 
   // Drawing sub-modes all count as "marker" for the active-state indicator.
@@ -128,7 +128,7 @@
   const dismissBtn = document.createElement('div');
   dismissBtn.className = 'adnota-select-delete adnota-dock-dismiss';
   dismissBtn.textContent = '✕';
-  dismissBtn.setAttribute('data-tooltip', 'Hide (reload restores)');
+  dismissBtn.setAttribute('data-tooltip', 'Hide (Alt+A or reload restores)');
   dock.appendChild(dismissBtn);
 
   document.documentElement.appendChild(dock);
@@ -316,6 +316,58 @@
     applyDismissState();
   });
 
+  // ── Alt+A → toggle dock visibility ────────────────────────────────────────
+  // Always works, regardless of state: pressing while a tool is active exits
+  // the tool AND hides the dock in one keystroke ("get this off my screen").
+  // applyDismissState would otherwise force-show + reset userDismissed when
+  // mode != null, so we have to clear the mode BEFORE flipping the dismiss
+  // flag.
+  chrome.runtime.onMessage.addListener((msg) => {
+    if (msg?.action !== 'toggle-dock') return;
+    const willHide = dock.style.display !== 'none';
+    if (willHide && window.AdnotaState?.mode != null) {
+      window.AdnotaState.set({ mode: null });
+    }
+    userDismissed = willHide;
+    applyDismissState();
+  });
+
+  // ── Bare-key tool activation ──────────────────────────────────────────────
+  // Modal-by-presence: the dock being on screen IS "annotation mode armed."
+  // No leader-key timeout — if you can see the dock, e/r/s/d toggle tools.
+  // If the dock is dismissed, bare keys do nothing (Alt+A brings it back).
+  const BARE_KEY_ACTIONS = {
+    e: 'toggle-eraser',
+    r: 'toggle-resizer',
+    s: 'toggle-sticky',
+    d: 'toggle-highlighter',
+  };
+
+  function isEditableNode(node) {
+    if (!node) return false;
+    const el = node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement;
+    return !!el?.closest('input, textarea, [contenteditable=""], [contenteditable="true"]');
+  }
+
+  window.addEventListener('keydown', (e) => {
+    if (e.repeat) return;
+    if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
+    if (dock.style.display === 'none') return;
+    if (isEditableNode(document.activeElement)) return;
+    const action = BARE_KEY_ACTIONS[e.key?.toLowerCase()];
+    if (!action) return;
+    e.preventDefault();
+    e.stopPropagation();
+    // Same relay path the popup and dock-button clicks use, so every
+    // tool's existing toggle listener handles the actual mode flip.
+    try {
+      chrome.runtime.sendMessage({
+        action: 'relay-to-tab',
+        payload: { action },
+      }).catch(() => {});
+    } catch (_) { /* context invalidated after extension reload */ }
+  }, true);
+
   // ── Active-tool indicator on the idle row ────────────────────────────────
   // Briefly visible during mode transitions and during the window between
   // hitting a shortcut and the body mounting. Also keeps the row readable if
@@ -351,7 +403,7 @@
     const visEntry = toolEls.find(t => t.tool.id === 'vis');
     if (!visEntry) return;
     visEntry.btn.innerHTML = isHidden ? icons.visibilityOff : icons.visibility;
-    visEntry.btn.setAttribute('data-tooltip', isHidden ? 'Show All' : 'Hide All');
+    visEntry.btn.setAttribute('data-tooltip', isHidden ? 'Show All (Alt+S)' : 'Hide All (Alt+S)');
   }
 
   if (window.AdnotaVisibility?.subscribe) {

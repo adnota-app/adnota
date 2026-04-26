@@ -27,7 +27,7 @@ The product North Star: Adnota today is "make any webpage yours" (destructive + 
 ### Extension Shell
 
 #### `manifest.json`
-MV3 manifest. Permissions: `storage`, `activeTab`, `scripting`, `tabs`. Host permissions: `*://*/*`. Declares keyboard commands for all four tools (Alt+E, Alt+S, Alt+H, Alt+V). Declares `web_accessible_resources` for the `pages/` directory (Sites history page). Content scripts inject `lib/storage.js`, `lib/annotationState.js`, `lib/adnotaUI.js`, `lib/tagIndex.js`, then the content modules in dependency order.
+MV3 manifest. Permissions: `storage`, `activeTab`, `scripting`, `tabs`. Host permissions: `*://*/*`. Declares two keyboard commands: `Alt+A` (toggle dock) and `Alt+S` (show / hide all annotations). Tool activation is layered on top — bare keys `e/r/s/d` toggle each tool when the dock is visible (see Keyboard Shortcuts section). Declares `web_accessible_resources` for the `pages/` directory (Sites history page). Content scripts inject `lib/storage.js`, `lib/annotationState.js`, `lib/adnotaUI.js`, `lib/tagIndex.js`, then the content modules in dependency order.
 
 #### `background.js`
 Minimal service worker. Routes keyboard command events from the browser to the active tab's content scripts via `chrome.tabs.sendMessage`. Also relays messages from the dock (content scripts can't `sendMessage` to their own tab): `open-sites` and `relay-to-tab`.
@@ -94,7 +94,7 @@ Candidate-tournament element-identification system that generates rich anchors a
 Also exposes `generateCSSSelector(el)` as a shared utility (used by the resizer).
 
 #### `content/eraser.js`
-- Activated via popup or `Alt+E` keyboard shortcut
+- Activated via popup tool card, dock button, or bare-key `e` (when dock is visible)
 - Red outline hover preview tracks the cursor; Adnota's own UI elements are guarded and invisible to the eraser
 - **Top-right badge cluster on the hover outline**: pinned where the user's eye already is. `W×H` dimension pill plus a soft-red `likely ad` pill that lights up whenever `getEffectiveAdSignals()` fires (same detection that drives silent domain-wide promotion). Both follow the cursor with the outline so the most actionable signals don't require a glance down at the HUD strip
 - **HUD strip**: fixed bottom-center bar (draggable) that stays visible whenever the eraser is active. Layout: drag handle → A logo chip → info section → trash → undo. Info section updates live while hovering:
@@ -111,13 +111,13 @@ Also exposes `generateCSSSelector(el)` as a shared utility (used by the resizer)
 - `Shift+Click` for domain-wide erasure (stored with `path: '*'`) — explicit user override, unchanged semantic
 - **Silent ad-scope promotion**: a plain click on a target with ad fingerprints (`getEffectiveAdSignals` non-empty — same detection the HUD "likely ad" label uses) is silently promoted to domain-wide storage, because nobody wants to re-erase the same ad on every article. No HUD chip, no messaging — it just works. Non-ad targets stay page-scoped. Page-level viewport-dominating containers are always treated as non-ad regardless of subtree iframes
 - Undo: shared `AdnotaUndo` stack + 5s toast button, both cancel mid-flight animations
-- Show/Hide (`Alt+V`): erased elements are tracked in the shared `AdnotaErasedElements` Set (populated by both eraser clicks and restorer); `AdnotaVisibility` iterates this set to toggle inline `display:none` on each node
+- Show/Hide (`Alt+S`): erased elements are tracked in the shared `AdnotaErasedElements` Set (populated by both eraser clicks and restorer); `AdnotaVisibility` iterates this set to toggle inline `display:none` on each node
 - Storage write is non-blocking (does not delay animation)
 - **Ad-popup defense**: while eraser is active, `mousedown` / `pointerdown` / `auxclick` on any non-Adnota target are intercepted on `window`-capture and `preventDefault`-ed. Stops ads that hijack the earliest pointer event to call `window.open()` before our click handler fires. Right-click (`button === 2`) is left alone so Inspect still works. Every blocked interaction calls `AdnotaState.anchorFocus()` to re-anchor keyboard focus, since `preventDefault` on mousedown suppresses the browser's implicit focus transfer
 - **Iframe pointer shield**: cross-origin iframes swallow wheel events (parent doc never sees them, so scroll-to-traverse fails and the browser chain-scrolls the page instead) and their internal clicks never reach our handlers. While eraser is active, `AdnotaUI.setIframeShield('eraser', true)` injects a scoped `<style id="adnota-iframe-shield-eraser">` setting `iframe { pointer-events: none !important }` on every iframe, routing wheel and click through to the iframe's container in the parent doc — which is usually the full ad wrapper the user actually means to erase. Removed on mode exit. The helper lives in `lib/adnotaUI.js` and is keyed per tool; the resizer uses the same mechanism (`'resizer'` key) so it can hover and resize iframe wrappers
 
 #### `content/sticky.js` — `window.StickyEngine`
-- Activated via popup or `Alt+S`
+- Activated via popup tool card, dock button, or bare-key `s` (when dock is visible)
 - Click anywhere on the page to drop a sticky note; stays in sticky mode for rapid placement — exit via `Escape` or re-toggle
 - **Dark frosted-glass toolbar** (fixed, bottom-center, draggable) — matches marker/eraser HUD aesthetic
 - **Toolbar layout**: drag handle → A logo chip → 5 sticky-note-shaped color swatches → trash → undo. Trash clears every sticky note on the current page after a confirm.
@@ -127,12 +127,12 @@ Also exposes `generateCSSSelector(el)` as a shared utility (used by the resizer)
 - Autosaves content on a 1.5s debounce
 - Create undo: `Ctrl+Z` / `Cmd+Z` immediately after placing a note removes it from DOM and storage; also available via toolbar undo button
 - Delete: instant visual hide + 5s undo window before storage commit
-- `Alt+V` toggles note visibility via the shared `AdnotaVisibility` controller (see below)
+- `Alt+S` toggles note visibility via the shared `AdnotaVisibility` controller (see below)
 - Smart Z-index elevation on focus
 - **Tag row**: thin bar at the bottom of each note card (below the textarea, symmetric with the 28px header) holding a `#` glyph and a text input. Optional — leave it blank and the note stores no `tag` field. Focusing the input opens the `AdnotaTags` autocomplete dropdown; writes ride through the same `saveNote` merge path as the textarea and drag/resize persist, so the tag is never lost on reload
 
 #### `content/highlighter.js` — `window.AdnotaHighlighter`
-- Activated via popup or `Alt+H`
+- Activated via popup tool card, dock button, or bare-key `d` (when dock is visible)
 - **Dark frosted-glass toolbar** (fixed, bottom-center, draggable) — matches eraser HUD aesthetic with `var(--adnota-hud-bg)` background, `backdrop-filter: blur(8px)`, and purple accent border
 - **Toolbar layout**: drag handle → A logo chip → tool icons → color swatches → stroke width presets → trash → undo. Trash clears every highlight and marker shape on the current page after a confirm.
 - **Seven tool buttons** (SVG icons with purple hover/active states):
@@ -163,7 +163,7 @@ Also exposes `generateCSSSelector(el)` as a shared utility (used by the resizer)
 - **Self-healing registry**: stale entries drop from the Map on the next hit-test — CSS-path entries when `highlightRegistries[color].has(range)` returns false (after `_rebuildLiveHighlights()` clears the registry on bulk trash), fallback entries when `fallbackEl.isConnected` goes false. So bulk deletions don't need to know about the Map
 
 #### `content/resizer.js` — Element Resizer
-- Activated via popup tool card (no keyboard shortcut — Chrome limits extensions to 4)
+- Activated via popup tool card, dock button, or bare-key `r` (when dock is visible)
 - **Smart element targeting** (two-stage, order matters): (1) climb to the nearest layout-significant block-level ancestor (≥120×60px, non-inline) — escapes tiny hovers like a menu link before any bubbling happens; (2) *then* use the shared `AdnotaUI.bubbleToVisualRoot` helper, seeded from that ancestor, to promote past visually-identical outer wrappers. This ordering is important: the eraser bubbles from the raw hover because any size element is a legitimate erase target, but the resizer almost always wants a meaningful block, so seeding the IoU comparison from a real layout element (not a 220×36 link) lets it correctly reach a 220×356 `nav` two hops above
 - **Dimension badge**: solid blue rectangular pill with white border showing live `W×H`, straddling the top edge near the right corner. Same chip is used in both hover and selection states so dimensions stay where the user is looking; the HUD info area carries only the action hint
 - **Scroll-wheel DOM traversal**: while hovering, scroll up to walk to the next layout-significant parent (Step 3a in `findLayoutTarget`), scroll down to walk back toward children — past the auto-bubbled baseline if needed (un-bubble through the visual-root and layout-significant climbs, Step 3b), then one more step into a single iframe descendant when one exists in the subtree. The iframe shield masks iframes from `elementFromPoint`, so this descent is the only way to ever target an iframe element directly. Both directions clamp at the actual chain ends — `traverseDepth` only commits when the new depth changes the target, so over-scrolling past the top or bottom doesn't inflate the value and reversing direction is immediate
@@ -210,14 +210,14 @@ Also exposes `generateCSSSelector(el)` as a shared utility (used by the resizer)
 - **Hover affordances**: an rAF-throttled `mousemove` handler runs `hitTestMarker(x, y)` and paints a single floating ✕ at the wrapper's `getShapeBBox` top-right (reuses `.adnota-select-delete` styling, position-overridden to `fixed` inline so no new CSS rule). Click runs the shared `deleteSelectedMarker(wrapper)` — same path as the Select-tool ✕ and Backspace — which uses the consumed-flag pattern: pushes a `AdnotaUndo` entry, shows a 5s `Marker deleted` toast, and the toast Undo + Ctrl+Z share the same `undoEntry` (idempotent). Suppressed when paint is hidden, mid-stroke (`capturePath || captureShape`), and when the hovered wrapper is already `selectedWrapper` (avoids the stacked-ring artifact with the Select-tool's own ✕, which is the only real overlap case — works uniformly across all paint modes including Select itself). Stand-down also fires for any non-marker `[data-adnota-ui]` target — but `captureSvg` and marker wrappers themselves are explicitly carved out of that check, so the ✕ works in pen / arrow / rect / ellipse modes too (where the captureSvg owns the pointer and wrappers are `pointer-events: none`). Belt-and-suspenders hides on Shift `keydown` and document `pointerdown` (with a carve-out for the ✕ itself) close the gap where neither event emits a `mousemove`, so a stranded ✕ can't linger through a drag
 
 #### `content/quickHighlight.js`
-- Medium-style contextual popup that appears above any non-empty text selection after a ~400 ms dwell — independent of the Alt+H highlight mode
+- Medium-style contextual popup that appears above any non-empty text selection after a ~400 ms dwell — independent of the Draw HUD's highlight mode
 - **Two-row layout**. Row 1: Adnota "A" brand chip (visually distinct from the host site's own toolbar) → five color swatches → session-dismiss `✕`. Row 2: an optional tag input (`#` glyph + text field). Clicking a swatch reads the current tag value and forwards it to `AdnotaHighlighter.createHighlightFromRange(range, color, tag)` so the created HIGHLIGHT carries the tag; leaving the input blank preserves the original one-tap flow
 - Each new selection re-prompts — colors and tag are not "sticky" between highlights; the user picks per-action. The tag input clears on every `hidePopup`
 - **Selection preservation**: clicking into the tag input collapses the browser's live text selection. To work around this, the popup caches a clone of the selection range at show-time; `applyHighlight()` prefers the live selection but falls back to the cached range. The `selectionchange` hide is also suppressed while the tag input has focus
 - Tag autocomplete is wired via `AdnotaTags.buildAutocompleteDropdown`. The dropdown lives outside the popup (appended to `<body>` with `position: fixed`), so the outside-click hide-handler has an explicit bypass for `.adnota-tag-suggest`
 - Dismisses on: selection collapse (except during tag-input focus), `Escape`, scroll, resize, click-away, or `Ctrl/Cmd+C` (copy is never intercepted — the popup just gets out of the way)
 - Skips editable contexts (`input`, `textarea`, `contenteditable`) and any selection inside an Adnota UI element
-- Suppressed while `AdnotaState.mode === 'highlight'` so it doesn't double up with the classic auto-apply mouseup. The Alt+H auto-apply path itself does **not** read a tag — it stays a zero-UI fast path. Tagging a highlight created that way is deferred to v2 (Select-tool integration or Home-page retrofit)
+- Suppressed while `AdnotaState.mode === 'highlight'` so it doesn't double up with the classic auto-apply mouseup. The Draw-HUD highlight auto-apply path itself does **not** read a tag — it stays a zero-UI fast path. Tagging a highlight created that way is deferred to v2 (Select-tool integration or Home-page retrofit)
 - Reuses `AdnotaHighlighter.createHighlightFromRange()` — no duplicate save/undo logic
 - Feature-gated by `chrome.storage.local.adnotaQuickHighlightEnabled` (default `true`); a future toggle UI can flip this without touching the content script
 
@@ -238,9 +238,10 @@ Also exposes `generateCSSSelector(el)` as a shared utility (used by the resizer)
 
 #### `popup/index.html` + `popup/popup.js` + `popup/style.css`
 Premium dark-header popup (360px wide). Features:
-- **Tool cards** for Eraser, Sticky Note, Drawing Palette (Highlight, Pen, Arrow, Rectangle, Circle, Text, Select), and Resizer — each with icon chip, shortcut badge (where available), and active-state indicator (colored border + pulsing dot) that syncs in real time via `storage.onChanged` (catches keyboard shortcuts fired while popup is open)
+- **Tool cards** for Eraser, Sticky Note, Draw, and Resizer — each with icon chip, lowercase shortcut badge (`e`/`s`/`d`/`r`), and active-state indicator (colored border + pulsing dot) that syncs in real time via `storage.onChanged` (catches keyboard shortcuts fired while popup is open). The Draw card opens a HUD with seven sub-tools (Highlight, Pen, Arrow, Rectangle, Circle, Text, Select) — text highlighting also has a separate auto-popup path on text selection (`content/quickHighlight.js`), so the Draw HUD is primarily a freeform drawing surface
+- **Bare-key listener** in `popup.js`: pressing `e/r/s/d` while the popup is focused fires the same toggle the corresponding card click does, then closes the popup. Mirrors the dock's bare-key handler so users who see the badges in popup get the expected behavior even when the dock is dismissed (the dock-visible gate doesn't apply here — the popup itself is the modal indicator, and tool activation auto-restores the dock)
 - **Per-page stats** (Erased / Notes / Highlights / Resized / Strokes) — each stat card cross-fades to a trash icon on hover; clicking clears that category from the current page
-- **Show/Hide Changes button** (`Alt+V`) in the header — eye icon with a diagonal slash overlay when annotations are hidden. Reads live state via `get-view` message to the content script on open; optimistically toggles on click for instant UI response
+- **Show/Hide Changes button** (`Alt+S`) in the header — eye icon with a diagonal slash overlay when annotations are hidden. Reads live state via `get-view` message to the content script on open; optimistically toggles on click for instant UI response
 - **My Edited Sites** button in footer (purple outline) — opens the Sites history page
 - **Clear All Page Edits** button in footer (red outline)
 
@@ -304,14 +305,30 @@ Dedicated extension page (opened as a new tab via `chrome.runtime.getURL`). Two 
 
 ## Keyboard Shortcuts
 
+Two layers: **global** (work anywhere, always) and **bare-key** (work only when the dock is visible AND no input/textarea/contenteditable is focused AND no modifier is held). The dock-visible gate makes the dock itself the "annotation mode armed" indicator — if you can see it, the bare keys are live.
+
+**Global**
+
 | Shortcut | Action |
 |---|---|
-| `Alt+E` | Toggle Eraser |
-| `Alt+S` | Toggle Sticky Notes |
-| `Alt+H` | Toggle Drawing Palette toolbar |
-| `Alt+V` | Show / Hide all annotations |
+| `Alt+A` | Toggle the Adnota dock. While a tool is active, exits the tool *and* hides the dock in one keystroke (same hide affordance as clicking the dock's X) |
+| `Alt+S` | Show / Hide all annotations |
 | `Ctrl+Z` / `Cmd+Z` | Undo last action (any tool) |
 | `Escape` | Deactivate active tool (universal — works from any tool, any state) / cancel text input |
+
+**Bare-key (when dock is visible)**
+
+| Shortcut | Action |
+|---|---|
+| `e` | Toggle Eraser |
+| `r` | Toggle Resizer |
+| `s` | Toggle Sticky Notes |
+| `d` | Toggle Draw HUD (enters `pen` by default) |
+
+**Tool-specific**
+
+| Shortcut | Action |
+|---|---|
 | `Shift` (hold) | Paint annotations become first-class objects — click to select, drag to move, Delete to remove. Drawing tools (pen/arrow/rect/ellipse/text) are suspended while Shift is held, so there's no overlap between drawing and selecting. Links/buttons under empty canvas still behave normally — only paint items are hijacked |
 | `Shift+Click` | (Eraser only) Domain-wide deletion |
 | `Enter` | (Text tool) Commit text |
@@ -358,4 +375,4 @@ From the Sites page, allow searching by annotation *content* (not just hostname)
 Requires cloud sync first. Share your annotated version of a page with a link — collaborator opens it, Adnota re-applies all annotations on their end. Powerful for editorial review, research handoff, redaction sign-off.
 
 **7. Presentation / Focus Mode**
-`Alt+V` already hides everything. A dedicated presentation mode could selectively show only highlights (no sticky notes) or only notes (no erasures) depending on context.
+`Alt+S` already hides everything. A dedicated presentation mode could selectively show only highlights (no sticky notes) or only notes (no erasures) depending on context.

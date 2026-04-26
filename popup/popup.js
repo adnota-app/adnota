@@ -27,24 +27,54 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   // ─── Tool card clicks — activate the tool and close the popup ─────────────
-  document.querySelectorAll('.tool-card[data-action]').forEach(card => {
-    card.addEventListener('click', () => {
-      chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-        if (!tabs.length) return;
-        chrome.tabs.sendMessage(tabs[0].id, { action: card.dataset.action }, () => {
-          void chrome.runtime.lastError;
-          window.close();
-        });
+  function activateTool(action) {
+    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+      if (!tabs.length) return;
+      chrome.tabs.sendMessage(tabs[0].id, { action }, () => {
+        void chrome.runtime.lastError;
+        window.close();
       });
     });
+  }
+
+  document.querySelectorAll('.tool-card[data-action]').forEach(card => {
+    card.addEventListener('click', () => activateTool(card.dataset.action));
   });
+
+  // ─── Bare-key shortcuts (mirror content/dock.js) ──────────────────────────
+  // The dock-visible gate doesn't apply here — popup being open IS the modal
+  // indicator, and tool activation auto-restores the dock anyway. Lets a
+  // user who opens the popup with the dock dismissed press the badge keys
+  // they see and have it just work.
+  const POPUP_BARE_KEYS = {
+    e: 'toggle-eraser',
+    r: 'toggle-resizer',
+    s: 'toggle-sticky',
+    d: 'toggle-highlighter',
+  };
+
+  function isEditableNode(node) {
+    if (!node) return false;
+    const el = node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement;
+    return !!el?.closest('input, textarea, [contenteditable=""], [contenteditable="true"]');
+  }
+
+  window.addEventListener('keydown', (e) => {
+    if (e.repeat) return;
+    if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
+    if (isEditableNode(document.activeElement)) return;
+    const action = POPUP_BARE_KEYS[e.key?.toLowerCase()];
+    if (!action) return;
+    e.preventDefault();
+    activateTool(action);
+  }, true);
 
   // ─── Visibility toggle ────────────────────────────────────────────────────
   function setVisibilityBtn(isHidden) {
     btnVisibility.classList.toggle('hidden', isHidden);
     btnVisibility.title = isHidden
-      ? 'Show changes (Alt+V)'
-      : 'Hide changes (Alt+V)';
+      ? 'Show changes (Alt+S)'
+      : 'Hide changes (Alt+S)';
   }
 
   // Seed from content script on open. Visibility is ephemeral and per-tab,
@@ -89,7 +119,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // Visibility is ephemeral (not persisted). Content scripts broadcast
   // 'visibility-changed' via chrome.runtime on every toggle/show; catch it
-  // here so the popup icon stays in sync with Alt+V and the dock's eye button.
+  // here so the popup icon stays in sync with Alt+S and the dock's eye button.
   chrome.runtime.onMessage.addListener((msg) => {
     if (msg?.action === 'visibility-changed') {
       setVisibilityBtn(!!msg.hidden);

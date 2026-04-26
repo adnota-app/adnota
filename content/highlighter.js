@@ -627,10 +627,10 @@ function getOccurrenceIndex(range, anchorElement) {
   return count;
 }
 
-// Shared highlight creation — used by the Alt+H mouseup handler AND by the
-// contextual "quick highlight" popup. Accepts any range and color, writes to
-// storage, adds to the CSS Highlights registry (or renders fallback), and
-// pushes an undo entry. Selection clearing is the caller's responsibility.
+// Shared highlight creation — used by the Draw-HUD highlight mouseup handler
+// AND by the contextual "quick highlight" popup. Accepts any range and color,
+// writes to storage, adds to the CSS Highlights registry (or renders fallback),
+// and pushes an undo entry. Selection clearing is the caller's responsibility.
 async function createHighlightFromRange(range, color, tag = '') {
   let anchorElement = range.commonAncestorContainer;
   if (anchorElement.nodeType !== Node.ELEMENT_NODE) {
@@ -641,9 +641,9 @@ async function createHighlightFromRange(range, color, tag = '') {
   const anchor = window.FuzzyAnchor.generate(blockElement);
   const _id = Date.now() + Math.random().toString();
 
-  // Only attach the tag field when it's actually set, so the untagged Alt+H
-  // path (and any other caller that doesn't pass a tag) leaves no empty-string
-  // debris in storage.
+  // Only attach the tag field when it's actually set, so the untagged
+  // mouseup-auto-apply path (and any other caller that doesn't pass a tag)
+  // leaves no empty-string debris in storage.
   const normalizedTag = window.AdnotaTags
     ? window.AdnotaTags.normalize(tag)
     : (typeof tag === 'string' ? tag.trim() : '');
