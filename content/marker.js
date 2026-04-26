@@ -132,11 +132,13 @@ function handlePenMove(e) {
 async function handlePenUp(e) {
   if (!capturePath) return;
 
-  // A tap with no real stroke — dismiss the tool entirely.
+  // A tap with no real stroke — drop it and stay in pen mode (matches the
+  // shape tools' "too-small drag cancels" behavior, so a misclick doesn't
+  // kick the user out).
   if (currentPathNodes.length < 3) {
     capturePath.remove();
     capturePath = null;
-    window.AdnotaState.set({ mode: null });
+    currentPathNodes = [];
     return;
   }
 
