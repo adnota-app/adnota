@@ -21,20 +21,16 @@ const hoverOverlay = window.AdnotaUI.createHoverOverlay('adnota-resizer-overlay'
 // users can gauge element size before picking it up.
 const dimensionBadge = document.createElement('div');
 dimensionBadge.id = 'adnota-resizer-dimension-badge';
+// Reuse the selection chip's blue-rectangle styling so hover and selected
+// states share the same visual readout.
+dimensionBadge.className = 'adnota-resizer-selection-dim';
 dimensionBadge.setAttribute('data-adnota-ui', '1');
+// Pinned to the overlay's top-right corner; the visual styling (background,
+// border, font, radius) comes from the shared class.
 Object.assign(dimensionBadge.style, {
-  position: 'absolute',
-  top: '-1px',
-  right: '-1px',
-  transform: 'translateY(-100%)',
-  background: 'rgba(15, 15, 15, 0.85)',
-  color: '#93c5fd',
-  fontSize: '10px',
-  fontFamily: 'ui-monospace, "SF Mono", Menlo, Consolas, monospace',
-  lineHeight: '1',
-  padding: '2px 6px',
-  borderRadius: '3px 3px 0 3px',
-  whiteSpace: 'nowrap',
+  top: '-2px',
+  right: '-3px',
+  transform: 'translateY(-50%)',
 });
 hoverOverlay.appendChild(dimensionBadge);
 
@@ -105,10 +101,10 @@ function updateHUD() {
   let html = '';
 
   if (selectedEl) {
-    // Selected state: show current dimensions of the locked target.
-    const r = selectedEl.getBoundingClientRect();
-    html += `<span style="color:#93c5fd;font-weight:600">${Math.round(r.width)}\u00d7${Math.round(r.height)}</span>`;
-    html += `<span style="color:#6ee7b7;margin-left:4px">selected</span>`;
+    // Selected state: dimensions live on the selection box itself (the
+    // top-right chip next to the reset button), so the HUD just carries
+    // the action hint here.
+    html += `<span style="color:#6ee7b7">Selected</span>`;
     html += dot;
     html += `<span style="color:#94a3b8">Drag a handle to resize \u00b7 <span style="color:#93c5fd">\u21BA</span> to reset</span>`;
     resizerHudInfo.innerHTML = html;
@@ -140,6 +136,7 @@ let handleBottom = null;
 let handleCorner = null;
 let selectionBox = null;
 let dismissBtn = null;
+let selectionDimBadge = null;
 
 // ─── Drag state ──────────────────────────────────────────────────────────────
 let dragAxis = null;       // 'x' | 'x-left' | 'y' | 'y-top' | 'xy'
@@ -317,6 +314,21 @@ function selectElement(el) {
   });
   document.documentElement.appendChild(dismissBtn);
 
+  // Live dimension badge — child of selectionBox so it tracks the box
+  // automatically. Sits just to the left of the dismiss button (16px right
+  // offset = dismiss button's 10px outdent + 6px gap), entirely above the
+  // top edge to mirror the hover chip's placement.
+  selectionDimBadge = document.createElement('div');
+  selectionDimBadge.className = 'adnota-resizer-selection-dim';
+  selectionDimBadge.setAttribute('data-adnota-ui', '1');
+  Object.assign(selectionDimBadge.style, {
+    top: '-2px',
+    right: '16px',
+    transform: 'translateY(-50%)',
+  });
+  selectionDimBadge.textContent = `${Math.round(rect.width)}×${Math.round(rect.height)}`;
+  selectionBox.appendChild(selectionDimBadge);
+
   updateHUD();
 }
 
@@ -330,6 +342,7 @@ function deselectElement() {
   if (handleBottom) { handleBottom.remove(); handleBottom = null; }
   if (handleCorner) { handleCorner.remove(); handleCorner = null; }
   if (dismissBtn)   { dismissBtn.remove();   dismissBtn = null; }
+  if (selectionDimBadge) { selectionDimBadge.remove(); selectionDimBadge = null; }
   if (hadSelection && window.AdnotaState.mode === 'resizer') updateHUD();
 }
 
@@ -434,7 +447,9 @@ function refreshHandles() {
   if (handleBottom) positionHandleBottom(handleBottom, rect, scrollX, scrollY);
   if (handleCorner) positionHandleCorner(handleCorner, rect, scrollX, scrollY);
   if (dismissBtn)   positionDismiss(dismissBtn, rect, scrollX, scrollY);
-  // HUD dimensions track the element live during drag.
+  if (selectionDimBadge) {
+    selectionDimBadge.textContent = `${Math.round(rect.width)}×${Math.round(rect.height)}`;
+  }
   updateHUD();
 }
 
