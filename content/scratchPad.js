@@ -32,6 +32,12 @@
   let mouseLeaveTimer = null;
   let navListener     = null;
   let popstateListener = null;
+  // Set true on a committed drag (pointer moved past the threshold) so the
+  // synthetic click that fires on pointerup gets swallowed. Otherwise a
+  // drag that started on the Copy-all or filter pill would fire that
+  // button's action on release.
+  let suppressNextClick = false;
+  const DRAG_THRESHOLD = 4;
 
   // Cooperate with the universal Escape handler in lib/annotationState.js.
   // That handler is window-capture phase and clears AdnotaState.mode
@@ -183,8 +189,20 @@
     bodyEl.className = 'adnota-scratchpad-body';
     panel.appendChild(bodyEl);
 
-    // Drag from the header (buttons are excluded inside the handler).
+    // Drag from anywhere on the header — buttons included. The handler
+    // distinguishes click from drag via a movement threshold.
     header.addEventListener('pointerdown', (e) => onDragStart(e));
+
+    // Capture-phase click suppressor — swallows the synthetic click that
+    // fires on pointerup after a real drag, so the button under the
+    // starting pointer doesn't trigger (e.g., dragging from Copy all
+    // shouldn't actually copy on release).
+    panel.addEventListener('click', (e) => {
+      if (!suppressNextClick) return;
+      suppressNextClick = false;
+      e.stopPropagation();
+      e.preventDefault();
+    }, true);
 
     // Idle transparency: 60% when cursor hasn't been over the panel for a
     // grace period; snaps to 100% on mouseenter. The header keeps a higher
@@ -420,28 +438,39 @@
   }
 
   // ── Drag ──────────────────────────────────────────────────────────────────
+  // Whole header is the drag handle — including the filter pills, Copy all,
+  // and the close ✕. A 4px movement threshold disambiguates click from drag
+  // so a normal click on any button still fires its action; only after the
+  // pointer travels past the threshold do we commit to a drag and swallow
+  // the synthetic click that follows.
   function onDragStart(e) {
     if (e.button !== 0) return;
-    if (e.target.closest('button')) return;
     // Selection guard: if the user finished a drag-select inside the panel,
     // don't initiate a panel drag — they're trying to copy text.
     const sel = window.getSelection();
     if (sel && !sel.isCollapsed && panel.contains(sel.anchorNode)) return;
 
     const r = panel.getBoundingClientRect();
-    panel.style.right  = 'auto';
-    panel.style.bottom = 'auto';
-    panel.style.left   = r.left + 'px';
-    panel.style.top    = r.top + 'px';
-
     const startX = e.clientX, startY = e.clientY;
     const startLeft = r.left, startTop = r.top;
     const w = r.width, h = r.height;
+    let dragging = false;
 
     function move(ev) {
-      const targetLeft = startLeft + (ev.clientX - startX);
-      const targetTop  = startTop + (ev.clientY - startY);
-      const c = clampPosition(targetLeft, targetTop, w, h);
+      const dx = ev.clientX - startX;
+      const dy = ev.clientY - startY;
+      if (!dragging) {
+        if (Math.abs(dx) < DRAG_THRESHOLD && Math.abs(dy) < DRAG_THRESHOLD) return;
+        dragging = true;
+        // Commit to absolute coords on the first real drag movement —
+        // not on pointerdown — so a click without movement leaves the
+        // panel's right/bottom anchoring untouched.
+        panel.style.right  = 'auto';
+        panel.style.bottom = 'auto';
+        panel.style.left   = startLeft + 'px';
+        panel.style.top    = startTop + 'px';
+      }
+      const c = clampPosition(startLeft + dx, startTop + dy, w, h);
       panel.style.left = c.left + 'px';
       panel.style.top  = c.top + 'px';
       ev.preventDefault();
@@ -450,7 +479,10 @@
       window.removeEventListener('pointermove', move);
       window.removeEventListener('pointerup', end);
       window.removeEventListener('pointercancel', end);
-      persistPosition();
+      if (dragging) {
+        suppressNextClick = true;
+        persistPosition();
+      }
     }
     window.addEventListener('pointermove', move);
     window.addEventListener('pointerup', end);
