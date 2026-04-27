@@ -68,6 +68,7 @@
         "lib/annotationState.js",
         "lib/adnotaUI.js",
         "lib/tagIndex.js",
+        "content/scratchPad.js",
         "content/dock.js",
         "content/fuzzyAnchor.js",
         "content/eraser.js",
@@ -81,6 +82,7 @@
       "css": [
         "lib/adnotaTokens.css",
         "lib/adnotaUI.css",
+        "content/scratchPad.css",
         "content/dock.css",
         "content/sticky.css",
         "content/marker.css",

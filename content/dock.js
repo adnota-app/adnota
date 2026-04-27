@@ -3,7 +3,7 @@
 // One persistent fixed-position widget. Two visual states, toggled by which
 // tool (if any) is active:
 //
-//   idle   — [drag][V][vis][eraser][sticky][marker][resizer]
+//   idle   — [drag][V][eraser][sticky][marker][resizer][scratch][vis]
 //            Tool row is always visible, one click away.
 //   active — [drag][← back][tool HUD body grows right →]
 //            The tool row collapses, V morphs into an accent-colored back
@@ -24,6 +24,7 @@
     sticky:  `<svg viewBox="0 0 24 24"><path d="M15.5 3H5a2 2 0 0 0-2 2v14c0 1.1.9 2 2 2h14a2 2 0 0 0 2-2V8.5L15.5 3z"/><polyline points="15 3 15 9 21 9"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="12" y2="17"/></svg>`,
     marker:  `<svg viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>`,
     resizer: `<svg viewBox="0 0 24 24"><path d="M15 3h6v6"/><path d="M9 21H3v-6"/><path d="M21 3l-7 7"/><path d="M3 21l7-7"/></svg>`,
+    scratch: `<svg viewBox="0 0 24 24"><line x1="6" y1="8" x2="18" y2="8"/><line x1="6" y1="12" x2="18" y2="12"/><line x1="6" y1="16" x2="14" y2="16"/></svg>`,
     back:    `<svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>`,
   };
 
@@ -35,6 +36,7 @@
     { id: 'sticky',  tooltip: 'Sticky Note (s)',         icon: 'sticky',     action: 'toggle-sticky',      mode: 'sticky',    accent: 'sticky'    },
     { id: 'marker',  tooltip: 'Draw (d)',                icon: 'marker',     action: 'toggle-highlighter', mode: 'highlight', accent: 'highlight' },
     { id: 'resizer', tooltip: 'Resizer (r)',             icon: 'resizer',    action: 'toggle-resizer',     mode: 'resizer',   accent: 'resizer'   },
+    { id: 'scratch', tooltip: 'Page snippets (p)',       icon: 'scratch',    action: 'toggle-scratch' },
     { id: 'vis',     tooltip: 'Show / Hide All (Alt+S)', icon: 'visibility', action: 'toggle-view' },
   ];
 
@@ -104,7 +106,7 @@
     btn.innerHTML = icons[tool.icon];
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
-      handleToolClick(tool);
+      handleToolClick(tool, btn);
     });
     toolRow.appendChild(btn);
     toolEls.push({ btn, tool });
@@ -277,9 +279,16 @@
   }).catch(markReady);
 
   // ── Tool button clicks ────────────────────────────────────────────────────
-  function handleToolClick(tool) {
+  function handleToolClick(tool, btn) {
+    // Honor the disabled affordance on utility buttons (currently only the
+    // scratch button uses this, when there's nothing to recall on the page).
+    if (btn?.getAttribute('data-disabled') === '1') return;
     if (tool.action === 'toggle-view') {
       window.AdnotaVisibility?.toggle();
+      return;
+    }
+    if (tool.action === 'toggle-scratch') {
+      window.AdnotaScratchPad?.toggle();
       return;
     }
     // Fire the tool's toggle through the background relay so the content
@@ -344,6 +353,17 @@
     d: 'toggle-highlighter',
   };
 
+  // Bare keys that bypass the relay path because the target lives in this
+  // same content-script context. Disabled-state on the dock button still
+  // gates the keypress so the affordances stay in sync.
+  const BARE_KEY_DIRECT = {
+    p: () => {
+      const entry = toolEls.find(t => t.tool.id === 'scratch');
+      if (entry?.btn.getAttribute('data-disabled') === '1') return;
+      window.AdnotaScratchPad?.toggle();
+    },
+  };
+
   function isEditableNode(node) {
     if (!node) return false;
     const el = node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement;
@@ -355,7 +375,15 @@
     if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
     if (dock.style.display === 'none') return;
     if (isEditableNode(document.activeElement)) return;
-    const action = BARE_KEY_ACTIONS[e.key?.toLowerCase()];
+    const key = e.key?.toLowerCase();
+    const direct = BARE_KEY_DIRECT[key];
+    if (direct) {
+      e.preventDefault();
+      e.stopPropagation();
+      direct();
+      return;
+    }
+    const action = BARE_KEY_ACTIONS[key];
     if (!action) return;
     e.preventDefault();
     e.stopPropagation();
@@ -411,6 +439,50 @@
     window.AdnotaVisibility.subscribe(setVisibilityIcon);
   } else {
     setVisibilityIcon(false);
+  }
+
+  // ── Scratch-pad button: disabled when the page has no text snippets ──────
+  // The user explicitly wanted the button to "tease" only when there's
+  // something to recall. AdnotaScratchPad.pageSnippetCount() reads the same
+  // getAnchorsForUrl path the panel itself uses, so the affordance can never
+  // disagree with what the panel would show.
+  function refreshScratchEnabled() {
+    const entry = toolEls.find(t => t.tool.id === 'scratch');
+    if (!entry || !window.AdnotaScratchPad?.pageSnippetCount) return;
+    window.AdnotaScratchPad.pageSnippetCount().then((count) => {
+      if (count > 0) {
+        entry.btn.removeAttribute('data-disabled');
+        entry.btn.removeAttribute('aria-disabled');
+      } else {
+        entry.btn.setAttribute('data-disabled', '1');
+        entry.btn.setAttribute('aria-disabled', 'true');
+      }
+    }).catch(() => {});
+  }
+
+  // Initial check + every time storage for this domain changes (the only
+  // path that creates/removes snippets). Cheap — getAnchorsForUrl reads one
+  // domain key.
+  refreshScratchEnabled();
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area !== 'local') return;
+    if (changes[location.hostname]) refreshScratchEnabled();
+  });
+
+  // SPA URL changes (claude.ai, ChatGPT, etc.) don't touch storage but do
+  // change the page's path, so what counts as "this page's snippets" can
+  // shift. Mirrors the Navigation API hook the restorer already uses, with
+  // a popstate fallback.
+  if (typeof window.navigation?.addEventListener === 'function') {
+    try {
+      window.navigation.addEventListener('navigate', () => {
+        setTimeout(refreshScratchEnabled, 50);
+      });
+    } catch (_) {}
+  } else {
+    window.addEventListener('popstate', () => {
+      setTimeout(refreshScratchEnabled, 50);
+    });
   }
 
   // The body's CSS uses overflow-x: clip during the slide-in so contents don't

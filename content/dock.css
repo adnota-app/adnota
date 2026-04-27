@@ -189,6 +189,15 @@
    rule from adnotaUI.css positions correctly. */
 .adnota-dock-tool { position: relative; }
 
+/* Disabled affordance for utility buttons (currently the scratch pad when
+   the page has no snippets). Kept visible so the feature is discoverable —
+   the user adds a highlight or note and the button enables itself. */
+.adnota-dock-tool[data-disabled="1"] {
+  opacity: 0.3;
+  pointer-events: none;
+  cursor: default;
+}
+
 /* ── Tool body (active) ────────────────────────────────────────────────── */
 /* Grows left-to-right from width 0 when a tool mounts. The min-height gives
    child shadows (active swatch rings, button glows) a few px of vertical

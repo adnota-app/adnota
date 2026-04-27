@@ -262,7 +262,7 @@ Premium dark-header popup (360px wide). Features:
 
 #### `content/dock.js` + `content/dock.css` — The Adnota Dock
 One persistent floating widget (fixed, bottom-center, draggable) that is the only Adnota chrome on the page. Two visual states, toggled by which tool (if any) is active:
-- **Idle**: `[drag][A][eraser][sticky][marker][resizer][vis]` — always-visible tool row, one click away. At `opacity: 0.55` so it stays out of the way.
+- **Idle**: `[drag][A][eraser][sticky][marker][resizer][scratch][vis]` — always-visible tool row, one click away. At `opacity: 0.55` so it stays out of the way. The scratch button is a non-tool utility (no mode), greyed to 30% opacity when the page has no HIGHLIGHT or NOTE items so it never teases when there's nothing to recall.
 - **Active**: `[drag][← back (tinted)][tool's HUD body]` — tool row collapses, A morphs into an accent-colored back arrow, the tool's own controls fill the body slot.
 - **Back arrow / Escape / clicking the active tool again** all exit the tool and return to idle.
 - **A logo** opens the Sites history page in a new tab.
@@ -273,6 +273,20 @@ One persistent floating widget (fixed, bottom-center, draggable) that is the onl
 - **Per-tool accent** (`data-accent` attribute set on mount): back arrow + dock border both pick up the active tool's color (red / amber / purple / blue).
 - **Public API**: tools mount their body via `AdnotaDock.mount(toolId, buildBodyFn)` on mode entry and `AdnotaDock.unmount(toolId)` on exit. The `toolId` on unmount guards against cross-tool races where the outgoing tool's subscriber would clear the body the incoming tool just installed.
 - All elements marked `data-adnota-ui` so eraser/resizer ignore them.
+
+#### `content/scratchPad.js` + `content/scratchPad.css` — Page Snippets (the scratch pad)
+Per-page floating panel that lists every HIGHLIGHT and sticky-note body for the current URL. Designed as the **TEXT-IS-KING** counter to the Sites/Snippets feed — austere on purpose: no per-item color border, no source chip, no card chrome, no visual difference between a highlight and a note. Just the text, an optional muted `#tag`, and a hover-revealed copy button. The use case is in-page recall during long-text reading (ChatGPT/Claude conversations, longform articles) where scrolling back to the original is the friction the user is trying to escape.
+- **Header**: filter pills (`All` / `Highlights` / `Notes`, the active one rendered in `var(--adnota-accent)` purple with a thin underline + inline count), `Copy all`, `✕`. The whole header is the drag handle (excluding the buttons themselves). Filter selection persists globally to `chrome.storage.local.adnotaScratchFilter` (one preference for the user, not per-host).
+- **Body**: snippets stacked newest-first with hairline `rgba(255,255,255,0.08)` dividers between them. Inter, 14px, line-height 1.5, `white-space: pre-wrap` so multi-paragraph highlights keep their breaks. Black-redaction highlights (`color === 'adnota-theme-black'`) render as a `█` bar with the same length-clamping formula as the Sites feed (6–48 glyphs) instead of leaking the hidden text. Sticky notes with empty bodies are silently skipped.
+- **Per-snippet copy**: `:hover` on a row reveals a single floating glyph in the top-right corner — no card around it. Click → ✓ flash, 1.4s revert. **Copy all** in the header writes every visible (post-filter) snippet, joined by `\n\n`.
+- **Selection guard**: the panel never auto-closes on outside click (would interfere with copy/paste flow), and `pointerdown` on the header skips the drag handler when `getSelection().isCollapsed === false` and the selection is inside the panel — so a drag-select that ends on the header doesn't hijack into a panel drag.
+- **Idle transparency**: the whole panel fades to `opacity: 0.6` after 600ms with no cursor over it; `mouseenter` snaps back to 1.0. The panel becomes ambient when you're reading the page, full-clarity when you reach for it. Header stays at parent opacity.
+- **Drag + resize + persistence**: pointer-drag from the header repositions; native `resize: both` on the panel handles size. Position and size are persisted **per-hostname** under `adnotaScratchPosition` and `adnotaScratchSize` (each is a `{ host: {...} }` map) so the user's mental model of "the pad lives here on this site" survives reloads. Initial defaults: 420×360px, bottom-right of the viewport above the dock.
+- **Live updates**: a `chrome.storage.onChanged` listener tied to the current hostname rebuilds the list when storage changes, so a new highlight made while the panel is open appears immediately without manual refresh.
+- **Invocation**: dock button (left of the visibility eye) and bare-key `p` when the dock is visible. The dock button is `data-disabled="1"` (30% opacity, no pointer events) when the page has no snippets — re-checked on every relevant `chrome.storage.onChanged` and on SPA URL changes via `window.navigation.addEventListener('navigate', ...)` (Chromium 102+) with a `popstate` fallback. Bare-key `p` honors the same disabled state.
+- **Escape**: bubble-phase keydown handler closes the panel — but defers to `AdnotaState.mode` first, so if a tool is active, Escape exits the tool and the panel stays open. Two presses to close both.
+- **Reuse**: borrows `AdnotaStorage.getAnchorsForUrl` and the redaction-bar formula. Deliberately **does not** share the Sites/Snippets `buildQuoteBlock` renderer — the scratch pad is the new austere reference; the Sites feed may be retrofitted toward this aesthetic in a later pass.
+- **Public API**: `window.AdnotaScratchPad = { toggle(), open(), close(), isOpen(), refresh(), pageSnippetCount() }`. The dock calls `toggle()` and `pageSnippetCount()`.
 
 #### `pages/sites.html` + `pages/sites.js` + `pages/sites.css`
 Dedicated extension page (opened as a new tab via `chrome.runtime.getURL`). Two tabs share a common sticky header; each tab owns its own chrome.
@@ -339,6 +353,7 @@ Two layers: **global** (work anywhere, always) and **bare-key** (work only when 
 | `r` | Toggle Resizer |
 | `s` | Toggle Sticky Notes |
 | `d` | Toggle Draw HUD (enters `pen` by default) |
+| `p` | Toggle the page snippets scratch pad (no-op when the page has no highlights or notes) |
 
 **Tool-specific**
 
