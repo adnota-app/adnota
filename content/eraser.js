@@ -124,16 +124,28 @@ function escapeHtml(str) {
 // Lightweight heuristics to flag elements that look like ad infrastructure.
 // Not blocking anything — just informing the user's scroll-wheel decision.
 const _adKeywordPattern = /\bad[s]?\b|ad[-_]|[-_]ad\b|advert|banner|sponsor|promo|dfp|prebid|adsense|doubleclick|freestar|taboola|outbrain|criteo|pubmatic/i;
-const _adNetworkAttrs = ['data-freestar-ad', 'data-google-query-id', 'data-ad-slot',
-  'data-ad-client', 'data-adunit', 'data-ad', 'data-dfp', 'data-zone'];
+// Hyphen-segmented identifier match for tag names and attribute names. Lives
+// on AdnotaUI so the restorer's ad-slot fallback uses the same definition.
+const _adIdentifierPattern = window.AdnotaUI.adIdentifierPattern;
+// Network-specific attribute names that don't fit the hyphen-segmented pattern.
+const _adNetworkAttrSet = new Set(['data-google-query-id', 'data-dfp', 'data-zone',
+  'data-adunit', 'data-prebid']);
+
+function _hasAdAttribute(el) {
+  if (!el.attributes) return false;
+  for (const attr of el.attributes) {
+    if (_adNetworkAttrSet.has(attr.name)) return true;
+    if (_adIdentifierPattern.test(attr.name)) return true;
+  }
+  return false;
+}
 
 /** Quick check: does a single element (not its subtree) have ad fingerprints? */
 function hasAdFingerprint(el) {
   const idAndClass = (el.id || '') + ' ' + (el.className || '');
   if (_adKeywordPattern.test(idAndClass)) return true;
-  for (const a of _adNetworkAttrs) {
-    if (el.hasAttribute(a)) return true;
-  }
+  if (_adIdentifierPattern.test(el.tagName || '')) return true;
+  if (_hasAdAttribute(el)) return true;
   if (el.tagName === 'IFRAME') return true;
   return false;
 }
@@ -146,23 +158,40 @@ function detectAdSignals(el) {
   const idAndClass = (el.id || '') + ' ' + (el.className || '');
   if (_adKeywordPattern.test(idAndClass)) signals.push('ad-keyword');
 
-  // Check attributes for ad network fingerprints
-  for (const a of _adNetworkAttrs) {
-    if (el.hasAttribute(a)) { signals.push('ad-network'); break; }
+  // Custom-element tag names (e.g. <shreddit-comments-page-ad>)
+  if (_adIdentifierPattern.test(el.tagName || '')) signals.push('ad-tag');
+
+  // Attribute-name scan — replaces the old fixed list, catches the whole
+  // ad-type / is-ad / is-promoted / post-promoted / data-ad-* family
+  if (_hasAdAttribute(el)) signals.push('ad-network');
+
+  // aria-label like "Advertisement: ..." — strong textual signal sites use
+  // for accessibility on ad slots even when class/id are neutral
+  const ariaLabel = (el.getAttribute && el.getAttribute('aria-label')) || '';
+  if (ariaLabel && _adKeywordPattern.test(ariaLabel.slice(0, 200))) {
+    signals.push('ad-label');
   }
 
-  // Contains iframe (common ad delivery mechanism)
-  if (el.querySelector('iframe')) signals.push('iframe');
-
-  // Contains iframe pointing to ad domain or about:blank
-  const iframes = el.querySelectorAll('iframe');
-  for (const iframe of iframes) {
-    const src = iframe.getAttribute('src') || '';
-    if (!src || src === 'about:blank' || _adKeywordPattern.test(src)) {
-      signals.push('ad-iframe');
-      break;
+  // Single subtree pass: iframe descendants and rel="sponsored" links — the
+  // canonical W3C signal for paid links. One walk instead of two.
+  const adChildren = el.querySelectorAll('iframe, a[rel~="sponsored"]');
+  let hasIframe = false;
+  let hasSponsoredLink = false;
+  let hasAdIframe = false;
+  for (const child of adChildren) {
+    if (child.tagName === 'IFRAME') {
+      hasIframe = true;
+      const src = child.getAttribute('src') || '';
+      if (!hasAdIframe && (!src || src === 'about:blank' || _adKeywordPattern.test(src))) {
+        hasAdIframe = true;
+      }
+    } else {
+      hasSponsoredLink = true;
     }
   }
+  if (hasIframe) signals.push('iframe');
+  if (hasSponsoredLink) signals.push('sponsored-link');
+  if (hasAdIframe) signals.push('ad-iframe');
 
   // Fixed/sticky positioning + high z-index (popup/overlay pattern)
   const style = getComputedStyle(el);
@@ -714,8 +743,12 @@ document.addEventListener('click', async (e) => {
   const domain = location.hostname;
   const id = Date.now() + Math.random().toString();
 
-  // Inject CSS rule so the element stays hidden even if re-created (ad rotation, etc.)
-  window.AdnotaEraseRules.set(id, cssSelector);
+  // Inject CSS rule so the element stays hidden even if re-created. For ad-shaped
+  // custom elements (Reddit's <shreddit-comments-page-ad> with rotating post-ids)
+  // we widen the rule to also match the bare tag, so the next impression in the
+  // same slot is hidden too without a second click. No-op for generic tags.
+  const ruleSelector = window.AdnotaUI.maybeGeneralizeAdSelector(cssSelector, target.tagName);
+  window.AdnotaEraseRules.set(id, ruleSelector);
   rebuildEraseStyleTag();
 
   highlightOverlay.style.display = 'none';

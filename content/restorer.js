@@ -175,11 +175,18 @@ async function _performRestoration() {
         eraseTag.setAttribute('data-adnota-ui', '1');
         document.head.appendChild(eraseTag);
       }
+      // Widen ad-slot selectors so rotating impressions in the same slot stay
+      // hidden across reloads. Older entries saved before this generalization
+      // existed get upgraded transparently on the next restore pass — the
+      // anchor.tagName carried in storage is enough to derive the wider rule.
+      const ruleSelector = window.AdnotaUI
+        ? window.AdnotaUI.maybeGeneralizeAdSelector(item.selector, item.anchor?.tagName)
+        : item.selector;
       if (window.AdnotaEraseRules) {
-        window.AdnotaEraseRules.set(id, item.selector);
+        window.AdnotaEraseRules.set(id, ruleSelector);
         if (window.rebuildEraseStyleTag) window.rebuildEraseStyleTag();
       } else {
-        eraseTag.textContent += `${item.selector} { display: none !important; }\n`;
+        eraseTag.textContent += `${ruleSelector} { display: none !important; }\n`;
       }
 
       // Best-effort: also add to AdnotaErasedElements for inline show/hide toggle
