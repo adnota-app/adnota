@@ -177,7 +177,12 @@
 
 .adnota-scratchpad-row {
   position: relative;
-  padding: 4px 54px 4px 0;  /* room for goto + copy buttons */
+  padding: 6px 54px 6px 0;  /* room for goto + copy buttons */
+}
+/* Hairline between rows — replaces the standalone .sep div for a tighter
+   list rhythm. ~13px total between consecutive snippet baselines. */
+.adnota-scratchpad-row + .adnota-scratchpad-row {
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 .adnota-scratchpad-text {
@@ -260,12 +265,6 @@
 .adnota-scratchpad-toast.visible {
   opacity: 1;
   transform: translateX(-50%) translateY(0);
-}
-
-.adnota-scratchpad-sep {
-  height: 1px;
-  background: rgba(255, 255, 255, 0.08);
-  margin: 12px 0;
 }
 
 /* Don't print the panel — same behavior as the dock. */

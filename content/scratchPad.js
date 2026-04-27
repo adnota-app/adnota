@@ -235,12 +235,7 @@
     }
     copyAllBtn.disabled = false;
 
-    list.forEach((snippet, i) => {
-      if (i > 0) {
-        const sep = document.createElement('div');
-        sep.className = 'adnota-scratchpad-sep';
-        bodyEl.appendChild(sep);
-      }
+    list.forEach((snippet) => {
       bodyEl.appendChild(buildRow(snippet));
     });
   }
