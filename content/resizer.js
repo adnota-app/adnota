@@ -281,6 +281,7 @@ window.rebuildResizeStyleTag = rebuildResizeStyleTag;
 
 // ─── Selection: show drag handles around an element ──────────────────────────
 function selectElement(el) {
+  window.AdnotaLog?.event('resizer', 'select', { el: window.AdnotaLog.el(el) });
   deselectElement();
   selectedEl = el;
   hoverOverlay.style.display = 'none';
@@ -492,6 +493,7 @@ function refreshHandles() {
 // ─── Reset: remove ALL resize rules for a given element ─────────────────────
 async function resetElement(el) {
   const selector = generateCSSSelector(el);
+  window.AdnotaLog?.event('resizer', 'reset', { sel: selector, el: window.AdnotaLog.el(el) });
   const domain = location.hostname;
   const path = location.pathname;
 
@@ -692,6 +694,10 @@ function startDrag(e, axis) {
 async function persistResize(el, cssText) {
   const selector = generateCSSSelector(el);
   const id = Date.now() + '-' + Math.random().toString(36).slice(2, 8);
+  window.AdnotaLog?.event('resizer', 'resize-commit', {
+    id, sel: selector, el: window.AdnotaLog.el(el),
+    handle: dragAxis, cssText,
+  });
 
   window.AdnotaResizeRules.set(id, { selector, cssText });
   rebuildResizeStyleTag();
@@ -728,6 +734,7 @@ async function persistResize(el, cssText) {
   const undoEntry = {
     _resizeSelector: selector,
     undo: async () => {
+      window.AdnotaLog?.event('resizer', 'undo', { id, sel: selector });
       window.AdnotaResizeRules.delete(id);
       rebuildResizeStyleTag();
 
@@ -785,8 +792,13 @@ function setIframeShield(active) {
 }
 
 // ─── React to mode changes ──────────────────────────────────────────────────
+let _resizerActive = false;
 window.AdnotaState.subscribe((state) => {
   const isResizer = state.mode === 'resizer';
+  if (isResizer !== _resizerActive) {
+    _resizerActive = isResizer;
+    window.AdnotaLog?.event('resizer', isResizer ? 'mode-enter' : 'mode-exit');
+  }
   setIframeShield(isResizer);
   if (isResizer) {
     setHudVisible(true);

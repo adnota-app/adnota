@@ -205,6 +205,10 @@
       const rect = cur.range.getBoundingClientRect();
       if (!rect || (rect.width === 0 && rect.height === 0)) return;
       cachedRange = cur.range.cloneRange();
+      window.AdnotaLog?.event('quickhighlight', 'popup-show', {
+        rect: { x: Math.round(rect.left), y: Math.round(rect.top), w: Math.round(rect.width), h: Math.round(rect.height) },
+        text: cur.range.toString(),
+      });
       positionPopup(rect);
       // If the selection overlaps a tagged highlight, pre-fill the tag input
       // so the user can re-apply or edit the same tag without retyping it.

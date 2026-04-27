@@ -626,8 +626,13 @@ chrome.runtime.onMessage.addListener((request) => {
 });
 
 // ─── React to mode changes ────────────────────────────────────────────────────
+let _eraserActive = false;
 window.AdnotaState.subscribe(state => {
   const isEraser = state.mode === 'eraser';
+  if (isEraser !== _eraserActive) {
+    _eraserActive = isEraser;
+    window.AdnotaLog?.event('eraser', isEraser ? 'mode-enter' : 'mode-exit');
+  }
   setIframeShield(isEraser);
   if (isEraser) {
     // Show HUD as soon as the tool is active — trash/undo are always reachable.
@@ -748,6 +753,16 @@ document.addEventListener('click', async (e) => {
   // we widen the rule to also match the bare tag, so the next impression in the
   // same slot is hidden too without a second click. No-op for generic tags.
   const ruleSelector = window.AdnotaUI.maybeGeneralizeAdSelector(cssSelector, target.tagName);
+  const adSignals = getEffectiveAdSignals(target);
+  window.AdnotaLog?.event('eraser', 'click', {
+    el: window.AdnotaLog.el(target),
+    scope: useDomain ? 'domain' : 'page',
+    promotedSilent: !e.shiftKey && adSignals.length > 0,
+    shiftClick: !!e.shiftKey,
+    adSignals,
+    ruleSelector,
+    id,
+  });
   window.AdnotaEraseRules.set(id, ruleSelector);
   rebuildEraseStyleTag();
 
@@ -782,6 +797,7 @@ document.addEventListener('click', async (e) => {
     undo: async () => {
       if (consumed) return;
       consumed = true;
+      window.AdnotaLog?.event('eraser', 'undo', { id, sel: cssSelector });
 
       // Kill the dissolve if it's still mid-flight.
       if (activeAnimation) {

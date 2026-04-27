@@ -27,14 +27,21 @@ The product North Star: Adnota today is "make any webpage yours" (destructive + 
 ### Extension Shell
 
 #### `manifest.json`
-MV3 manifest. Permissions: `storage`, `activeTab`, `scripting`, `tabs`. Host permissions: `*://*/*`. Declares two keyboard commands: `Alt+A` (toggle dock) and `Alt+S` (show / hide all annotations). Tool activation is layered on top — bare keys `e/r/s/d` toggle each tool when the dock is visible (see Keyboard Shortcuts section). Declares `web_accessible_resources` for the `pages/` directory (Sites history page). Content scripts inject `lib/storage.js`, `lib/annotationState.js`, `lib/adnotaUI.js`, `lib/tagIndex.js`, then the content modules in dependency order.
+MV3 manifest. Permissions: `storage`, `activeTab`, `scripting`, `tabs`. Host permissions: `*://*/*`. Declares two keyboard commands: `Alt+A` (toggle dock) and `Alt+S` (show / hide all annotations). Tool activation is layered on top — bare keys `e/r/s/d` toggle each tool when the dock is visible (see Keyboard Shortcuts section). Declares `web_accessible_resources` for the `pages/` directory (Sites history page). Content scripts inject `lib/log.js` (loaded first so every later script can use `AdnotaLog`), `lib/storage.js`, `lib/annotationState.js`, `lib/adnotaUI.js`, `lib/tagIndex.js`, then the content modules in dependency order.
 
 #### `background.js`
-Minimal service worker. Routes keyboard command events from the browser to the active tab's content scripts via `chrome.tabs.sendMessage`. Also relays messages from the dock (content scripts can't `sendMessage` to their own tab): `open-sites` and `relay-to-tab`.
+Minimal service worker. `importScripts('lib/log.js')` at the top so the worker shares the same logger surface as content scripts. Routes keyboard command events from the browser to the active tab's content scripts via `chrome.tabs.sendMessage`. Also relays messages from the dock (content scripts can't `sendMessage` to their own tab): `open-sites` and `relay-to-tab`.
 
 ---
 
 ### Shared Libraries (injected into every page)
+
+#### `lib/log.js` — `window.AdnotaLog`
+Gated debug-event logger shared across content scripts, the background service worker, popup, and the Sites page. Default-on for pre-release; toggle off via `chrome.storage.local.set({ adnotaDebugLog: false })` (global, live — `storage.onChanged` flips the flag without reload) or `localStorage.setItem('adnotaDebugLog', '0')` (per-tab override on the page side only).
+
+**Surface**: `event(channel, action, data)`, `el(node)` (returns `{sel, tag, w, h, text}` for an element — uses `FuzzyAnchor.generateCSSSelector`), `group(channel, label, fn)`. Output format: `[Adnota:<source>:<channel>:<action>] {…data}`. The source tag is `cs` (content script), `bg` (service worker), `popup`, or `sites` — these are three separate console contexts (host page DevTools, chrome://extensions service-worker console, popup inspector) and the label is what lets a single flow be reconstructed across them. Filter in DevTools by typing `Adnota:` (all), `Adnota:restorer:` (one channel), or `Adnota:cs:eraser:click` (one event).
+
+**What's instrumented**: tool commits only (mode-enter/exit, click, drag-up, undo, delete, trash-all) plus page/route-load events in the restorer. Hover, mousemove, and wheel ticks are deliberately not logged — they fire dozens of times a second. Restorer also enforces steady-state silence: `pass-end` only emits when something actually changed (`grew || hasBroken`), matching the existing storage write-gate, so the every-~2.5s MutationObserver wake-up on long-lived SPA tabs stays silent.
 
 #### `lib/storage.js` — `window.AdnotaStorage`
 Wrapper around `chrome.storage.local`. All data is keyed by `hostname`, and each entry lives in a `items[]` array. Every item carries:

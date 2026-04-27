@@ -287,12 +287,26 @@ window.AdnotaCursor = { set: setCursorLock, svgCursor };
 // Global AdnotaState Subscription — single place that owns cursor and toolbar state
 // for ALL modes. Eraser and sticky manage their own overlays but delegate cursor here.
 let highlightDockMounted = false;
+let _drawActive = false;
+let _drawSubMode = null;
 window.AdnotaState.subscribe(state => {
   // Mount the dock body for all drawing-family modes (pen, highlight, arrow,
   // rect, ellipse, text, select). Switching between sub-modes keeps the body
   // mounted — the dock just stays active and the body's internal state
   // (active tool button, fill group visibility, etc.) updates below.
   const showToolbar = _drawingModes.has(state.mode);
+  const newSubMode = showToolbar ? state.mode : null;
+  if (newSubMode !== _drawSubMode) {
+    if (_drawActive && newSubMode === null) {
+      window.AdnotaLog?.event('draw', 'mode-exit', { from: _drawSubMode });
+    } else if (!_drawActive && newSubMode !== null) {
+      window.AdnotaLog?.event('draw', 'mode-enter', { sub: newSubMode });
+    } else if (_drawActive && newSubMode !== null) {
+      window.AdnotaLog?.event('draw', 'submode-change', { from: _drawSubMode, to: newSubMode });
+    }
+    _drawSubMode = newSubMode;
+    _drawActive = newSubMode !== null;
+  }
   if (showToolbar && !highlightDockMounted) {
     window.AdnotaDock.mount('highlight', () => highlightToolbar);
     highlightDockMounted = true;
@@ -568,6 +582,7 @@ async function deleteHighlight(id) {
   const items = await window.AdnotaStorage.getAnchorsForUrl(location.href);
   const payload = items.find(i => i._id === id);
   if (!payload) return null;
+  window.AdnotaLog?.event('highlight', 'delete', { id, color: payload.color, text: payload.text });
 
   if (entry.fallbackEl) {
     entry.fallbackEl._adnotaCleanup?.();
@@ -707,12 +722,22 @@ async function createHighlightFromRange(range, color, tag = '') {
     await window.AdnotaStorage.saveItem(location.hostname, location.pathname, payload);
   }
 
+  window.AdnotaLog?.event('highlight', 'create', {
+    id: _id,
+    color,
+    path: payload.isFallback ? 'fallback' : 'css',
+    tag: normalizedTag || null,
+    text: payload.text,
+    anchor: anchor ? { sel: anchor.cssSelector, tag: anchor.tagName } : null,
+  });
+
   const capturedId = _id;
   const capturedColor = color;
   const capturedRange = payload._clonedRange || null;
   const capturedFallback = payload.isFallback || false;
   window.AdnotaUndo.push({
     undo: async () => {
+      window.AdnotaLog?.event('highlight', 'undo', { id: capturedId });
       if (capturedFallback) {
         const fallbackEl = document.querySelector(`.adnota-highlight-fallback[data-highlight-id="${capturedId}"]`);
         if (fallbackEl) fallbackEl.remove();

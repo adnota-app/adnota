@@ -18,6 +18,13 @@ let restorationInFlight = false;
 // never unmounts them on its own. Storage is left untouched; the next pass
 // repaints whatever belongs to the new URL.
 async function tearDownAllAnnotations() {
+  window.AdnotaLog?.event('restorer', 'spa-teardown', {
+    fromUrl: lastProcessedUrl,
+    toUrl: location.href,
+    eraseRules: window.AdnotaEraseRules ? window.AdnotaEraseRules.size : 0,
+    resizeRules: window.AdnotaResizeRules ? window.AdnotaResizeRules.size : 0,
+    erasedElements: window.AdnotaErasedElements ? window.AdnotaErasedElements.size : 0,
+  });
   if (window.AdnotaMarker?.tearDownAll) window.AdnotaMarker.tearDownAll();
   if (window.AdnotaHighlighter?.tearDownAll) window.AdnotaHighlighter.tearDownAll();
   if (window.StickyEngine?.tearDownAll) await window.StickyEngine.tearDownAll();
@@ -79,18 +86,24 @@ function showBrokenAnchorsToast(count) {
   }
 }
 
-async function performRestoration() {
+async function performRestoration(trigger) {
   if (!window.AdnotaStorage || !window.FuzzyAnchor) return;
-  if (restorationInFlight) return;
+  if (restorationInFlight) {
+    window.AdnotaLog?.event('restorer', 'reentrant-drop', { url: location.href, trigger });
+    return;
+  }
   restorationInFlight = true;
   try {
-    await _performRestoration();
+    await _performRestoration(trigger);
   } finally {
     restorationInFlight = false;
   }
 }
 
-async function _performRestoration() {
+async function _performRestoration(trigger) {
+  const passStart = (typeof performance !== 'undefined' ? performance.now() : Date.now());
+  const isSpaNav = lastProcessedUrl !== null && lastProcessedUrl !== location.href;
+  const resolvedTrigger = trigger || (isSpaNav ? 'spa-nav' : (lastProcessedUrl === null ? 'initial' : 'mutation'));
   // SPA in-app nav (/foo → /bar → /foo): processedItems is module-scoped and
   // not URL-keyed, so on return to /foo every ID is already present and the
   // loop below would skip the entire URL. Clear on URL change so each visit
@@ -99,7 +112,7 @@ async function _performRestoration() {
   // down the previous URL's rendered overlays — they live outside React's
   // tree under data-adnota-ui, so without an explicit teardown they
   // accumulate across SPA navigations on app shells like claude.ai.
-  if (lastProcessedUrl !== null && lastProcessedUrl !== location.href) {
+  if (isSpaNav) {
     await tearDownAllAnnotations();
     processedItems.clear();
     initialRestorationDone = false;
@@ -107,7 +120,10 @@ async function _performRestoration() {
   lastProcessedUrl = location.href;
 
   const anchors = await window.AdnotaStorage.getAnchorsForUrl(location.href);
-  if (!anchors || anchors.length === 0) return;
+  if (!anchors || anchors.length === 0) {
+    document.documentElement.classList.remove('adnota-route-changing');
+    return;
+  }
 
   const sizeBefore = processedItems.size;
   let erasuresCount = 0;
@@ -118,6 +134,13 @@ async function _performRestoration() {
   for (const item of anchors) {
     const id = item.uuid || item._id || item.storageId || JSON.stringify(item);
     if (processedItems.has(id)) continue;
+
+    window.AdnotaLog?.event('restorer', 'dispatch', {
+      action: item.action,
+      id,
+      sel: item.anchor?.cssSelector || item.selector || null,
+      tag: item.anchor?.tagName || null,
+    });
 
     // ── Resize overrides: inject via <style> tag — no DOM anchoring needed. ────
     if (item.action === 'RESIZE') {
@@ -225,6 +248,10 @@ async function _performRestoration() {
       item.fallbackBox &&
       window.AdnotaMarker
     ) {
+      window.AdnotaLog?.event('restorer', 'resolve-fail', {
+        action: item.action, id, score: match.confidence,
+        sel: item.anchor?.cssSelector || null,
+      });
       // FuzzyAnchor missed the original block. Try the scroll-container
       // ancestor first — it's usually a stable layout shell (main, app
       // wrapper) that FuzzyAnchor can resolve, and rendering against it
@@ -238,16 +265,22 @@ async function _performRestoration() {
           item._fallbackContainer = cMatch.element;
           window.AdnotaMarker.renderMarker(cMatch.element, item);
           rendered = true;
+          window.AdnotaLog?.event('restorer', 'fallback-used', { id, tier: 'container' });
         }
       }
       if (!rendered && item.fallbackBox.docLeft != null) {
         window.AdnotaMarker.renderMarker(document.documentElement, item);
         rendered = true;
+        window.AdnotaLog?.event('restorer', 'fallback-used', { id, tier: 'docpx' });
       }
       if (rendered) processedItems.add(id);
       else brokenThisPass++;
     } else {
       // Item hasn't been successfully applied yet — count it as broken for this pass.
+      window.AdnotaLog?.event('restorer', 'resolve-fail', {
+        action: item.action, id, score: match.confidence,
+        sel: item.anchor?.cssSelector || null,
+      });
       brokenThisPass++;
     }
   }
@@ -278,14 +311,35 @@ async function _performRestoration() {
   // URL's overlays; clearing it here means the user sees the new state appear,
   // not lingering ghosts. Cleared unconditionally so a no-op pass (no items
   // for this URL) still un-hides for any subsequent renders triggered later.
-  document.documentElement.classList.remove('adnota-route-changing');
+  if (document.documentElement.classList.contains('adnota-route-changing')) {
+    document.documentElement.classList.remove('adnota-route-changing');
+    window.AdnotaLog?.event('restorer', 'route-changing-off', { url: location.href });
+  }
+
+  // Steady-state silence: only log when something actually happened. Same
+  // condition that gates the storage write below — the existing design point
+  // is that idle MutationObserver ticks on long-lived SPA tabs should be a
+  // no-op for downstream surfaces (popup, Sites page, console).
+  if (grew || hasBroken) {
+    window.AdnotaLog?.event('restorer', 'pass-end', {
+      url: location.href,
+      trigger: resolvedTrigger,
+      itemCount: anchors.length,
+      newItems: processedItems.size - sizeBefore,
+      brokenThisPass,
+      erasures: erasuresCount,
+      notes: notesCount,
+      resizes: resizeCount,
+      durationMs: Math.round(((typeof performance !== 'undefined' ? performance.now() : Date.now()) - passStart)),
+    });
+  }
 }
 
 // Initial fire
 if (document.readyState === 'complete' || document.readyState === 'interactive') {
-  performRestoration();
+  performRestoration('initial');
 } else {
-  window.addEventListener('load', performRestoration);
+  window.addEventListener('load', () => performRestoration('initial'));
 }
 
 // Navigation API: zero-latency hide on SPA route start.
@@ -304,13 +358,19 @@ if (window.navigation) {
       const dest = new URL(e.destination.url);
       if (dest.href !== location.href) {
         document.documentElement.classList.add('adnota-route-changing');
+        window.AdnotaLog?.event('restorer', 'route-changing-on', {
+          fromUrl: location.href, toUrl: dest.href,
+        });
         // Backstop: pathological case where the SPA pushes state without any
         // DOM mutation — MutationObserver never fires, performRestoration
         // never runs, and the class would stay set forever. 3s is a hair past
         // the MutationObserver max-wait clamp (2.5s), so on the happy path
         // performRestoration removes the class first and this is a no-op.
         setTimeout(() => {
-          document.documentElement.classList.remove('adnota-route-changing');
+          if (document.documentElement.classList.contains('adnota-route-changing')) {
+            document.documentElement.classList.remove('adnota-route-changing');
+            window.AdnotaLog?.event('restorer', 'route-changing-off', { url: location.href, viaBackstop: true });
+          }
         }, 3000);
       }
     } catch (_) {
@@ -341,7 +401,7 @@ const observer = new MutationObserver(() => {
   clearTimeout(mutationTimeout);
   mutationTimeout = setTimeout(() => {
     mutationFirstPending = 0;
-    performRestoration();
+    performRestoration('mutation');
   }, wait);
 });
 
