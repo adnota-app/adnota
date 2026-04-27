@@ -76,6 +76,8 @@ Shared UI utilities that prevent duplication across content scripts.
 
 **Flash pulse**: `flashRects(rects, { durationMs })` paints a brief purple outline-pulse over a list of viewport rects via a `position: fixed` overlay and the `.adnota-flash-rect` keyframe in `lib/adnotaUI.css`. Used by the scratch pad's GOTO button after `Highlighter.scrollTo` / `StickyEngine.scrollTo` settles, so the user sees where they landed on a long-scroll page without wondering whether anything happened.
 
+**Layout-aware text from a Range**: `rangeText(range)` returns the text of a Range, preserving line breaks even when the surrounding code is rendered by a syntax highlighter (Prism, Highlight.js, ChatGPT's bespoke one) as inline `<span>` tokens with no `\n` characters in the DOM. `range.toString()` walks text nodes and would collapse a 7-line code block to a single wrapping line — fine for the per-line highlight on the page, but disastrous in the scratch pad which renders the captured text as prose. Inside a `<pre>`, this helper clones the range's contents into a hidden, off-screen `<pre>` and reads `innerText`, which respects rendered layout and inserts `\n` where the browser draws line breaks. Outside `<pre>`, it falls through to `range.toString()` for the fast path. Wired into `content/highlighter.js`'s `createHighlightFromRange` at storage-write time; structural extractions like `getOccurrenceIndex` keep using `range.toString()` because their `indexOf` matching needs both strings extracted the same way.
+
 #### `lib/tagIndex.js` — `window.AdnotaTags`
 Single source of truth for the optional tag layer on NOTE and HIGHLIGHT items. Consumed by the sticky note tag input, the quick-highlight popup tag input, and the Sites page filter chip row.
 

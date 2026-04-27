@@ -664,11 +664,16 @@ async function createHighlightFromRange(range, color, tag = '') {
     ? window.AdnotaTags.normalize(tag)
     : (typeof tag === 'string' ? tag.trim() : '');
 
+  // text uses AdnotaUI.rangeText so highlights inside <pre> blocks store
+  // their actual line structure (range.toString() collapses syntax-
+  // highlighter-rendered code to one line because the lines are spans, not
+  // text nodes with \n). occurrenceIndex stays on range.toString() because
+  // its internal indexOf matching needs both strings extracted the same way.
   const payload = {
     anchor,
     _id,
     action: 'HIGHLIGHT',
-    text: range.toString(),
+    text: window.AdnotaUI?.rangeText?.(range) ?? range.toString(),
     occurrenceIndex: getOccurrenceIndex(range, blockElement),
     color,
     attachedNoteId: null
