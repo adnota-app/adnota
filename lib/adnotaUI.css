@@ -354,3 +354,17 @@
   background: rgba(255, 255, 255, 0.22);
   color: #ffffff;
 }
+
+/* ─── SPA route-change hide ──────────────────────────────────────────────────
+   Set by restorer.js's Navigation API listener the instant an SPA route
+   change starts, and cleared at the end of the next performRestoration pass.
+   Hides only the three annotation containers — the dock and other HUD chrome
+   under [data-adnota-ui] stay visible so the user's UI doesn't flicker on
+   every in-app nav. ERASE/RESIZE rules aren't covered here: their selectors
+   target page elements that React typically swaps out on route change, and
+   teardown clears the Maps within ~tens of ms. */
+html.adnota-route-changing #adnota-marker-overlay,
+html.adnota-route-changing .adnota-highlight-fallback,
+html.adnota-route-changing .adnota-sticky-container {
+  visibility: hidden;
+}
