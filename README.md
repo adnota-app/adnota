@@ -102,6 +102,8 @@ Candidate-tournament element-identification system that generates rich anchors a
 
 **Resolution**: `findMatch` collects candidates from CSS selector queries, attribute queries, and tag-name scans, then scores every candidate against all six signals additively (max 100). Returns the highest-scoring candidate above a **≥ 40 point** threshold. Scores above 85 short-circuit immediately.
 
+The tag-name scan walks **every** element of the matching tag — no element cap. The previous 200-element cap was a defensive guess that prevented matches on heavy SPAs (Claude.ai, ChatGPT, Notion) where the first 200 `<div>`s are page chrome (sidebar, header, conversation list) and the highlighted content sits hundreds of divs deeper. The quick filter uses `textContent` (no layout cost) and prioritizes elements containing the fingerprint's `prefix` or `suffix` substring — those anchored matches are far stronger than the single-word overlap fallback, so on long pages with thousands of partial matches the right block reliably enters the candidate pool. Layout-aware `innerText` only runs in `_textScore` on the trimmed pool.
+
 Also exposes `generateCSSSelector(el)` as a shared utility (used by the resizer).
 
 #### `content/eraser.js`

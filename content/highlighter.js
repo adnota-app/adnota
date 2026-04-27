@@ -518,15 +518,32 @@ function hideDeleteBtn() {
 
 function showDeleteBtn(id, rects) {
   const el = ensureDeleteBtn();
-  // Anchor to the first rect's top-right — the natural "start of this
-  // highlight" corner, matching how Select hangs its ✕ off marker wrappers.
-  // Nudge up + right so the ✕ sits clear of the highlighted text instead of
-  // overlapping the first character.
-  const first = rects[0];
+  // Anchor to the top-right of the first VISUAL line. range.getClientRects()
+  // splits a single line into multiple sub-rects whenever an inline element
+  // (italic <em>, <code>, <strong>) breaks the run; rects[0] is then the
+  // leftmost sub-rect ending mid-line, not the actual end of the first
+  // wrapped line. Find the topmost rect, then take the max right across
+  // all rects on that same line so the ✕ lands where the user expects.
+  // Also skip zero-area rects that getClientRects emits at range boundaries.
+  let minTop = Infinity;
+  for (const r of rects) {
+    if (r.width <= 0 || r.height <= 0) continue;
+    if (r.top < minTop) minTop = r.top;
+  }
+  if (!isFinite(minTop)) return;
+  const SAME_LINE_TOL = 4; // px tolerance for "same line" comparison
+  let maxRight = -Infinity;
+  for (const r of rects) {
+    if (r.width <= 0 || r.height <= 0) continue;
+    if (Math.abs(r.top - minTop) < SAME_LINE_TOL && r.right > maxRight) {
+      maxRight = r.right;
+    }
+  }
+  if (!isFinite(maxRight)) return;
   const SIZE = 20; // matches .adnota-select-delete width/height
   const NUDGE = 6;
-  let left = first.right - SIZE / 2 + NUDGE;
-  let top = first.top - SIZE / 2 - NUDGE;
+  let left = maxRight - SIZE / 2 + NUDGE;
+  let top = minTop - SIZE / 2 - NUDGE;
   left = Math.max(2, Math.min(window.innerWidth - SIZE - 2, left));
   top = Math.max(2, Math.min(window.innerHeight - SIZE - 2, top));
   el.style.left = left + 'px';
@@ -804,6 +821,33 @@ window.AdnotaHighlighter = {
     liveHighlights.clear();
   },
 
+  // Drops every live highlight whose underlying DOM has been detached and
+  // returns the list of dropped IDs. Restorer calls this at the start of
+  // each pass so highlights whose Range went stale (React swapped the
+  // text-node subtree after applyStoredHighlight had succeeded — common on
+  // claude.ai, ChatGPT, any heavy SPA) get pruned from CSS.highlights and
+  // re-applied against the fresh DOM. Without this, the registered Range
+  // points at orphaned nodes, the CSS Custom Highlights API paints
+  // nothing, and processedItems locks the entry in as "applied" forever.
+  pruneStaleHighlights: function () {
+    const pruned = [];
+    for (const [id, entry] of liveHighlights) {
+      let stale = false;
+      if (entry.range && entry.range.startContainer && !entry.range.startContainer.isConnected) {
+        const reg = highlightRegistries[entry.color];
+        if (reg) reg.delete(entry.range);
+        stale = true;
+      } else if (entry.fallbackEl && !entry.fallbackEl.isConnected) {
+        stale = true;
+      }
+      if (stale) {
+        liveHighlights.delete(id);
+        pruned.push(id);
+      }
+    }
+    return pruned;
+  },
+
   // Returns the tag of the live highlight covering (x, y) in viewport
   // coordinates, or '' if there's no highlight there or it's untagged.
   // Used by the quick-highlight popup to pre-fill the tag input when the user
@@ -920,16 +964,108 @@ window.AdnotaHighlighter = {
       currentText += node.nodeValue;
     }
 
-    const textToFind = payload.text;
-    let pos = -1;
-    for (let i = 0; i <= payload.occurrenceIndex; i++) {
-      pos = currentText.indexOf(textToFind, pos + 1);
-      if (pos === -1) break;
+    // Find the saved text in the textNode walk. Try the raw form first —
+    // matches every legacy highlight (pre-rangeText capture) and any new
+    // highlight that doesn't include lists or multi-paragraph content.
+    //
+    // Fall back to a "stripped" form when that misses: AdnotaUI.rangeText
+    // (the new capture path) injects `• ` markers for <li> elements and
+    // preserves block-boundary `\n`s via innerText. Those decorations
+    // don't exist in the raw textNode concatenation, so indexOf would
+    // fail forever for any list highlight even though the right element
+    // was matched. Stripping those decorations and retrying lands on the
+    // right offset; the resulting Range still spans the correct visible
+    // text because the live DOM doesn't carry the decorations either.
+    const findOccurrence = (needle) => {
+      if (!needle) return -1;
+      let p = -1;
+      for (let i = 0; i <= payload.occurrenceIndex; i++) {
+        p = currentText.indexOf(needle, p + 1);
+        if (p === -1) break;
+      }
+      return p;
+    };
+
+    let textToFind = payload.text;
+    let pos = findOccurrence(textToFind);
+    let matchedLen = textToFind.length;
+
+    if (pos === -1) {
+      // Tier 2 — strip rangeText decorations (• and 1./2./3. list markers,
+      // marker-trailing whitespace, layout-driven block newlines) and retry
+      // literal indexOf. Handles list/multi-paragraph highlights where the
+      // live textNode walk has no markers and no \n between block siblings —
+      // browsers render <ol> numbers via CSS counters, so live textContent
+      // never has the digits + period that rangeText injected on save.
+      const stripped = textToFind
+        .replace(/•\s*/g, '')
+        .replace(/(?:^|\n)\d+\.\s+/g, (m) => m.startsWith('\n') ? '\n' : '')
+        .replace(/\n+/g, '');
+      if (stripped !== textToFind) {
+        const sPos = findOccurrence(stripped);
+        if (sPos !== -1) {
+          textToFind = stripped;
+          pos = sPos;
+          matchedLen = stripped.length;
+        }
+      }
+    }
+
+    if (pos === -1) {
+      // Tier 3 — whitespace+bullet+ordered-marker tolerant fuzzy find. Strip
+      // all whitespace and bullets from both saved and live, ALSO strip
+      // rangeText-injected ordered-list markers (1./2./...) from saved;
+      // search for saved-stripped in live-stripped; map the matched position
+      // back to raw currentText offsets via a parallel index. Handles
+      // asymmetric whitespace — live has \n inside <pre> blocks within the
+      // matched container, saved has \n at rangeText-injected block
+      // boundaries — neither appears the same way in the other. Ordered
+      // markers are saved-only because browsers render <ol> numbers via CSS
+      // counters, so they're never in live textContent.
+      const liveStripped = [];     // accumulator for the stripped string
+      const liveStrippedIdx = [];  // strippedIdx[i] = raw index of i-th kept char
+      for (let i = 0; i < currentText.length; i++) {
+        const c = currentText.charCodeAt(i);
+        // Skip ASCII whitespace + the bullet glyph (•, U+2022). Anything
+        // else (including punctuation) stays — matching cares about it.
+        const isSpace = c === 0x20 || c === 0x09 || c === 0x0A || c === 0x0D;
+        if (isSpace || currentText[i] === '•') continue;
+        liveStripped.push(currentText[i]);
+        liveStrippedIdx.push(i);
+      }
+      const liveStrippedStr = liveStripped.join('');
+      const savedStripped = textToFind
+        .replace(/(?:^|\n)\d+\.\s+/g, (m) => m.startsWith('\n') ? '\n' : '')
+        .replace(/[\s•]/g, '');
+      if (savedStripped) {
+        let sPos = -1;
+        for (let i = 0; i <= payload.occurrenceIndex; i++) {
+          sPos = liveStrippedStr.indexOf(savedStripped, sPos + 1);
+          if (sPos === -1) break;
+        }
+        if (sPos !== -1) {
+          const lastIdx = sPos + savedStripped.length - 1;
+          const rawStart = liveStrippedIdx[sPos];
+          const rawLast  = liveStrippedIdx[lastIdx];
+          pos = rawStart;
+          matchedLen = (rawLast + 1) - rawStart;
+        }
+      }
+      if (pos === -1) {
+        window.AdnotaLog?.event('highlighter', 'apply-fuzzy-miss', {
+          id: payload._id,
+          savedLen: textToFind.length,
+          liveLen: currentText.length,
+          savedHead: textToFind.slice(0, 100),
+          liveHead: currentText.slice(0, 120),
+          savedStrippedHead: savedStripped.slice(0, 80),
+        });
+      }
     }
 
     if (pos !== -1) {
       const startOffsetGlobals = pos;
-      const endOffsetGlobals = pos + textToFind.length;
+      const endOffsetGlobals = pos + matchedLen;
 
       const range = new Range();
       let startSet = false;

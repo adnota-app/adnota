@@ -119,6 +119,21 @@ async function _performRestoration(trigger) {
   }
   lastProcessedUrl = location.href;
 
+  // Re-validate previously-applied highlights before consulting
+  // processedItems. React-driven SPAs (claude.ai, ChatGPT) commonly
+  // swap text-node DOM under us *after* applyStoredHighlight succeeded,
+  // leaving the registered Range pointing at detached nodes. CSS Custom
+  // Highlights paints nothing in that state and we have no signal otherwise,
+  // so each pass we drop stale entries from processedItems and let them
+  // re-apply against the current DOM further down.
+  if (window.AdnotaHighlighter?.pruneStaleHighlights) {
+    const pruned = window.AdnotaHighlighter.pruneStaleHighlights();
+    for (const id of pruned) processedItems.delete(id);
+    if (pruned.length) {
+      window.AdnotaLog?.event('restorer', 'pruned-stale', { count: pruned.length, ids: pruned });
+    }
+  }
+
   const anchors = await window.AdnotaStorage.getAnchorsForUrl(location.href);
   if (!anchors || anchors.length === 0) {
     document.documentElement.classList.remove('adnota-route-changing');
@@ -225,24 +240,48 @@ async function _performRestoration(trigger) {
     }
 
     // ── All other items need a DOM match via FuzzyAnchor. ───────────────────
-    const match = window.FuzzyAnchor.findMatch(item.anchor);
+    // For HIGHLIGHTs, hand the saved text to findMatch so it can skip
+    // candidates that scored above threshold but don't actually contain
+    // the highlighted text — common false-positive on heavy SPAs.
+    const match = window.FuzzyAnchor.findMatch(
+      item.anchor,
+      item.action === 'HIGHLIGHT' && item.text ? { containsText: item.text } : undefined
+    );
 
     if (match.confidence >= 40 && match.element) {
+      // applyStoredHighlight can succeed at the FuzzyAnchor level but still
+      // return false if the matched element doesn't actually contain the
+      // saved text (false-positive candidate from word-overlap, or content
+      // mid-stream on a slow-rendering SPA). Track that explicitly so we
+      // don't lock the item into processedItems and lose retries on later
+      // mutation passes. ERASE/MARKER paths don't have a return-value
+      // signal — assume success there.
+      let applied = false;
       if (item.action === 'HIGHLIGHT') {
         if (window.AdnotaHighlighter) {
-          window.AdnotaHighlighter.applyStoredHighlight(match.element, item);
+          applied = !!window.AdnotaHighlighter.applyStoredHighlight(match.element, item);
         }
       } else if (item.action === 'MARKER') {
         if (window.AdnotaMarker) {
           window.AdnotaMarker.renderMarker(match.element, item);
+          applied = true;
         }
       } else {
         // ERASE (legacy items without selector) — inline style only
         match.element.style.setProperty('display', 'none', 'important');
         if (window.AdnotaErasedElements) window.AdnotaErasedElements.add(match.element);
         erasuresCount++;
+        applied = true;
       }
-      processedItems.add(id);
+      if (applied) {
+        processedItems.add(id);
+      } else {
+        window.AdnotaLog?.event('restorer', 'apply-fail', {
+          action: item.action, id, score: match.confidence,
+          sel: item.anchor?.cssSelector || null,
+        });
+        brokenThisPass++;
+      }
     } else if (
       item.action === 'MARKER' &&
       item.fallbackBox &&
