@@ -265,6 +265,13 @@ async function _performRestoration() {
     }
   }
   initialRestorationDone = true;
+
+  // Reveal annotations now that the new URL's pass has completed. The class
+  // was set by the Navigation API listener at route-start to hide the previous
+  // URL's overlays; clearing it here means the user sees the new state appear,
+  // not lingering ghosts. Cleared unconditionally so a no-op pass (no items
+  // for this URL) still un-hides for any subsequent renders triggered later.
+  document.documentElement.classList.remove('adnota-route-changing');
 }
 
 // Initial fire
@@ -272,6 +279,37 @@ if (document.readyState === 'complete' || document.readyState === 'interactive')
   performRestoration();
 } else {
   window.addEventListener('load', performRestoration);
+}
+
+// Navigation API: zero-latency hide on SPA route start.
+// The MutationObserver below would eventually catch the URL change and run
+// teardown, but only after the 1s debounce + DOM swap settles — long enough
+// that the previous route's marker overlay and sticky containers visibly
+// linger over the new page on apps like claude.ai. The Navigation API fires
+// synchronously the instant the SPA pushes/replaces state, so flipping a CSS
+// class on <html> hides the old overlays immediately. performRestoration
+// removes the class once the new URL's pass finishes (success or no-op).
+// Feature-detected — Firefox/Safari fall through to the MutationObserver
+// path, same as before.
+if (window.navigation) {
+  window.navigation.addEventListener('navigate', (e) => {
+    try {
+      const dest = new URL(e.destination.url);
+      if (dest.href !== location.href) {
+        document.documentElement.classList.add('adnota-route-changing');
+        // Backstop: pathological case where the SPA pushes state without any
+        // DOM mutation — MutationObserver never fires, performRestoration
+        // never runs, and the class would stay set forever. 3s is a hair past
+        // the MutationObserver max-wait clamp (2.5s), so on the happy path
+        // performRestoration removes the class first and this is a no-op.
+        setTimeout(() => {
+          document.documentElement.classList.remove('adnota-route-changing');
+        }, 3000);
+      }
+    } catch (_) {
+      // Malformed destination URL — ignore; MutationObserver will still cover it.
+    }
+  });
 }
 
 // Protect against dynamic SPAs fetching data late.
