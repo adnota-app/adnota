@@ -1,5 +1,7 @@
 // background.js
 
+importScripts('lib/log.js');
+
 // ─── Badge helpers ────────────────────────────────────────────────────────────
 
 /**
@@ -63,6 +65,7 @@ chrome.storage.onChanged.addListener(async (changes, area) => {
 // ─── Keyboard command relay ───────────────────────────────────────────────────
 
 chrome.commands.onCommand.addListener((command, tab) => {
+  AdnotaLog.event('bg', 'cmd', { command, tabId: tab && tab.id });
   if (tab.id && (command === 'toggle-dock' || command === 'toggle-view')) {
     chrome.tabs.sendMessage(tab.id, { action: command }).catch(() => {
       // Ignore errors if content script unavailable on this page.
@@ -76,11 +79,13 @@ chrome.commands.onCommand.addListener((command, tab) => {
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.action === 'open-sites') {
+    AdnotaLog.event('bg', 'open-sites', { fromTab: sender.tab && sender.tab.id });
     chrome.tabs.create({ url: chrome.runtime.getURL('pages/sites.html') });
     return;
   }
 
   if (msg.action === 'relay-to-tab' && sender.tab?.id && msg.payload?.action) {
+    AdnotaLog.event('bg', 'relay', { tabId: sender.tab.id, payload: msg.payload });
     chrome.tabs.sendMessage(sender.tab.id, { action: msg.payload.action }).catch(() => {});
     return;
   }

@@ -157,10 +157,15 @@ chrome.runtime.onMessage.addListener((request) => {
 
 // React to AdnotaState changes — mount/unmount dock body.
 let stickyDockMounted = false;
+let _stickyActive = false;
 window.AdnotaState.subscribe(state => {
   document.body.classList.toggle('adnota-sticky-active', state.mode === 'sticky');
 
   const isSticky = state.mode === 'sticky';
+  if (isSticky !== _stickyActive) {
+    _stickyActive = isSticky;
+    window.AdnotaLog?.event('sticky', isSticky ? 'mode-enter' : 'mode-exit');
+  }
   if (isSticky && !stickyDockMounted) {
     window.AdnotaDock.mount('sticky', () => stickyBody);
     stickyDockMounted = true;
@@ -207,6 +212,14 @@ async function createStickyAt(clientX, clientY, { targetEl = null, theme = null 
   const comments = [{ text: '', author: 'Me', createdAt: Date.now() }];
   const resolvedTheme = theme || activeStickyColor;
 
+  window.AdnotaLog?.event('sticky', 'create', {
+    id: uuid,
+    color: resolvedTheme,
+    anchor: anchor ? { sel: anchor.cssSelector, tag: anchor.tagName } : null,
+    anchorOffset,
+    placement,
+  });
+
   window.StickyEngine.renderNote(placement, comments, uuid, true, null, resolvedTheme, anchor, anchorOffset, '');
 
   if (window.AdnotaStorage) {
@@ -219,6 +232,7 @@ async function createStickyAt(clientX, clientY, { targetEl = null, theme = null 
   const domain = location.hostname;
   const undoEntry = {
     undo: async () => {
+      window.AdnotaLog?.event('sticky', 'undo', { id: uuid });
       const container = document.querySelector(`.adnota-sticky-container[data-uuid="${uuid}"]`);
       if (container) container.remove();
       activeNotes.delete(uuid);
@@ -532,6 +546,12 @@ window.StickyEngine = {
         }
       }
 
+      window.AdnotaLog?.event('sticky', 'drag-commit', {
+        id: uuid,
+        placement: updatedPlacement,
+        anchor: noteState.anchor ? { sel: noteState.anchor.cssSelector, tag: noteState.anchor.tagName } : null,
+        anchorOffset: noteState.anchorOffset,
+      });
       if (window.AdnotaStorage) {
         await window.AdnotaStorage.saveNote(
           location.hostname, location.pathname, uuid,
@@ -550,6 +570,9 @@ window.StickyEngine = {
       saveTimeout = setTimeout(async () => {
         if (!window.AdnotaStorage) return;
         comments[0].text = textarea.value;
+        window.AdnotaLog?.event('sticky', 'autosave', {
+          id: uuid, text: textarea.value, tag: noteState.tag,
+        });
         await window.AdnotaStorage.saveNote(
           location.hostname, location.pathname, uuid,
           { placement: noteState.placement, comments, theme: noteState.theme, anchor: noteState.anchor, anchorOffset: noteState.anchorOffset, tag: noteState.tag }
@@ -585,6 +608,7 @@ window.StickyEngine = {
         if (tagInput.value !== normalized) tagInput.value = normalized;
         noteState.tag = normalized;
         clearTimeout(tagSaveTimeout);
+        window.AdnotaLog?.event('sticky', 'tag-commit', { id: uuid, tag: normalized });
         commitTag();
       });
     }
@@ -592,6 +616,7 @@ window.StickyEngine = {
     // ── Delete with undo ─────────────────────────────────────────────────────
     const trashBtn = container.querySelector('.adnota-trash-btn');
     trashBtn.addEventListener('click', () => {
+      window.AdnotaLog?.event('sticky', 'delete', { id: uuid });
       container.style.display = 'none';
 
       let committed = false;

@@ -158,6 +158,15 @@ function getMarkerOverlay() {
 // ── Save + undo helper ──────────────────────────────────────────────────────
 async function saveMarkerPayload(blockElement, payload) {
   payload.fallbackBox = computeFallbackBox(blockElement);
+  window.AdnotaLog?.event('marker', 'commit', {
+    id: payload.uuid,
+    shapeType: payload.shapeType,
+    color: payload.color,
+    strokeWidth: payload.strokeWidth,
+    filled: payload.filled,
+    anchor: payload.anchor ? { sel: payload.anchor.cssSelector, tag: payload.anchor.tagName } : null,
+    block: window.AdnotaLog.el(blockElement),
+  });
   window.AdnotaMarker.renderMarker(blockElement, payload);
   restoreOverlay();
 
@@ -167,8 +176,10 @@ async function saveMarkerPayload(blockElement, payload) {
 
   const capturedUuid = payload.uuid;
   const capturedDomain = location.hostname;
+  const capturedShape = payload.shapeType;
   window.AdnotaUndo.push({
     undo: async () => {
+      window.AdnotaLog?.event('marker', 'undo', { id: capturedUuid, shapeType: capturedShape });
       const el = document.querySelector(`.adnota-marker-wrapper[data-uuid="${capturedUuid}"]`);
       if (el) el.remove();
       if (window.AdnotaStorage) {
@@ -1112,6 +1123,9 @@ async function deleteSelectedMarker(wrapper) {
   const uuid = wrapper.dataset.uuid;
   const payload = wrapper._adnotaPayload;
   const anchorElement = wrapper._adnotaAnchorElement;
+  window.AdnotaLog?.event('marker', 'delete', {
+    id: uuid, shapeType: payload?.shapeType, color: payload?.color,
+  });
 
   // Hard remove (was display:none) so the wrapper's listener bag — window
   // scroll/resize + ResizeObserver — actually tears down. Hidden wrappers kept
@@ -1433,6 +1447,13 @@ async function handleSelectPointerUp(e) {
   };
 
   shiftMarkerPayload(payload, dxPct, dyPct);
+
+  window.AdnotaLog?.event('marker', 'drag-commit', {
+    id: payload.uuid,
+    shapeType: payload.shapeType,
+    dxPct: Math.round(dxPct * 100) / 100,
+    dyPct: Math.round(dyPct * 100) / 100,
+  });
 
   // Re-render from the updated payload. renderMarker early-exits if the uuid
   // is already on the page, so we must remove the old wrapper first.

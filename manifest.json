@@ -63,6 +63,7 @@
         "*://*/*"
       ],
       "js": [
+        "lib/log.js",
         "lib/storage.js",
         "lib/annotationState.js",
         "lib/adnotaUI.js",

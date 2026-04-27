@@ -312,6 +312,7 @@
 
   dismissBtn.addEventListener('click', (e) => {
     e.stopPropagation();
+    window.AdnotaLog?.event('dock', 'dismiss-x');
     userDismissed = true;
     applyDismissState();
   });
@@ -427,6 +428,7 @@
     // centered with translateX(-50%)) and hovering the active tool becomes
     // a moving target as its info text changes width.
     mount(toolId, buildBodyFn) {
+      window.AdnotaLog?.event('dock', 'mount', { toolId });
       commitPositionIfCentered();
       body.replaceChildren();
       const frag = buildBodyFn?.();
@@ -442,6 +444,7 @@
     // the new tool just installed.
     unmount(toolId) {
       if (toolId && dock.getAttribute('data-accent') !== toolId) return;
+      window.AdnotaLog?.event('dock', 'unmount', { toolId });
       clearTimeout(unclipTimer);
       body.style.overflow = '';
       body.replaceChildren();
