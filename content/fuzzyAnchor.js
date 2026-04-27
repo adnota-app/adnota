@@ -136,36 +136,41 @@ window.FuzzyAnchor = {
 
     // A3. Tag scan with quick text filter.
     //
-    // No element cap — the previous 200-element cap was a defensive guess
-    // that prevented matches on heavy SPAs (Claude.ai, ChatGPT, Notion).
-    // On those, the first 200 <div>s are page chrome (sidebar, header,
-    // conversation list); the actual highlighted content sits hundreds of
-    // divs deeper, never entering the candidate pool, so FuzzyAnchor scored
-    // 0 and the highlight stayed broken forever.
+    // Capped at 200 elements as a perf bound: getElementsByTagName('div')
+    // on heavy SPAs (Claude.ai, ChatGPT, Notion) returns 5–15k elements,
+    // and computing el.textContent on each is the dominant main-thread
+    // cost in this loop. The cap was REMOVED briefly during a debugging
+    // pass — turned out unnecessary once the size-ratio guard, smallest-
+    // containing, prefix/suffix anchors, and Tier 2/3 marker stripping
+    // were all in. Restored here. If the cap turns out to bite a real
+    // restoration case, raise it before removing it again.
+    //
+    // Size guard inside the loop: an element whose text is >50× the saved
+    // anchor's text is structurally a wrapper (body, main, chat-shell) and
+    // skipping it avoids the expensive .includes() against near-document-
+    // sized strings.
     //
     // Quick filter uses textContent (not innerText) so we don't trigger a
-    // layout per element across thousands of nodes. The accurate
-    // layout-aware Jaccard happens later in _textScore on the trimmed
-    // candidate set.
+    // layout per element. The accurate layout-aware Jaccard happens later
+    // in _textScore on the trimmed candidate set.
     //
-    // Prefix/suffix substring is a much stronger signal than a single-word
+    // Prefix/suffix substring is a stronger signal than single-word
     // overlap, so anchored matches enter the pool first; word-overlap is
-    // the loose fallback. Either way, the scoring phase weighs them.
+    // the loose fallback. Either way, scoring weighs them.
     if (anchor.tagName) {
       const elements = document.getElementsByTagName(anchor.tagName);
       const fingerprint = anchor.textFingerprint;
       const hasFingerprint = fingerprint && fingerprint.words.length > 0;
       const prefix = fingerprint?.prefix?.toLowerCase() || '';
       const suffix = fingerprint?.suffix?.toLowerCase() || '';
-      // Size guard: an element whose text is >50× the saved anchor's text is
-      // structurally a wrapper (body, main, chat-shell) — never the right
-      // anchor. Skipping it BEFORE the substring/word checks avoids expensive
-      // .includes() calls on near-document-sized strings on heavy SPAs, which
-      // is the dominant cost in this loop on Claude.ai/ChatGPT/Notion.
       const maxLen = fingerprint?.length ? fingerprint.length * 50 : Infinity;
+      const SCAN_CAP = 200;
+      let scanned = 0;
       for (const el of elements) {
+        if (scanned >= SCAN_CAP) break;
         if (el.offsetHeight === 0 && el.offsetWidth === 0) continue;
         if (el.closest('[data-adnota-ui]')) continue;
+        scanned++;
         if (!hasFingerprint) {
           // No fingerprint (images, iframes, legacy items) — accept all of same tag.
           candidateSet.add(el);
