@@ -76,6 +76,9 @@
   const ICON_COPY  = `<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="7" width="10" height="10" rx="2"/><path d="M3 13V5a2 2 0 0 1 2-2h8"/></svg>`;
   const ICON_CHECK = `<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 11 8 15 16 5"/></svg>`;
   const ICON_CLOSE = `<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="5" x2="15" y2="15"/><line x1="15" y1="5" x2="5" y2="15"/></svg>`;
+  // Crosshair / target — clearer "go to this" affordance than an arrow,
+  // which reads as "move" or "drag."
+  const ICON_GOTO  = `<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="10" cy="10" r="6"/><line x1="10" y1="2" x2="10" y2="5"/><line x1="10" y1="15" x2="10" y2="18"/><line x1="2" y1="10" x2="5" y2="10"/><line x1="15" y1="10" x2="18" y2="10"/></svg>`;
 
   // ── Snippet derivation ────────────────────────────────────────────────────
   async function loadSnippets() {
@@ -264,6 +267,18 @@
       row.appendChild(tag);
     }
 
+    const gotoBtn = document.createElement('button');
+    gotoBtn.type = 'button';
+    gotoBtn.className = 'adnota-scratchpad-rowgoto';
+    gotoBtn.title = 'Go to this on the page';
+    gotoBtn.innerHTML = ICON_GOTO;
+    gotoBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      e.preventDefault();
+      gotoSnippet(snippet);
+    });
+    row.appendChild(gotoBtn);
+
     const copyBtn = document.createElement('button');
     copyBtn.type = 'button';
     copyBtn.className = 'adnota-scratchpad-rowcopy';
@@ -306,6 +321,43 @@
       copyAllBtn.textContent = original;
     }, COPY_REVERT_MS);
     window.AdnotaLog?.event('scratchpad', 'copy-all', { count: list.length });
+  }
+
+  // ── GOTO: scroll the source annotation into view + flash ─────────────────
+  // Routes by snippet type. The engine returns false when the rendered
+  // annotation isn't currently in the DOM (e.g., its anchor is broken or it
+  // hasn't been re-restored after an SPA URL change). We surface that as a
+  // small toast so the user isn't left wondering why nothing happened.
+  function gotoSnippet(snippet) {
+    let ok = false;
+    if (snippet.type === 'highlight') {
+      ok = !!window.AdnotaHighlighter?.scrollTo?.(snippet.id);
+    } else if (snippet.type === 'note') {
+      ok = !!window.StickyEngine?.scrollTo?.(snippet.id);
+    }
+    if (!ok) {
+      showScratchToast("Couldn't locate this on the page.");
+      window.AdnotaLog?.event('scratchpad', 'goto-miss', { type: snippet.type });
+      return;
+    }
+    window.AdnotaLog?.event('scratchpad', 'goto', { type: snippet.type });
+  }
+
+  // Tiny scoped toast — lives inside the panel, dismisses itself after 2s.
+  // Inline-styled to keep CSS surface minimal; only a single toast at a time.
+  let _toastTimer = null;
+  function showScratchToast(msg) {
+    if (!panel) return;
+    let toast = panel.querySelector('.adnota-scratchpad-toast');
+    if (!toast) {
+      toast = document.createElement('div');
+      toast.className = 'adnota-scratchpad-toast';
+      panel.appendChild(toast);
+    }
+    toast.textContent = msg;
+    toast.classList.add('visible');
+    clearTimeout(_toastTimer);
+    _toastTimer = setTimeout(() => toast.classList.remove('visible'), 2000);
   }
 
   function setFilter(value) {

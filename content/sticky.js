@@ -315,6 +315,29 @@ function placementToPixels(placement) {
 window.StickyEngine = {
   createAt: createStickyAt,
 
+  // Smooth-scrolls the rendered sticky note for the given UUID into view,
+  // then paints a brief purple pulse over its container so the user sees
+  // where they landed. Returns true on success, false if the note isn't
+  // currently rendered (waiting on a restoration pass, or torn down by an
+  // SPA URL change). The scratch pad's GOTO button uses the return value to
+  // surface a "couldn't locate" toast.
+  scrollTo(uuid) {
+    if (!uuid) return false;
+    const container = document.querySelector(
+      `.adnota-sticky-container[data-uuid="${uuid}"]`
+    );
+    if (!container) return false;
+    try { container.scrollIntoView({ block: 'center', behavior: 'smooth' }); }
+    catch (_) { container.scrollIntoView(); }
+    setTimeout(() => {
+      const rect = container.getBoundingClientRect();
+      if (rect.width > 0 && rect.height > 0) {
+        window.AdnotaUI?.flashRects?.([rect]);
+      }
+    }, 350);
+    return true;
+  },
+
   // Flush pending edits and drop every rendered note from the DOM. Called on
   // SPA URL change so notes from the previous path don't bleed into the next.
   // The flush reads each note's current textarea + tag value and saves
