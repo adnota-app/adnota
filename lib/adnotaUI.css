@@ -368,3 +368,23 @@ html.adnota-route-changing .adnota-highlight-fallback,
 html.adnota-route-changing .adnota-sticky-container {
   visibility: hidden;
 }
+
+/* ─── Flash pulse for AdnotaUI.flashRects ────────────────────────────────────
+   Painted on top of a highlight or sticky after the scratch-pad GOTO scroll
+   completes so the user immediately sees where they landed. Pure visual cue;
+   pointer-events:none so it never intercepts. */
+.adnota-flash-rect {
+  border-radius: 3px;
+  box-shadow: 0 0 0 2px var(--adnota-accent, #7c3aed);
+  background: rgba(124, 58, 237, 0.18);
+  pointer-events: none;
+  animation-name: adnota-flash-pulse;
+  animation-timing-function: ease-out;
+  animation-fill-mode: forwards;
+}
+
+@keyframes adnota-flash-pulse {
+  0%   { opacity: 1;   transform: scale(1); }
+  60%  { opacity: 0.9; transform: scale(1.04); }
+  100% { opacity: 0;   transform: scale(1); }
+}

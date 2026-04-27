@@ -177,7 +177,7 @@
 
 .adnota-scratchpad-row {
   position: relative;
-  padding: 4px 28px 4px 0;  /* room for the per-row copy button */
+  padding: 4px 54px 4px 0;  /* room for goto + copy buttons */
 }
 
 .adnota-scratchpad-text {
@@ -199,10 +199,10 @@
   font-weight: 400;
 }
 
-.adnota-scratchpad-rowcopy {
+.adnota-scratchpad-rowcopy,
+.adnota-scratchpad-rowgoto {
   position: absolute;
   top: 2px;
-  right: 0;
   appearance: none;
   border: none;
   background: transparent;
@@ -218,9 +218,17 @@
   opacity: 0;
   transition: opacity 0.15s ease, color 0.15s ease, background 0.15s ease;
 }
-.adnota-scratchpad-rowcopy svg { width: 14px; height: 14px; }
-.adnota-scratchpad-row:hover .adnota-scratchpad-rowcopy { opacity: 1; }
-.adnota-scratchpad-rowcopy:hover {
+.adnota-scratchpad-rowcopy { right: 0; }
+.adnota-scratchpad-rowgoto { right: 26px; }
+
+.adnota-scratchpad-rowcopy svg,
+.adnota-scratchpad-rowgoto svg { width: 14px; height: 14px; }
+
+.adnota-scratchpad-row:hover .adnota-scratchpad-rowcopy,
+.adnota-scratchpad-row:hover .adnota-scratchpad-rowgoto { opacity: 1; }
+
+.adnota-scratchpad-rowcopy:hover,
+.adnota-scratchpad-rowgoto:hover {
   color: #c084fc;
   background: rgba(124, 58, 237, 0.12);
 }
@@ -228,6 +236,30 @@
   opacity: 1;
   color: #86efac;
   background: rgba(134, 239, 172, 0.12);
+}
+
+/* Inline toast — only ever one visible, anchored to the panel bottom so it
+   can't be missed. */
+.adnota-scratchpad-toast {
+  position: absolute;
+  left: 50%;
+  bottom: 12px;
+  transform: translateX(-50%) translateY(8px);
+  background: rgba(20, 20, 20, 0.92);
+  color: #f3f4f6;
+  font-size: 12px;
+  padding: 6px 12px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.15s ease, transform 0.18s ease;
+  z-index: 1;
+  white-space: nowrap;
+}
+.adnota-scratchpad-toast.visible {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
 }
 
 .adnota-scratchpad-sep {

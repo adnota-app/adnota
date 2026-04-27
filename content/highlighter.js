@@ -808,6 +808,40 @@ window.AdnotaHighlighter = {
     return hit?.entry?.tag || '';
   },
 
+  // Smooth-scrolls the highlight with the given _id into view and paints a
+  // brief purple pulse over its rects so the user sees where they landed.
+  // Returns true on success, false if the highlight isn't currently rendered
+  // (CSS Custom Highlights entry whose Range went stale, or fallback wrapper
+  // whose DOM was torn down). The scratch pad's GOTO button uses the return
+  // value to surface a "couldn't locate" toast.
+  scrollTo(id) {
+    const entry = liveHighlights.get(id);
+    if (!entry) return false;
+    // Pick the right scroll target. Fallback path has its own DOM wrapper;
+    // CSS path has only a Range, so scroll the parent of the start node —
+    // scrollIntoView walks up to find the right scroll container, which
+    // matters on app shells (claude.ai) where the document itself doesn't
+    // scroll.
+    let target = null;
+    if (entry.fallbackEl && entry.fallbackEl.isConnected) {
+      target = entry.fallbackEl;
+    } else if (entry.range) {
+      const node = entry.range.startContainer;
+      target = node?.nodeType === Node.ELEMENT_NODE ? node : node?.parentElement;
+    }
+    if (!target || !target.scrollIntoView) return false;
+    try { target.scrollIntoView({ block: 'center', behavior: 'smooth' }); }
+    catch (_) { target.scrollIntoView(); }
+    // Read fresh rects after the scroll settles. 350ms covers the typical
+    // smooth-scroll window across browsers; on a no-op scroll (already in
+    // view) the rects are valid right away and the pulse just appears.
+    setTimeout(() => {
+      const rects = rectsForHighlight(entry, id);
+      if (rects && rects.length) window.AdnotaUI?.flashRects?.(rects);
+    }, 350);
+    return true;
+  },
+
   renderFallback: function (anchorElement, payload) {
     if (!payload.fallbackRects) return;
     const themeColors = {
