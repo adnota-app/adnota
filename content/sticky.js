@@ -329,12 +329,6 @@ window.StickyEngine = {
     if (!container) return false;
     try { container.scrollIntoView({ block: 'center', behavior: 'smooth' }); }
     catch (_) { container.scrollIntoView(); }
-    setTimeout(() => {
-      const rect = container.getBoundingClientRect();
-      if (rect.width > 0 && rect.height > 0) {
-        window.AdnotaUI?.flashRects?.([rect]);
-      }
-    }, 350);
     return true;
   },
 

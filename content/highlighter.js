@@ -837,13 +837,6 @@ window.AdnotaHighlighter = {
     if (!target || !target.scrollIntoView) return false;
     try { target.scrollIntoView({ block: 'center', behavior: 'smooth' }); }
     catch (_) { target.scrollIntoView(); }
-    // Read fresh rects after the scroll settles. 350ms covers the typical
-    // smooth-scroll window across browsers; on a no-op scroll (already in
-    // view) the rects are valid right away and the pulse just appears.
-    setTimeout(() => {
-      const rects = rectsForHighlight(entry, id);
-      if (rects && rects.length) window.AdnotaUI?.flashRects?.(rects);
-    }, 350);
     return true;
   },
 
