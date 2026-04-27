@@ -757,6 +757,23 @@ window.AdnotaHighlighter = {
   createHighlightFromRange,
   deleteHighlight,
 
+  // Drop every rendered highlight (CSS Custom Highlights + fallback
+  // wrappers) from the page. Called on SPA URL change so highlights
+  // from the previous path don't survive into the next. CSS-path entries
+  // would already render nothing after a React swap (their stored Range
+  // points at detached DOM), but the registry entries are still there
+  // and need to be cleared explicitly. Storage is left alone.
+  tearDownAll: function () {
+    for (const reg of Object.values(highlightRegistries)) reg.clear();
+    for (const entry of liveHighlights.values()) {
+      if (entry.fallbackEl) {
+        entry.fallbackEl._adnotaCleanup?.();
+        entry.fallbackEl.remove();
+      }
+    }
+    liveHighlights.clear();
+  },
+
   // Returns the tag of the live highlight covering (x, y) in viewport
   // coordinates, or '' if there's no highlight there or it's untagged.
   // Used by the quick-highlight popup to pre-fill the tag input when the user

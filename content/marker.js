@@ -844,6 +844,18 @@ function resolveAnchorRect(anchorElement, payload) {
 }
 
 window.AdnotaMarker = {
+  // Drop every rendered shape from the DOM. Called on SPA URL change so
+  // shapes from /chats/<uuid-A> don't bleed into /chats/<uuid-B> on app
+  // shells where React doesn't unmount our overlay (it lives outside
+  // React's tree under data-adnota-ui). Storage is left untouched —
+  // subsequent restoration will repaint whatever belongs to the new URL.
+  // Listener triads on each wrapper auto-clean via the parent-childList
+  // MutationObserver installed by AdnotaUI.bindAnchorSync.
+  tearDownAll: function () {
+    const overlay = document.getElementById('adnota-marker-overlay');
+    if (overlay) overlay.replaceChildren();
+  },
+
   renderMarker: function (anchorElement, payload) {
     const shapeType = payload.shapeType || (payload.isArrow ? 'arrow' : 'freehand');
 

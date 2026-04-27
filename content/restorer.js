@@ -3,6 +3,38 @@
 const processedItems = new Set();
 let initialRestorationDone = false;
 let lastProcessedUrl = null;
+// In-flight guard: rapid SPA nav (claude.ai chat hopping) can fire the
+// MutationObserver again while a previous performRestoration call is still
+// awaiting storage I/O. Without the guard, two concurrent runs both clear
+// processedItems and both run teardown — wasteful, and the second tearDown
+// races with the first run's render writes. Cheap to prevent.
+let restorationInFlight = false;
+
+// Tear down every rendered annotation owned by the previous URL. Called on
+// SPA URL change before re-running restoration for the new URL. Each engine
+// owns its own DOM (#adnota-marker-overlay, .adnota-sticky-container,
+// CSS Custom Highlights + fallback wrappers, ERASE/RESIZE <style> tags),
+// all of which sit outside React's tree under data-adnota-ui — so React
+// never unmounts them on its own. Storage is left untouched; the next pass
+// repaints whatever belongs to the new URL.
+async function tearDownAllAnnotations() {
+  if (window.AdnotaMarker?.tearDownAll) window.AdnotaMarker.tearDownAll();
+  if (window.AdnotaHighlighter?.tearDownAll) window.AdnotaHighlighter.tearDownAll();
+  if (window.StickyEngine?.tearDownAll) await window.StickyEngine.tearDownAll();
+
+  if (window.AdnotaEraseRules) {
+    window.AdnotaEraseRules.clear();
+    if (window.rebuildEraseStyleTag) window.rebuildEraseStyleTag();
+  }
+  if (window.AdnotaResizeRules) {
+    window.AdnotaResizeRules.clear();
+    if (window.rebuildResizeStyleTag) window.rebuildResizeStyleTag();
+  }
+  // Inline-style erases tracked on real DOM nodes — those nodes are usually
+  // already gone after the React swap, but clear the Set so we don't hold
+  // stale references and the show/hide toggle starts fresh.
+  if (window.AdnotaErasedElements) window.AdnotaErasedElements.clear();
+}
 
 function showBrokenAnchorsToast(count) {
   // De-duplicate: only one broken-anchor toast at a time.
@@ -49,13 +81,26 @@ function showBrokenAnchorsToast(count) {
 
 async function performRestoration() {
   if (!window.AdnotaStorage || !window.FuzzyAnchor) return;
+  if (restorationInFlight) return;
+  restorationInFlight = true;
+  try {
+    await _performRestoration();
+  } finally {
+    restorationInFlight = false;
+  }
+}
 
+async function _performRestoration() {
   // SPA in-app nav (/foo → /bar → /foo): processedItems is module-scoped and
   // not URL-keyed, so on return to /foo every ID is already present and the
   // loop below would skip the entire URL. Clear on URL change so each visit
   // gets a fresh restoration pass; the existing MutationObserver fires on
-  // SPA-nav DOM swap, so no popstate/pushState hook is needed.
+  // SPA-nav DOM swap, so no popstate/pushState hook is needed. Also tear
+  // down the previous URL's rendered overlays — they live outside React's
+  // tree under data-adnota-ui, so without an explicit teardown they
+  // accumulate across SPA navigations on app shells like claude.ai.
   if (lastProcessedUrl !== null && lastProcessedUrl !== location.href) {
+    await tearDownAllAnnotations();
     processedItems.clear();
     initialRestorationDone = false;
   }
