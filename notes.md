@@ -66,6 +66,8 @@ The verdict: Adnota is technically excellent, philosophically interesting, and i
 
 chrome.storage.local.remove('adnotaDockPosition')
 
+chrome.storage.local.get('readaloudrevival.com', (d) => console.log(JSON.stringify(d, null, 2)));
+
     turn on debug logging for bubbling up parent elements:
     localStorage.setItem('adnota-debug-bubble', '1')
     localStorage.removeItem('adnota-debug-bubble')
