@@ -530,7 +530,7 @@ function showDeleteBtn(id, rects) {
     if (r.width <= 0 || r.height <= 0) continue;
     if (r.top < minTop) minTop = r.top;
   }
-  if (!isFinite(minTop)) return;
+  if (!isFinite(minTop)) { hideDeleteBtn(); return; }
   const SAME_LINE_TOL = 4; // px tolerance for "same line" comparison
   let maxRight = -Infinity;
   for (const r of rects) {
@@ -539,7 +539,7 @@ function showDeleteBtn(id, rects) {
       maxRight = r.right;
     }
   }
-  if (!isFinite(maxRight)) return;
+  if (!isFinite(maxRight)) { hideDeleteBtn(); return; }
   const SIZE = 20; // matches .adnota-select-delete width/height
   const NUDGE = 6;
   let left = maxRight - SIZE / 2 + NUDGE;
@@ -999,7 +999,7 @@ window.AdnotaHighlighter = {
       // never has the digits + period that rangeText injected on save.
       const stripped = textToFind
         .replace(/•\s*/g, '')
-        .replace(/(?:^|\n)\d+\.\s+/g, (m) => m.startsWith('\n') ? '\n' : '')
+        .replace(/(?:^|\n)\d+\.\s+/g, '')
         .replace(/\n+/g, '');
       if (stripped !== textToFind) {
         const sPos = findOccurrence(stripped);
@@ -1012,31 +1012,35 @@ window.AdnotaHighlighter = {
     }
 
     if (pos === -1) {
-      // Tier 3 — whitespace+bullet+ordered-marker tolerant fuzzy find. Strip
-      // all whitespace and bullets from both saved and live, ALSO strip
+      // Tier 3 — whitespace+punctuation+ordered-marker tolerant fuzzy find.
+      // Strip whitespace AND Unicode punctuation (\p{P} — covers •, hyphens,
+      // smart quotes, parens, periods) from both saved and live; ALSO strip
       // rangeText-injected ordered-list markers (1./2./...) from saved;
       // search for saved-stripped in live-stripped; map the matched position
-      // back to raw currentText offsets via a parallel index. Handles
-      // asymmetric whitespace — live has \n inside <pre> blocks within the
-      // matched container, saved has \n at rangeText-injected block
-      // boundaries — neither appears the same way in the other. Ordered
-      // markers are saved-only because browsers render <ol> numbers via CSS
-      // counters, so they're never in live textContent.
+      // back to raw currentText offsets via a parallel index.
+      //
+      // Symmetric \p{P} stripping mirrors FuzzyAnchor's containment
+      // normalizer — without it, a candidate could pass containment (which
+      // strips \p{P}) and then fail every apply tier on punctuation drift,
+      // burning the prune+retry loop forever on heavy SPAs.
+      //
+      // Ordered markers are saved-only because browsers render <ol> numbers
+      // via CSS counters, so they're never in live textContent.
       const liveStripped = [];     // accumulator for the stripped string
       const liveStrippedIdx = [];  // strippedIdx[i] = raw index of i-th kept char
+      const punctRe = /\p{P}/u;
       for (let i = 0; i < currentText.length; i++) {
+        const ch = currentText[i];
         const c = currentText.charCodeAt(i);
-        // Skip ASCII whitespace + the bullet glyph (•, U+2022). Anything
-        // else (including punctuation) stays — matching cares about it.
         const isSpace = c === 0x20 || c === 0x09 || c === 0x0A || c === 0x0D;
-        if (isSpace || currentText[i] === '•') continue;
-        liveStripped.push(currentText[i]);
+        if (isSpace || punctRe.test(ch)) continue;
+        liveStripped.push(ch);
         liveStrippedIdx.push(i);
       }
       const liveStrippedStr = liveStripped.join('');
       const savedStripped = textToFind
-        .replace(/(?:^|\n)\d+\.\s+/g, (m) => m.startsWith('\n') ? '\n' : '')
-        .replace(/[\s•]/g, '');
+        .replace(/(?:^|\n)\d+\.\s+/g, '')
+        .replace(/[\s\p{P}]/gu, '');
       if (savedStripped) {
         let sPos = -1;
         for (let i = 0; i <= payload.occurrenceIndex; i++) {
