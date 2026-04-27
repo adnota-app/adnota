@@ -2,6 +2,7 @@
 
 const processedItems = new Set();
 let initialRestorationDone = false;
+let lastProcessedUrl = null;
 
 function showBrokenAnchorsToast(count) {
   // De-duplicate: only one broken-anchor toast at a time.
@@ -49,9 +50,21 @@ function showBrokenAnchorsToast(count) {
 async function performRestoration() {
   if (!window.AdnotaStorage || !window.FuzzyAnchor) return;
 
+  // SPA in-app nav (/foo → /bar → /foo): processedItems is module-scoped and
+  // not URL-keyed, so on return to /foo every ID is already present and the
+  // loop below would skip the entire URL. Clear on URL change so each visit
+  // gets a fresh restoration pass; the existing MutationObserver fires on
+  // SPA-nav DOM swap, so no popstate/pushState hook is needed.
+  if (lastProcessedUrl !== null && lastProcessedUrl !== location.href) {
+    processedItems.clear();
+    initialRestorationDone = false;
+  }
+  lastProcessedUrl = location.href;
+
   const anchors = await window.AdnotaStorage.getAnchorsForUrl(location.href);
   if (!anchors || anchors.length === 0) return;
 
+  const sizeBefore = processedItems.size;
   let erasuresCount = 0;
   let notesCount = 0;
   let resizeCount = 0;
@@ -187,16 +200,24 @@ async function performRestoration() {
     }
   }
 
-  chrome.storage.local.set({
-    adnota_stats: {
-      [location.href]: { success: erasuresCount, notes: notesCount, resizes: resizeCount, broken: brokenThisPass }
-    }
-  });
+  // Steady-state guard: on heavy SPAs the MutationObserver wakes us every
+  // ~2.5s for the lifetime of the tab. If nothing was newly processed and
+  // nothing's broken, the chrome.storage write (and its onChanged fan-out
+  // to popup + Sites page) is pure noise. Skip it.
+  const grew = processedItems.size > sizeBefore;
+  const hasBroken = brokenThisPass > 0;
+  if (grew || hasBroken) {
+    chrome.storage.local.set({
+      adnota_stats: {
+        [location.href]: { success: erasuresCount, notes: notesCount, resizes: resizeCount, broken: brokenThisPass }
+      }
+    });
 
-  // Only toast on the first pass (initial page load).
-  // MutationObserver re-runs silently retry — no toast spam.
-  if (!initialRestorationDone && brokenThisPass > 0) {
-    showBrokenAnchorsToast(brokenThisPass);
+    // Only toast on the first pass (initial page load).
+    // MutationObserver re-runs silently retry — no toast spam.
+    if (!initialRestorationDone && hasBroken) {
+      showBrokenAnchorsToast(brokenThisPass);
+    }
   }
   initialRestorationDone = true;
 }
