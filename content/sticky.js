@@ -301,6 +301,50 @@ function placementToPixels(placement) {
 window.StickyEngine = {
   createAt: createStickyAt,
 
+  // Flush pending edits and drop every rendered note from the DOM. Called on
+  // SPA URL change so notes from the previous path don't bleed into the next.
+  // The flush reads each note's current textarea + tag value and saves
+  // against the path the note belongs to (captured at render time) — without
+  // it, the autosave debounce (1.5s) firing after navigation would write to
+  // location.pathname of the *new* URL and corrupt the wrong path's items.
+  // Storage is left untouched beyond the flush; restoration repaints whatever
+  // belongs to the new URL.
+  tearDownAll: async function () {
+    if (!window.AdnotaStorage || activeNotes.size === 0) {
+      activeNotes.forEach(s => s.container.remove());
+      activeNotes.clear();
+      return;
+    }
+    // Flush sequentially: every saveNote here targets the same domain key, so
+    // running them in parallel races on the read-modify-write inside saveNote
+    // and the last write wins, clobbering earlier flushes.
+    for (const [uuid, state] of activeNotes) {
+      const textarea = state.container.querySelector('textarea');
+      const tagInput = state.container.querySelector('.adnota-sticky-tag-input');
+      if (textarea && state.comments && state.comments[0]) {
+        state.comments[0].text = textarea.value;
+      }
+      if (tagInput && window.AdnotaTags) {
+        state.tag = window.AdnotaTags.normalize(tagInput.value);
+      }
+      const card = state.container.querySelector('.adnota-sticky-card');
+      const dimensions = card
+        ? { width: Math.round(card.offsetWidth), height: Math.round(card.offsetHeight) }
+        : null;
+      await window.AdnotaStorage.saveNote(
+        state.originalHostname, state.originalPath, uuid,
+        {
+          placement: state.placement, comments: state.comments,
+          theme: state.theme, anchor: state.anchor,
+          anchorOffset: state.anchorOffset, dimensions, tag: state.tag,
+        }
+      );
+    }
+
+    activeNotes.forEach(s => s.container.remove());
+    activeNotes.clear();
+  },
+
   /**
    * Render a sticky note from a placement object.
    *
@@ -358,7 +402,10 @@ window.StickyEngine = {
     }
 
     // In-memory record holds a *mutable* copy of placement so drag updates
-    // propagate to updatePosition without re-rendering.
+    // propagate to updatePosition without re-rendering. originalPath/Hostname
+    // are pinned at render time so the SPA URL-change teardown can flush
+    // pending edits to the path the note actually belongs to, even if
+    // location has already changed by the time teardown runs.
     const noteState = {
       container,
       placement: { ...placement },
@@ -366,6 +413,9 @@ window.StickyEngine = {
       anchorOffset: anchorOffset || null,
       theme: theme || 'adnota-theme-yellow',
       tag: window.AdnotaTags ? window.AdnotaTags.normalize(tag) : (tag || ''),
+      comments,
+      originalHostname: location.hostname,
+      originalPath: location.pathname,
     };
     activeNotes.set(uuid, noteState);
 
