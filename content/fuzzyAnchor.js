@@ -157,6 +157,12 @@ window.FuzzyAnchor = {
       const hasFingerprint = fingerprint && fingerprint.words.length > 0;
       const prefix = fingerprint?.prefix?.toLowerCase() || '';
       const suffix = fingerprint?.suffix?.toLowerCase() || '';
+      // Size guard: an element whose text is >50× the saved anchor's text is
+      // structurally a wrapper (body, main, chat-shell) — never the right
+      // anchor. Skipping it BEFORE the substring/word checks avoids expensive
+      // .includes() calls on near-document-sized strings on heavy SPAs, which
+      // is the dominant cost in this loop on Claude.ai/ChatGPT/Notion.
+      const maxLen = fingerprint?.length ? fingerprint.length * 50 : Infinity;
       for (const el of elements) {
         if (el.offsetHeight === 0 && el.offsetWidth === 0) continue;
         if (el.closest('[data-adnota-ui]')) continue;
@@ -167,6 +173,7 @@ window.FuzzyAnchor = {
         }
         const text = (el.textContent || '').toLowerCase();
         if (!text) continue;
+        if (text.length > maxLen) continue;
         if ((prefix && text.includes(prefix)) || (suffix && text.includes(suffix))) {
           candidateSet.add(el);
           continue;
@@ -185,10 +192,19 @@ window.FuzzyAnchor = {
     // and skip elements that fail the optional text-containment check.
     // The previous implementation returned only the top scorer, which on
     // heavy SPAs locked in a false-positive forever (apply-fail loop).
+    //
+    // Short-circuit when no containsText is requested: a confident CSS
+    // selector match (>85) is already the right answer for ERASE/MARKER/
+    // NOTE/sticky callers, and the sort + Phase C walk add no value for
+    // them. Only HIGHLIGHT restoration needs the smallest-containing logic.
     const scored = [];
+    const noContainmentCheck = !opts?.containsText;
     for (const el of candidateSet) {
       const score = this._scoreCandidate(el, anchor);
       if (score > 0) scored.push({ el, score });
+      if (noContainmentCheck && score > 85) {
+        return { element: el, confidence: score };
+      }
     }
     scored.sort((a, b) => b.score - a.score);
 
