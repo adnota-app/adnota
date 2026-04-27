@@ -233,7 +233,8 @@ Also exposes `generateCSSSelector(el)` as a shared utility (used by the resizer)
   - `NOTE` → `StickyEngine.renderNote()` with stored `anchor`, `anchorOffset`, `placement`, `theme`, and `dimensions` — tries FuzzyAnchor resolution first, falls back to percentage placement
   - `HIGHLIGHT` → `AdnotaHighlighter.applyStoredHighlight()`
   - `MARKER` → `AdnotaMarker.renderMarker()` with a 3-tier fallback cascade so drawings always render somewhere even when the page has shifted: (1) FuzzyAnchor on the original block; (2) the saved `fallbackBox.containerAnchor` (the nearest scrolling ancestor at save time) plus stored offset within it — scrolls with content on app shells where the page itself doesn't scroll; (3) absolute doc-pixel coords (`fallbackBox.docLeft/docTop/docWidth/docHeight`) as the last resort. New markers always carry `fallbackBox`; legacy items without it skip directly to "broken anchor" if FuzzyAnchor misses
-- Deduplicates with a `processedItems` Set so MutationObserver re-runs don't re-render already-applied annotations
+- Deduplicates with a `processedItems` Set so MutationObserver re-runs don't re-render already-applied annotations. The Set is cleared whenever `location.href` changes between passes so an SPA in-app nav (`/foo → /bar → /foo`) gets a fresh restoration on the return visit instead of silently skipping every item; the existing MutationObserver fires on the SPA-nav DOM swap, so no popstate/pushState hook is needed
+- **Steady-state write guard**: the per-URL stat write (and its `chrome.storage.onChanged` fan-out to popup + Sites page) only fires when something actually changed this pass — either a new item was processed (`processedItems.size` grew) or anchors are still broken. On heavy SPAs the observer keeps waking us every ~2.5s for the life of the tab; without the gate every wake-up wrote zeros and pinged every other extension surface for nothing
 
 ---
 
