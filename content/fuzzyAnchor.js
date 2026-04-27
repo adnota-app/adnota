@@ -97,7 +97,15 @@ window.FuzzyAnchor = {
   //  FIND MATCH — candidate tournament
   // ═══════════════════════════════════════════════════════════════════════════
 
-  findMatch(anchor) {
+  // opts.containsText: optional string the matched element's textContent
+  // must contain (compared whitespace+punctuation-normalized so it tolerates
+  // bullets, line breaks, and rangeText's layout-aware extraction). When
+  // provided, candidates that score above threshold but don't contain the
+  // text are skipped and the next-best is tried. Used by the HIGHLIGHT
+  // restoration path on heavy SPAs (claude.ai) where a chrome <div> can
+  // share enough distinctive words to clear the 40-point threshold even
+  // though the actual content sits in a slightly lower-scoring sibling.
+  findMatch(anchor, opts) {
     if (!anchor) return { element: null, confidence: 0 };
 
     // ── Phase A: Collect candidates ─────────────────────────────────────────
@@ -126,46 +134,99 @@ window.FuzzyAnchor = {
       }
     }
 
-    // A3. Tag scan with quick text filter
+    // A3. Tag scan with quick text filter.
+    //
+    // No element cap — the previous 200-element cap was a defensive guess
+    // that prevented matches on heavy SPAs (Claude.ai, ChatGPT, Notion).
+    // On those, the first 200 <div>s are page chrome (sidebar, header,
+    // conversation list); the actual highlighted content sits hundreds of
+    // divs deeper, never entering the candidate pool, so FuzzyAnchor scored
+    // 0 and the highlight stayed broken forever.
+    //
+    // Quick filter uses textContent (not innerText) so we don't trigger a
+    // layout per element across thousands of nodes. The accurate
+    // layout-aware Jaccard happens later in _textScore on the trimmed
+    // candidate set.
+    //
+    // Prefix/suffix substring is a much stronger signal than a single-word
+    // overlap, so anchored matches enter the pool first; word-overlap is
+    // the loose fallback. Either way, the scoring phase weighs them.
     if (anchor.tagName) {
       const elements = document.getElementsByTagName(anchor.tagName);
-      const limit = Math.min(elements.length, 200);
-      for (let i = 0; i < limit; i++) {
-        const el = elements[i];
-        // Quick check: skip hidden elements and Adnota UI
+      const fingerprint = anchor.textFingerprint;
+      const hasFingerprint = fingerprint && fingerprint.words.length > 0;
+      const prefix = fingerprint?.prefix?.toLowerCase() || '';
+      const suffix = fingerprint?.suffix?.toLowerCase() || '';
+      for (const el of elements) {
         if (el.offsetHeight === 0 && el.offsetWidth === 0) continue;
         if (el.closest('[data-adnota-ui]')) continue;
-        // Add if any text word overlap, or if element has no text (images, etc.)
-        if (anchor.textFingerprint && anchor.textFingerprint.words.length > 0) {
-          if (this._quickTextOverlap(el, anchor.textFingerprint)) {
-            candidateSet.add(el);
-          }
-        } else {
-          // For elements with no text fingerprint (images, iframes), add all of same tag
+        if (!hasFingerprint) {
+          // No fingerprint (images, iframes, legacy items) — accept all of same tag.
           candidateSet.add(el);
+          continue;
+        }
+        const text = (el.textContent || '').toLowerCase();
+        if (!text) continue;
+        if ((prefix && text.includes(prefix)) || (suffix && text.includes(suffix))) {
+          candidateSet.add(el);
+          continue;
+        }
+        for (const word of fingerprint.words) {
+          if (text.includes(word)) {
+            candidateSet.add(el);
+            break;
+          }
         }
       }
     }
 
     // ── Phase B: Score every candidate ──────────────────────────────────────
-    let bestElement = null;
-    let bestScore = 0;
-
+    // Build a sorted list of all candidates so Phase C can walk down it
+    // and skip elements that fail the optional text-containment check.
+    // The previous implementation returned only the top scorer, which on
+    // heavy SPAs locked in a false-positive forever (apply-fail loop).
+    const scored = [];
     for (const el of candidateSet) {
       const score = this._scoreCandidate(el, anchor);
+      if (score > 0) scored.push({ el, score });
+    }
+    scored.sort((a, b) => b.score - a.score);
 
-      // Short-circuit: high-confidence CSS selector match
-      if (score > 85) return { element: el, confidence: score };
+    // Whitespace+punctuation normalizer for the containment check —
+    // tolerates rangeText's injected • bullets, line breaks, and the
+    // page's punctuation-rich rendering. \p{P} is Unicode-aware so the
+    // bullet glyph (U+2022) is stripped along with regular punctuation.
+    const norm = (s) => (s || '').replace(/[\s\p{P}]+/gu, ' ').trim().toLowerCase();
+    const needle = opts?.containsText ? norm(opts.containsText) : null;
+    // Compare by prefix only — long highlights may span text-node
+    // boundaries that look slightly different between save and restore,
+    // but the first ~80 normalized chars should always be intact.
+    const needlePrefix = needle ? needle.slice(0, 80) : null;
 
-      if (score > bestScore) {
-        bestScore = score;
-        bestElement = el;
+    // ── Phase C: Walk scored candidates above threshold ────────────────────
+    // When containsText is set we don't just pick the highest scorer — on
+    // heavy SPAs the giant message-container <div> outscores the actual
+    // anchor element on word-overlap simply by being huge. Instead, gather
+    // ALL candidates that contain the saved text and pick the SMALLEST by
+    // textContent length. The smallest element fully containing the saved
+    // text is structurally the closest to the original anchor (the
+    // commonAncestorContainer of the original Range), and applyStoredHighlight
+    // can then walk its textNodes cleanly without picking up unrelated
+    // surrounding content with mismatched punctuation/whitespace.
+    const containing = [];
+    for (const { el, score } of scored) {
+      if (score < 40) break;
+      if (!needlePrefix) {
+        return { element: el, confidence: score };
+      }
+      if (norm(el.textContent).includes(needlePrefix)) {
+        containing.push({ el, score, len: el.textContent.length });
       }
     }
-
-    // ── Phase C: Return best above threshold ────────────────────────────────
-    if (bestScore >= 40 && bestElement) {
-      return { element: bestElement, confidence: bestScore };
+    if (containing.length) {
+      containing.sort((a, b) => a.len - b.len);
+      const best = containing[0];
+      return { element: best.el, confidence: best.score };
     }
 
     return { element: null, confidence: 0 };
