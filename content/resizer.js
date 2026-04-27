@@ -59,7 +59,7 @@ const resizerHelpBtn = window.AdnotaUI.createHelpButton({
   accent: 'blue',
   tips: [
     '<span style="color:#94a3b8">Click to <span style="color:#e4e4e7;font-weight:600">select</span> an element for resizing</span>',
-    '<span style="color:#94a3b8">Scroll ↑↓ to <span style="color:#e4e4e7;font-weight:600">traverse DOM</span> (select parents/children)</span>',
+    '<span style="color:#94a3b8"><span style="background:rgba(59,130,246,0.25);color:#93c5fd;padding:1px 4px;border-radius:3px;font-size:11px;font-weight:600;margin-right:4px">⇧+Scroll ↑↓</span>to <span style="color:#e4e4e7;font-weight:600">traverse DOM</span> (select parents/children)</span>',
     '<span style="color:#94a3b8">Drag any <span style="color:#93c5fd;font-weight:600">blue handle</span> to resize from that edge</span>',
     '<span style="color:#94a3b8">Click the <span style="color:#93c5fd;font-weight:600">↺</span> to completely reset this element</span>',
     '<span style="color:#94a3b8">Press <span style="background:rgba(59,130,246,0.25);color:#93c5fd;padding:1px 4px;border-radius:3px;font-size:11px;font-weight:600;margin-right:2px">Esc</span> to exit any tool</span>',
@@ -114,7 +114,7 @@ function updateHUD() {
   if (hoveredEl) {
     // Dimension is shown on the hover overlay’s top-right badge, so the
     // HUD info area only needs the scroll hint.
-    html += `<span style="color:#94a3b8">Scroll \u2191\u2193 to walk the DOM</span>`;
+    html += `<span style="color:#94a3b8"><span style="background:rgba(59,130,246,0.25);color:#93c5fd;padding:1px 4px;border-radius:3px;font-size:11px;font-weight:600;margin-right:4px">\u21e7+Scroll \u2191\u2193</span>to walk the DOM</span>`;
     resizerHudInfo.innerHTML = html;
     return;
   }
@@ -870,6 +870,7 @@ document.addEventListener('wheel', (e) => {
   if (window.AdnotaState.mode !== 'resizer') return;
   if (selectedEl) return;     // Don't traverse while handles are active
   if (!rawHoveredEl) return;
+  if (!e.shiftKey) return;    // Plain scroll passes through; Shift to walk the DOM
 
   e.preventDefault();
 
@@ -878,7 +879,10 @@ document.addEventListener('wheel', (e) => {
   // — otherwise over-scrolling past the top (or bottom) inflates the value
   // and reversing direction takes the same number of clicks to "spend down"
   // before any visual change.
-  const tentative = traverseDepth + (e.deltaY < 0 ? 1 : -1);
+  // Browsers swap deltaY → deltaX while Shift is held, so read whichever axis
+  // has signal — otherwise direction reads as zero and we always step "down".
+  const delta = e.deltaY || e.deltaX;
+  const tentative = traverseDepth + (delta < 0 ? 1 : -1);
   const newTarget = findLayoutTarget(rawHoveredEl, tentative);
   if (newTarget && newTarget !== hoveredEl) {
     traverseDepth = tentative;

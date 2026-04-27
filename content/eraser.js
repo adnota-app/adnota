@@ -84,8 +84,8 @@ const eraserHelpBtn = window.AdnotaUI.createHelpButton({
   tips: [
     '<span style="color:#94a3b8">Click to erase on <span style="color:#e4e4e7;font-weight:600">this page</span></span>',
     '<span style="color:#94a3b8"><span style="background:rgba(239,68,68,0.25);color:#fca5a5;padding:1px 4px;border-radius:3px;font-size:11px;font-weight:600;margin-right:4px">⇧+Click</span>erase across <span style="color:#e4e4e7;font-weight:600">entire domain</span></span>',
+    '<span style="color:#94a3b8"><span style="background:rgba(239,68,68,0.25);color:#fca5a5;padding:1px 4px;border-radius:3px;font-size:11px;font-weight:600;margin-right:4px">⇧+Scroll ↑↓</span>to <span style="color:#e4e4e7;font-weight:600">traverse DOM</span> (select parents/children)</span>',
     '<span style="color:#94a3b8">When you see <span style="background:rgba(220,38,38,0.92);color:#fff;padding:1px 5px;border-radius:3px;font-size:11px;font-weight:600">likely ad</span>, erasing it also blocks it across the domain</span>',
-    '<span style="color:#94a3b8">Scroll ↑↓ to <span style="color:#e4e4e7;font-weight:600">traverse DOM</span> (select parents/children)</span>',
     '<span style="color:#94a3b8">Press <span style="background:rgba(239,68,68,0.25);color:#fca5a5;padding:1px 4px;border-radius:3px;font-size:11px;font-weight:600;margin-right:2px">Esc</span> to exit any tool</span>',
   ],
 });
@@ -457,7 +457,7 @@ function updateHUD(target) {
   // Scroll nudge — contextual hint when a higher parent has a stronger anchor.
   if (betterTarget) {
     html += dot;
-    html += `<span style="color:#6ee7b7">\u25b2 Scroll up ${betterTarget.stepsUp}\u00d7 for better target</span>`;
+    html += `<span style="color:#6ee7b7">\u25b2 \u21e7+Scroll up ${betterTarget.stepsUp}\u00d7 for better target</span>`;
   }
 
   eraserHudInfo.innerHTML = html;
@@ -702,13 +702,20 @@ document.addEventListener('mousemove', (e) => {
 }, { passive: true });
 
 // ─── Scroll wheel: walk up/down the DOM tree while hovering ─────────────────
+// Gated on Shift so plain scroll passes through to the page — otherwise the
+// user can't scroll-explore for ads two screens away without exiting the tool.
 document.addEventListener('wheel', (e) => {
   if (window.AdnotaState.mode !== 'eraser') return;
   if (!rawHoveredEl) return;
+  if (!e.shiftKey) return;
 
   e.preventDefault();
 
-  if (e.deltaY < 0) {
+  // Browsers convert vertical wheel input into horizontal scroll while Shift
+  // is held — deltaY drops to 0 and the value moves to deltaX. Read whichever
+  // axis carries signal so the user's "up = parent" expectation holds.
+  const delta = e.deltaY || e.deltaX;
+  if (delta < 0) {
     // Scroll up → walk to parent
     traverseDepth++;
   } else {
