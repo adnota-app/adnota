@@ -106,21 +106,23 @@
 
 .adnota-scratchpad-copyall {
   appearance: none;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  background: rgba(255, 255, 255, 0.04);
-  color: rgba(255, 255, 255, 0.85);
-  font: inherit;
-  font-size: 12px;
-  font-weight: 500;
-  padding: 4px 10px;
-  border-radius: 5px;
+  border: none;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.5);
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border-radius: 4px;
   cursor: pointer;
-  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+  transition: color 0.15s ease, background 0.15s ease;
 }
+.adnota-scratchpad-copyall svg { width: 14px; height: 14px; }
 .adnota-scratchpad-copyall:hover:not(:disabled) {
-  background: rgba(124, 58, 237, 0.18);
-  border-color: rgba(124, 58, 237, 0.4);
   color: #e9d5ff;
+  background: rgba(124, 58, 237, 0.18);
 }
 .adnota-scratchpad-copyall:disabled {
   opacity: 0.35;
@@ -128,8 +130,7 @@
 }
 .adnota-scratchpad-copyall.copied {
   color: #86efac;
-  border-color: rgba(134, 239, 172, 0.4);
-  background: rgba(134, 239, 172, 0.08);
+  background: rgba(134, 239, 172, 0.12);
 }
 
 .adnota-scratchpad-close {

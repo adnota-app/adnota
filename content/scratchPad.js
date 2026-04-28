@@ -99,6 +99,9 @@
   // Funnel — toggles the tag-filter sub-header. Mirrors the FILTER label on
   // pages/sites.js but as an icon to keep the panel header dense.
   const ICON_FILTER = `<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4h14l-5.5 7v5l-3 1.5V11L3 4z"/></svg>`;
+  // Clipboard with list lines — "copy everything" semantics, distinct from
+  // ICON_COPY's duplicate-rectangle glyph used for the per-row action.
+  const ICON_COPY_ALL = `<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="4" width="10" height="13" rx="1.5"/><path d="M8 3h4v3H8z"/><line x1="7.5" y1="9.5" x2="12.5" y2="9.5"/><line x1="7.5" y1="12" x2="12.5" y2="12"/><line x1="7.5" y1="14.5" x2="11" y2="14.5"/></svg>`;
 
   // ── Snippet derivation ────────────────────────────────────────────────────
   async function loadSnippets() {
@@ -189,7 +192,8 @@
     copyAllBtn = document.createElement('button');
     copyAllBtn.type = 'button';
     copyAllBtn.className = 'adnota-scratchpad-copyall';
-    copyAllBtn.textContent = 'Copy all';
+    copyAllBtn.title = 'Copy all';
+    copyAllBtn.innerHTML = ICON_COPY_ALL;
     copyAllBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       copyAll();
@@ -455,12 +459,11 @@
     try { await navigator.clipboard.writeText(payload); }
     catch (_) { return; }
     copyAllBtn.classList.add('copied');
-    const original = copyAllBtn.textContent;
-    copyAllBtn.textContent = 'Copied';
+    copyAllBtn.innerHTML = ICON_CHECK;
     setTimeout(() => {
       if (!copyAllBtn?.isConnected) return;
       copyAllBtn.classList.remove('copied');
-      copyAllBtn.textContent = original;
+      copyAllBtn.innerHTML = ICON_COPY_ALL;
     }, COPY_REVERT_MS);
     window.AdnotaLog?.event('scratchpad', 'copy-all', { count: list.length });
   }
