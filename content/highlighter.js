@@ -1022,7 +1022,10 @@ window.AdnotaHighlighter = {
       // Symmetric \p{P} stripping mirrors FuzzyAnchor's containment
       // normalizer — without it, a candidate could pass containment (which
       // strips \p{P}) and then fail every apply tier on punctuation drift,
-      // burning the prune+retry loop forever on heavy SPAs.
+      // burning the prune+retry loop forever on heavy SPAs. Confirmed
+      // load-bearing on Claude.ai bullet-list highlights — Tier 2 misses
+      // them on a single-char punctuation difference (curly vs straight
+      // quote, em-dash, NBSP) that Tier 3's \p{P} strip absorbs.
       //
       // Ordered markers are saved-only because browsers render <ol> numbers
       // via CSS counters, so they're never in live textContent.
