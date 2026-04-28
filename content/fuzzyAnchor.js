@@ -134,6 +134,34 @@ window.FuzzyAnchor = {
       }
     }
 
+    // A2.5. Class-based fast-path.
+    //
+    // The A3 scan walks getElementsByTagName(tag) in document order, capped
+    // at 200. On Gemini, the chat chrome (sidebar, header, message rail) is
+    // full of divs before the response body — a saved anchor inside a table
+    // can sit at div index 288 of 699, never reached by the cap.
+    //
+    // Seed the candidate pool with anything matching `.{firstParentClass} >
+    // {tagName}`. parentClasses is captured at save time and is far more
+    // selective than the tag scan (e.g. `.table-block > div` returns one
+    // element instead of 699). Pure addition: only seeds, doesn't filter.
+    if (anchor.structure?.parentClasses?.length && anchor.tagName) {
+      const klass = anchor.structure.parentClasses[0];
+      if (/^[a-zA-Z][\w-]*$/.test(klass)) {
+        try {
+          const els = document.querySelectorAll(
+            '.' + CSS.escape(klass) + ' > ' + anchor.tagName
+          );
+          for (const el of els) candidateSet.add(el);
+          if (window.AdnotaLog && opts?.containsText) {
+            window.AdnotaLog.event('fuzzy', 'a2.5-seed', {
+              klass, tag: anchor.tagName, count: els.length
+            });
+          }
+        } catch { }
+      }
+    }
+
     // A3. Tag scan with quick text filter.
     //
     // Capped at 200 elements as a perf bound: getElementsByTagName('div')
@@ -143,7 +171,8 @@ window.FuzzyAnchor = {
     // pass — turned out unnecessary once the size-ratio guard, smallest-
     // containing, prefix/suffix anchors, and Tier 2/3 marker stripping
     // were all in. Restored here. If the cap turns out to bite a real
-    // restoration case, raise it before removing it again.
+    // restoration case, raise it before removing it again — but first
+    // check whether parentClasses A2.5 fast-path can handle it instead.
     //
     // Size guard inside the loop: an element whose text is >50× the saved
     // anchor's text is structurally a wrapper (body, main, chat-shell) and
@@ -213,11 +242,17 @@ window.FuzzyAnchor = {
     }
     scored.sort((a, b) => b.score - a.score);
 
-    // Whitespace+punctuation normalizer for the containment check —
-    // tolerates rangeText's injected • bullets, line breaks, and the
-    // page's punctuation-rich rendering. \p{P} is Unicode-aware so the
-    // bullet glyph (U+2022) is stripped along with regular punctuation.
-    const norm = (s) => (s || '').replace(/[\s\p{P}]+/gu, ' ').trim().toLowerCase();
+    // Whitespace+punctuation normalizer for the containment check.
+    // STRIPS rather than collapses-to-space: live element.textContent
+    // concatenates cell/child text with no separator (a <td>A</td><td>B</td>
+    // gives "AB"), but rangeText saves with \t / \n between layout-children.
+    // If we collapse-to-space, the two sides disagree on word boundaries
+    // (saved "lore check extension" vs live "lore checkextension") and the
+    // includes check fails. Stripping erases those boundary disagreements.
+    // \p{P} is Unicode-aware so bullet glyphs (U+2022) and en-dashes are
+    // stripped along with regular punctuation. Tier 3 in highlighter.js
+    // uses the same strip-all approach for the same reason.
+    const norm = (s) => (s || '').replace(/[\s\p{P}]+/gu, '').toLowerCase();
     const needle = opts?.containsText ? norm(opts.containsText) : null;
     // Compare by prefix only — long highlights may span text-node
     // boundaries that look slightly different between save and restore,
@@ -241,15 +276,31 @@ window.FuzzyAnchor = {
     // wrong one wins on raw score and apply fails forever. The size-ratio
     // guard in Phase A3 doesn't catch this because both candidates are
     // similar size to the saved fingerprint.
+    // For non-containsText callers the 40 threshold gates noise — they have
+    // no second filter, so the score IS the trust signal. For containsText
+    // callers the text-prefix match is itself a strong-enough filter, so
+    // walk the full scored list. Dropping the threshold here is what fixes
+    // Gemini tables: the saved nth-child(18) drifts after Gemini reflows
+    // the response, so the cssSelector signal is 0 and the target's total
+    // score lands in the 10–30 range — below the old 40 cutoff but clearly
+    // the right element by containsText.
     const containing = [];
     for (const { el, score } of scored) {
-      if (score < 40) break;
       if (!needlePrefix) {
+        if (score < 40) break;
         return { element: el, confidence: score };
       }
       if (norm(el.textContent).includes(needlePrefix)) {
         containing.push({ el, score, len: el.textContent.length });
       }
+    }
+    if (window.AdnotaLog && needlePrefix) {
+      window.AdnotaLog.event('fuzzy', 'phase-c', {
+        scored: scored.length,
+        topScores: scored.slice(0, 5).map(s => s.score),
+        containing: containing.length,
+        needlePrefix: needlePrefix.slice(0, 50),
+      });
     }
     if (containing.length) {
       containing.sort((a, b) => a.len - b.len);
