@@ -184,21 +184,45 @@ async function _performRestoration(trigger) {
     }
 
     // ── Sticky notes: hybrid anchor + percentage fallback. ────────────────
-    // Anchor resolution happens inside StickyEngine.updatePosition() —
-    // we just pass through all stored fields. Notes always render; if the
-    // anchor can't be resolved, percentage placement ensures no work is lost.
+    // Notes always render somewhere — if FuzzyAnchor misses, updatePosition()
+    // falls back to percentage placement so no work is lost. But if the
+    // anchor didn't resolve and the page still has anchor data we could
+    // re-attempt against, leave the item out of processedItems so the next
+    // MutationObserver pass can retry against a more-loaded DOM. Mirrors
+    // the HIGHLIGHT applied/processed split.
     if (item.action === 'NOTE') {
+      let anchorResolved = false;
       if (window.StickyEngine) {
-        window.StickyEngine.renderNote(
-          item.placement, item.comments, item.uuid, false,
-          item.dimensions || null,
-          item.theme || 'adnota-theme-yellow',
-          item.anchor || null,
-          item.anchorOffset || null,
-          item.tag || ''
-        );
+        const existing = document.querySelector(`.adnota-sticky-container[data-uuid="${item.uuid}"]`);
+        if (existing) {
+          // Already rendered — just retry anchor resolution against the
+          // current DOM. Snaps the note from its percentage-fallback spot
+          // to the right one if the anchor element finally appeared.
+          anchorResolved = window.StickyEngine.updatePosition(item.uuid);
+        } else {
+          anchorResolved = window.StickyEngine.renderNote(
+            item.placement, item.comments, item.uuid, false,
+            item.dimensions || null,
+            item.theme || 'adnota-theme-yellow',
+            item.anchor || null,
+            item.anchorOffset || null,
+            item.tag || ''
+          );
+        }
       }
-      processedItems.add(id);
+      // Only retryable if we actually have anchor data to resolve. Legacy
+      // notes (placement-only) and a missing StickyEngine both mark
+      // processed immediately so we don't loop forever on items where
+      // percentage placement is the final answer.
+      const retryable = !!(window.StickyEngine && item.anchor && item.anchorOffset);
+      if (anchorResolved || !retryable) {
+        processedItems.add(id);
+      } else {
+        brokenThisPass++;
+        window.AdnotaLog?.event('restorer', 'apply-fail', {
+          action: 'NOTE', id, sel: item.anchor?.cssSelector || null,
+        });
+      }
       notesCount++;
       continue;
     }

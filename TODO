@@ -161,6 +161,10 @@ Should these shortcuts even be alt? Or just the keys e, r, s, d?
 TODO:
 - Add bug popup button in bottom right corner of HOME with a message saying send me a screenshot or note if you find a bug and has my email etc...
 
+fix tags so that you can hit tab or enter to autocomplete.
+
+Fix undo on sticky notes and immediate delete etc. it's painful.
+
   The whitelist also misses several common semantic blocks: aside, header,
  footer, nav, figure, blockquote, dialog, details, form. When the click lands
  inside one of those without a matching descendant, the code silently falls
