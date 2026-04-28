@@ -95,6 +95,14 @@
   border-radius: 0;
   padding-bottom: 2px;
 }
+.adnota-scratchpad-filter-count {
+  color: rgba(255, 255, 255, 0.4);
+  font-variant-numeric: tabular-nums;
+  margin-left: 1px;
+}
+.adnota-scratchpad-filter.active .adnota-scratchpad-filter-count {
+  color: rgba(192, 132, 252, 0.65);
+}
 
 .adnota-scratchpad-copyall {
   appearance: none;
@@ -170,7 +178,31 @@
 
 .adnota-scratchpad-row {
   position: relative;
-  padding: 6px 54px 6px 0;  /* room for goto + copy buttons */
+  padding: 6px 0;
+  /* Action buttons (goto/copy/trash) overlay the top-right corner via
+     position:absolute and only reveal on hover, so the row text uses the
+     full width — same pattern as the home-page feed. */
+}
+/* Hover backdrop behind the action trio so the underlying text doesn't
+   read through the icons. Pseudo-element to avoid restructuring the row
+   DOM; sized to cover all three 22px buttons + the 26px gaps between them
+   plus a small halo. */
+.adnota-scratchpad-row::before {
+  content: '';
+  position: absolute;
+  top: 4px;
+  right: -2px;
+  width: 80px;
+  height: 26px;
+  background: rgba(20, 20, 20, 0.9);
+  border-radius: 6px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s ease;
+  z-index: 0;
+}
+.adnota-scratchpad-row:hover::before {
+  opacity: 1;
 }
 /* Hairline between rows — replaces the standalone .sep div for a tighter
    list rhythm. ~13px total between consecutive snippet baselines. */
@@ -201,7 +233,8 @@
 .adnota-scratchpad-rowgoto,
 .adnota-scratchpad-rowtrash {
   position: absolute;
-  top: 2px;
+  top: 6px;
+  z-index: 1;       /* above the .row::before backdrop */
   appearance: none;
   border: none;
   background: transparent;

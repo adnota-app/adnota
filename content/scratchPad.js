@@ -235,7 +235,12 @@
     };
     for (const { btn, value, label } of filterEls) {
       btn.classList.toggle('active', value === activeFilter);
-      btn.textContent = `${label} (${counts[value] ?? 0})`;
+      btn.textContent = '';
+      btn.append(`${label} · `);
+      const c = document.createElement('span');
+      c.className = 'adnota-scratchpad-filter-count';
+      c.textContent = String(counts[value] ?? 0);
+      btn.appendChild(c);
     }
 
     bodyEl.replaceChildren();
