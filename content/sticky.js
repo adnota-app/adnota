@@ -571,12 +571,23 @@ window.StickyEngine = {
 
       noteState.placement = updatedPlacement;
 
-      // Re-anchor to whatever element is now underneath the note's position
+      // Re-anchor to whatever element is now underneath the note's position.
+      // We must query the visual stack (elementsFromPoint, plural) and skip
+      // every Adnota UI layer at the drop point, because the sticky note we
+      // just dropped is sitting *exactly* at (centerX, centerY) on top of
+      // the page. document.elementFromPoint (singular) would return the
+      // sticky's own card/textarea, findAnchorTarget would bubble up through
+      // [data-adnota-ui] all the way to <body> and return null, and the note
+      // would persist with anchor=null — making it scroll-broken (no anchor
+      // to track on app shells) and "remember" the broken position across
+      // reloads. The plural variant returns the full top-down stack so we
+      // can ignore our own chrome and the page content underneath.
       const centerX = newLeft + 130; // half of card width
       const centerY = newTop + 70;   // half of card height
       const scrollTop  = window.pageYOffset || document.documentElement.scrollTop;
       const scrollLeft = window.pageXOffset || document.documentElement.scrollLeft;
-      const elAtPoint = document.elementFromPoint(centerX - scrollLeft, centerY - scrollTop);
+      const stack = document.elementsFromPoint(centerX - scrollLeft, centerY - scrollTop);
+      const elAtPoint = stack.find(el => !el.closest('[data-adnota-ui]')) || null;
 
       if (elAtPoint) {
         const newAnchorTarget = findAnchorTarget(elAtPoint);
