@@ -390,8 +390,11 @@ window.StickyEngine = {
    * @param {object}  anchorOffset  { dx, dy } pixel offset from anchor element
    */
   renderNote(placement, comments, uuid, isNew = false, dimensions = null, theme = 'adnota-theme-yellow', anchor = null, anchorOffset = null, tag = '') {
-    // Guard duplicate renders.
-    if (document.querySelector(`.adnota-sticky-container[data-uuid="${uuid}"]`)) return;
+    // Guard duplicate renders. Restorer retry passes route through
+    // updatePosition() directly, so a hit here means an unexpected duplicate
+    // render attempt — return false so the caller doesn't treat it as a
+    // successful anchor resolution.
+    if (document.querySelector(`.adnota-sticky-container[data-uuid="${uuid}"]`)) return false;
 
     const container = document.createElement('div');
     container.className = 'adnota-sticky-container ' + (theme || 'adnota-theme-yellow');
@@ -455,7 +458,7 @@ window.StickyEngine = {
     const tagInput = container.querySelector('.adnota-sticky-tag-input');
     if (tagInput) tagInput.value = noteState.tag;
 
-    this.updatePosition(uuid);
+    const anchorResolved = this.updatePosition(uuid);
 
     // ── Persist resize dimensions ────────────────────────────────────────────
     // ResizeObserver fires whenever the user drags the card's resize handle.
@@ -668,15 +671,24 @@ window.StickyEngine = {
       const undoEntry = { undo: performUndo };
       window.AdnotaUndo.push(undoEntry);
     });
+
+    return anchorResolved;
   },
 
   /**
    * Reposition a note based on its anchor (preferred) or placement (fallback).
-   * Called after initial render and on window resize.
+   * Called after initial render and on window resize. Also serves as the
+   * restorer's retry path — returns true when FuzzyAnchor resolved the
+   * note's saved element so the restorer can decide whether the note is
+   * still eligible for re-attempt on the next MutationObserver pass.
+   *
+   * Returns true only on anchor success. Percentage / manual fallback and
+   * "no note" early-outs return false. Callers without retry semantics
+   * (the window.resize handler) ignore the value.
    */
   updatePosition(uuid) {
     const noteState = activeNotes.get(uuid);
-    if (!noteState) return;
+    if (!noteState) return false;
 
     const { container, placement, anchor, anchorOffset } = noteState;
     let left, top;
@@ -705,21 +717,48 @@ window.StickyEngine = {
         left = placement.left;
         top  = placement.top;
       } else {
-        return; // Unknown format — do nothing rather than misplace the note.
+        return false; // Unknown format — do nothing rather than misplace the note.
       }
     }
 
     container.style.left = `${left}px`;
-    container.style.top  = `${Math.max(0, top)}px`;
+    // No clamp: on normal scrolling documents, top is a constant document
+    // coordinate (rect.top + scrollTop + dy) and is always positive — clamping
+    // accomplished nothing. On app-shell pages where the document doesn't
+    // scroll, scrollTop is always 0, so top tracks rect.top + dy and goes
+    // negative as the anchor scrolls above the viewport. Letting it go negative
+    // makes the note correctly scroll off-screen above (clipped by body's
+    // overflow:hidden); clamping pinned it at viewport top forever.
+    container.style.top  = `${top}px`;
+    return anchorResolved;
   },
 };
 
 // ---------------------------------------------------------------------------
-// Resize: recompute all note positions (page dimensions may have changed)
+// Resize + scroll: recompute all note positions
 // ---------------------------------------------------------------------------
+// On a normal scrolling document, position: absolute on <body> is document-
+// anchored, so notes scroll with content for free. App-shell pages
+// (chatgpt.com, claude.ai, Notion) lock body at overflow: hidden and scroll
+// an internal container — body never moves, so the note appears glued to
+// the screen while the anchor element slides away underneath it. Capture-
+// phase scroll catches scrolls on any element (scroll doesn't bubble but
+// does go through capture), so a single window-level listener covers every
+// scroll container without per-note registration. rAF-throttled because
+// internal scroll containers can fire ~60 events per scroll. Mirrors the
+// marker tool's bindAnchorSync triad — sticky just never got the scroll
+// half until now.
 
-window.addEventListener('resize', () => {
-  for (const uuid of activeNotes.keys()) {
-    window.StickyEngine.updatePosition(uuid);
-  }
-});
+let _stickyResyncRaf = 0;
+function _resyncAllNotes() {
+  if (_stickyResyncRaf) return;
+  _stickyResyncRaf = requestAnimationFrame(() => {
+    _stickyResyncRaf = 0;
+    for (const uuid of activeNotes.keys()) {
+      window.StickyEngine.updatePosition(uuid);
+    }
+  });
+}
+
+window.addEventListener('resize', _resyncAllNotes);
+window.addEventListener('scroll', _resyncAllNotes, { capture: true, passive: true });
