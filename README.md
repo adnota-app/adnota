@@ -142,7 +142,7 @@ Also exposes `generateCSSSelector(el)` as a shared utility (used by the resizer)
 - Autosaves content on a 1.5s debounce
 - **`scrollTo(uuid)`**: public method on `StickyEngine`. Queries `.adnota-sticky-container[data-uuid="${uuid}"]` and smooth-scrolls it into view. Returns `false` when the container isn't currently rendered (mid-restoration, post-SPA-teardown), feeding the scratch pad's GOTO miss-toast.
 - Create undo: `Ctrl+Z` / `Cmd+Z` immediately after placing a note removes it from DOM and storage; also available via toolbar undo button
-- Delete: instant visual hide + 5s undo window before storage commit
+- Delete: synchronous storage commit + visual teardown + 5s undo toast that re-saves and re-renders. Matches marker/highlighter — refreshing the page during the undo window leaves the deletion stuck (the storage row is already gone), unlike the older deferred-commit pattern where a refresh would lose the delete entirely and resurrect the note on next load. Snapshot captures live textarea/tag/dimensions in case the autosave debounce hasn't fired
 - `Alt+S` toggles note visibility via the shared `AdnotaVisibility` controller (see below)
 - Smart Z-index elevation on focus
 - **Tag row**: thin bar at the bottom of each note card (below the textarea, symmetric with the 28px header) holding a `#` glyph and a text input. Optional — leave it blank and the note stores no `tag` field. Focusing the input opens the `AdnotaTags` autocomplete dropdown; writes ride through the same `saveNote` merge path as the textarea and drag/resize persist, so the tag is never lost on reload

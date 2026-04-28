@@ -661,42 +661,77 @@ window.StickyEngine = {
     }
 
     // ── Delete with undo ─────────────────────────────────────────────────────
+    // Mirrors marker/highlighter delete: snapshot full payload, hard-tear-down
+    // visual + drop activeNotes registration, *synchronously* delete from
+    // storage, push an undo entry that re-saves and re-renders. The previous
+    // pattern (display:none + 5s setTimeout to call deleteItem) lost the
+    // delete entirely if the user refreshed within the undo window — the
+    // timer died with the page and the storage row stayed intact, so the
+    // restorer happily resurrected the note on the next load. Storage delete
+    // is now committed before the user can refresh.
     const trashBtn = container.querySelector('.adnota-trash-btn');
-    trashBtn.addEventListener('click', () => {
+    trashBtn.addEventListener('click', async () => {
       window.AdnotaLog?.event('sticky', 'delete', { id: uuid });
-      container.style.display = 'none';
 
-      let committed = false;
-      let deleteTimeout;
-
-      const performUndo = () => {
-        if (committed) return;
-        committed = true;
-        clearTimeout(deleteTimeout);
-        container.style.display = 'block';
-        window.AdnotaUI.dismissToast(toast);
-        window.AdnotaUndo.remove(undoEntry);
+      // Flush latest text/tag/dimensions from DOM in case the autosave
+      // debounce (textarea: 1.5s, ResizeObserver: same) hasn't fired yet.
+      // Same trick tearDownAll uses on SPA route change.
+      const textarea = container.querySelector('.adnota-sticky-textarea');
+      const tagInput = container.querySelector('.adnota-sticky-tag-input');
+      const card = container.querySelector('.adnota-sticky-card');
+      if (textarea && noteState.comments && noteState.comments[0]) {
+        noteState.comments[0].text = textarea.value;
+      }
+      if (tagInput && window.AdnotaTags) {
+        noteState.tag = window.AdnotaTags.normalize(tagInput.value);
+      }
+      const savedDimensions = card
+        ? { width: Math.round(card.offsetWidth), height: Math.round(card.offsetHeight) }
+        : null;
+      const snapshot = {
+        placement:    noteState.placement,
+        comments:     noteState.comments,
+        theme:        noteState.theme,
+        anchor:       noteState.anchor,
+        anchorOffset: noteState.anchorOffset,
+        tag:          noteState.tag,
+        dimensions:   savedDimensions,
       };
 
-      const toast = window.AdnotaUI.showToast('Note deleted', {
-        onUndo: performUndo,
-        timeout: 0, // managed by deleteTimeout below
-      });
+      // Hard teardown — clear the pending-anchor reveal timer (if any),
+      // drop from activeNotes, remove from DOM. Storage delete next.
+      if (noteState.revealTimer) clearTimeout(noteState.revealTimer);
+      activeNotes.delete(uuid);
+      container.remove();
 
-      deleteTimeout = setTimeout(async () => {
-        if (committed) return;
-        committed = true;
-        window.AdnotaUndo.remove(undoEntry);
-        window.AdnotaUI.dismissToast(toast);
-        activeNotes.delete(uuid);
-        container.remove();
-        if (window.AdnotaStorage) {
-          await window.AdnotaStorage.deleteItem(location.hostname, 'uuid', uuid);
+      if (window.AdnotaStorage) {
+        await window.AdnotaStorage.deleteItem(location.hostname, 'uuid', uuid);
+      }
+
+      let consumed = false;
+      const undoEntry = {
+        undo: async () => {
+          if (consumed) return;
+          consumed = true;
+          if (window.AdnotaStorage) {
+            await window.AdnotaStorage.saveNote(
+              location.hostname, location.pathname, uuid, snapshot
+            );
+          }
+          window.StickyEngine.renderNote(
+            snapshot.placement, snapshot.comments, uuid, false,
+            snapshot.dimensions, snapshot.theme,
+            snapshot.anchor, snapshot.anchorOffset, snapshot.tag
+          );
+          window.AdnotaUndo.remove(undoEntry);
         }
-      }, 5000);
-
-      const undoEntry = { undo: performUndo };
+      };
       window.AdnotaUndo.push(undoEntry);
+
+      window.AdnotaUI?.showToast?.('Note deleted', {
+        id: 'adnota-sticky-toast',
+        onUndo: () => undoEntry.undo(),
+      });
     });
 
     return anchorResolved;
