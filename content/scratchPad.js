@@ -21,7 +21,6 @@
 
   let panel        = null;
   let bodyEl       = null;
-  let countEl      = null;
   let copyAllBtn   = null;
   let filterEls    = [];
   let snippetCache = [];
@@ -85,6 +84,9 @@
   // Crosshair / target — clearer "go to this" affordance than an arrow,
   // which reads as "move" or "drag."
   const ICON_GOTO  = `<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="10" cy="10" r="6"/><line x1="10" y1="2" x2="10" y2="5"/><line x1="10" y1="15" x2="10" y2="18"/><line x1="2" y1="10" x2="5" y2="10"/><line x1="15" y1="10" x2="18" y2="10"/></svg>`;
+  // Trash glyph mirrors lib/adnotaUI.js ICONS.trash and pages/sites.js so the
+  // delete affordance reads identically across Home, HUD, and scratch pad.
+  const ICON_TRASH = `<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 17 6"/><path d="M15 6v10a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 9v6"/><path d="M12 9v6"/><path d="M8 6V4h4v2"/></svg>`;
 
   // ── Snippet derivation ────────────────────────────────────────────────────
   async function loadSnippets() {
@@ -148,19 +150,16 @@
       btn.type = 'button';
       btn.className = 'adnota-scratchpad-filter';
       btn.dataset.value = val;
+      btn.dataset.label = label;
       btn.textContent = label;
       btn.addEventListener('click', (e) => {
         e.stopPropagation();
         setFilter(val);
       });
       filters.appendChild(btn);
-      filterEls.push({ btn, value: val });
+      filterEls.push({ btn, value: val, label });
     }
     header.appendChild(filters);
-
-    countEl = document.createElement('span');
-    countEl.className = 'adnota-scratchpad-count';
-    header.appendChild(countEl);
 
     copyAllBtn = document.createElement('button');
     copyAllBtn.type = 'button';
@@ -234,10 +233,10 @@
       highlights: snippetCache.filter(s => s.type === 'highlight').length,
       notes:      snippetCache.filter(s => s.type === 'note').length,
     };
-    for (const { btn, value } of filterEls) {
+    for (const { btn, value, label } of filterEls) {
       btn.classList.toggle('active', value === activeFilter);
+      btn.textContent = `${label} (${counts[value] ?? 0})`;
     }
-    countEl.textContent = String(counts[activeFilter] ?? 0);
 
     bodyEl.replaceChildren();
     if (!list.length) {
@@ -314,7 +313,101 @@
     });
     row.appendChild(copyBtn);
 
+    const trashBtn = document.createElement('button');
+    trashBtn.type = 'button';
+    trashBtn.className = 'adnota-scratchpad-rowtrash';
+    trashBtn.title = snippet.type === 'highlight' ? 'Delete this quote' : 'Delete this note';
+    trashBtn.innerHTML = ICON_TRASH;
+    trashBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      e.preventDefault();
+      deleteSnippet(snippet);
+    });
+    row.appendChild(trashBtn);
+
     return row;
+  }
+
+  // ── Per-item soft-delete ─────────────────────────────────────────────────
+  // Mirrors pages/sites.js deleteFeedItem: snapshot the storage form, splice
+  // it out by id, show a 5s undo toast that re-pushes the snapshot if used.
+  // The storage.onChanged listener already wired up at panel-open re-renders
+  // the body in both directions, so no manual re-render is needed here.
+  async function deleteSnippet(snippet) {
+    const hostname = location.hostname;
+    const actionType = snippet.type === 'highlight' ? 'HIGHLIGHT' : 'NOTE';
+    const idField = snippet.type === 'highlight' ? '_id' : 'uuid';
+    let snapshot;
+
+    try {
+      const data = await chrome.storage.local.get(hostname);
+      const record = data[hostname];
+      if (!record?.items) return;
+
+      const found = record.items.find(
+        i => i.action === actionType && i[idField] === snippet.id
+      );
+      if (!found) return;
+      snapshot = JSON.parse(JSON.stringify(found));
+
+      record.items = record.items.filter(
+        i => !(i.action === actionType && i[idField] === snippet.id)
+      );
+      await chrome.storage.local.set({ [hostname]: record });
+    } catch (err) {
+      console.error('[Adnota Scratchpad] Delete failed:', err);
+      return;
+    }
+
+    window.AdnotaLog?.event('scratchpad', 'delete', { type: snippet.type });
+
+    const noun = snippet.type === 'highlight' ? 'Snippet' : 'Note';
+    showUndoToast(`${noun} deleted`, async () => {
+      try {
+        const again = await chrome.storage.local.get(hostname);
+        const rec = again[hostname] || { items: [] };
+        rec.items = (rec.items || []).concat([snapshot]);
+        await chrome.storage.local.set({ [hostname]: rec });
+        window.AdnotaLog?.event('scratchpad', 'delete-undo', { type: snippet.type });
+      } catch (err) {
+        console.error('[Adnota Scratchpad] Undo failed:', err);
+      }
+    });
+  }
+
+  function showUndoToast(message, onUndo, duration = 5000) {
+    if (!panel) return;
+    let toast = panel.querySelector('.adnota-scratchpad-toast');
+    if (!toast) {
+      toast = document.createElement('div');
+      toast.className = 'adnota-scratchpad-toast';
+      panel.appendChild(toast);
+    }
+    toast.textContent = '';
+    toast.classList.add('has-undo');
+
+    const msg = document.createElement('span');
+    msg.className = 'adnota-scratchpad-toast-msg';
+    msg.textContent = message;
+    toast.appendChild(msg);
+
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'adnota-scratchpad-toast-undo';
+    btn.textContent = 'Undo';
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      clearTimeout(_toastTimer);
+      try { await onUndo?.(); } catch (_) {}
+      toast.classList.remove('visible', 'has-undo');
+    });
+    toast.appendChild(btn);
+
+    toast.classList.add('visible');
+    clearTimeout(_toastTimer);
+    _toastTimer = setTimeout(() => {
+      toast.classList.remove('visible', 'has-undo');
+    }, duration);
   }
 
   async function copyAll() {
@@ -368,6 +461,7 @@
       panel.appendChild(toast);
     }
     toast.textContent = msg;
+    toast.classList.remove('has-undo');
     toast.classList.add('visible');
     clearTimeout(_toastTimer);
     _toastTimer = setTimeout(() => toast.classList.remove('visible'), 2000);
@@ -565,7 +659,6 @@
     panel.remove();
     panel = null;
     bodyEl = null;
-    countEl = null;
     copyAllBtn = null;
     filterEls = [];
     if (storageListener) {
