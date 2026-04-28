@@ -402,6 +402,16 @@ window.StickyEngine = {
     container.dataset.uuid = uuid;
     container.style.position = 'absolute';
 
+    // Hide until anchor resolves so we don't flash at percentage fallback
+    // before snapping to the right spot. Only restoration calls with anchor
+    // data get this treatment — fresh placements (isNew) are positioned by
+    // the user's just-now click, so they reveal immediately. Legacy notes
+    // without anchor data also reveal immediately since the percentage
+    // fallback is their final position. Reveal happens in updatePosition()
+    // on first anchor success or via the backstop timer below.
+    const pendingAnchor = !isNew && !!(anchor && anchorOffset);
+    if (pendingAnchor) container.style.opacity = '0';
+
     const initialText = comments && comments.length > 0 ? comments[0].text : '';
     const createdAt   = comments && comments[0]?.createdAt ? new Date(comments[0].createdAt) : new Date();
     const pad = n => String(n).padStart(2, '0');
@@ -450,6 +460,8 @@ window.StickyEngine = {
       comments,
       originalHostname: location.hostname,
       originalPath: location.pathname,
+      pendingAnchor,
+      revealTimer: null,
     };
     activeNotes.set(uuid, noteState);
 
@@ -459,6 +471,21 @@ window.StickyEngine = {
     if (tagInput) tagInput.value = noteState.tag;
 
     const anchorResolved = this.updatePosition(uuid);
+
+    // If we hid the container waiting for anchor resolution and the first
+    // pass didn't resolve, set a backstop so a permanently-broken anchor
+    // still surfaces the note at percentage fallback. ~1.8s gives the
+    // restorer's mutation observer (1s debounce + 2.5s clamp) one full
+    // retry cycle on app shells before we give up and reveal.
+    if (pendingAnchor && !anchorResolved) {
+      noteState.revealTimer = setTimeout(() => {
+        noteState.revealTimer = null;
+        if (noteState.pendingAnchor) {
+          noteState.pendingAnchor = false;
+          container.style.opacity = '1';
+        }
+      }, 1800);
+    }
 
     // ── Persist resize dimensions ────────────────────────────────────────────
     // ResizeObserver fires whenever the user drags the card's resize handle.
@@ -730,6 +757,20 @@ window.StickyEngine = {
     // makes the note correctly scroll off-screen above (clipped by body's
     // overflow:hidden); clamping pinned it at viewport top forever.
     container.style.top  = `${top}px`;
+
+    // First successful anchor resolution reveals a pending-anchor note.
+    // Backstop timer is cleared because we beat it. Subsequent calls (resize,
+    // scroll, restorer retry) hit the early-out since pendingAnchor is now
+    // false. The 0.2s opacity transition on .adnota-sticky-container handles
+    // the fade for free.
+    if (anchorResolved && noteState.pendingAnchor) {
+      noteState.pendingAnchor = false;
+      if (noteState.revealTimer) {
+        clearTimeout(noteState.revealTimer);
+        noteState.revealTimer = null;
+      }
+      container.style.opacity = '1';
+    }
     return anchorResolved;
   },
 };
