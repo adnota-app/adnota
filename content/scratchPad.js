@@ -391,50 +391,62 @@
     };
   }
 
+  // chrome.storage calls can throw SYNCHRONOUSLY (not just reject) when the
+  // extension context is invalidated — e.g., when the extension is reloaded
+  // while a tab still has old content scripts. .catch() doesn't catch sync
+  // throws, so each chrome.* call is wrapped in try/catch here.
   function restorePosition() {
-    chrome.storage.local.get(POSITION_KEY).then((data) => {
-      const all = data[POSITION_KEY] || {};
-      const pos = all[host()];
-      if (!pos?.left || !pos?.top) return;
-      panel.style.right = 'auto';
-      panel.style.bottom = 'auto';
-      panel.style.left = pos.left;
-      panel.style.top = pos.top;
-      // Re-clamp in case the viewport shrank since the saved position.
-      const r = panel.getBoundingClientRect();
-      const c = clampPosition(parseFloat(pos.left), parseFloat(pos.top), r.width, r.height);
-      panel.style.left = c.left + 'px';
-      panel.style.top  = c.top + 'px';
-    }).catch(() => {});
+    try {
+      chrome.storage.local.get(POSITION_KEY).then((data) => {
+        const all = data[POSITION_KEY] || {};
+        const pos = all[host()];
+        if (!pos?.left || !pos?.top) return;
+        panel.style.right = 'auto';
+        panel.style.bottom = 'auto';
+        panel.style.left = pos.left;
+        panel.style.top = pos.top;
+        // Re-clamp in case the viewport shrank since the saved position.
+        const r = panel.getBoundingClientRect();
+        const c = clampPosition(parseFloat(pos.left), parseFloat(pos.top), r.width, r.height);
+        panel.style.left = c.left + 'px';
+        panel.style.top  = c.top + 'px';
+      }).catch(() => {});
+    } catch (_) {}
   }
 
   function restoreSize() {
-    chrome.storage.local.get(SIZE_KEY).then((data) => {
-      const all = data[SIZE_KEY] || {};
-      const size = all[host()];
-      if (size?.width && size?.height) {
-        panel.style.width  = size.width + 'px';
-        panel.style.height = size.height + 'px';
-      }
-    }).catch(() => {});
+    try {
+      chrome.storage.local.get(SIZE_KEY).then((data) => {
+        const all = data[SIZE_KEY] || {};
+        const size = all[host()];
+        if (size?.width && size?.height) {
+          panel.style.width  = size.width + 'px';
+          panel.style.height = size.height + 'px';
+        }
+      }).catch(() => {});
+    } catch (_) {}
   }
 
   function persistPosition() {
-    chrome.storage.local.get(POSITION_KEY).then((data) => {
-      const all = data[POSITION_KEY] || {};
-      all[host()] = { left: panel.style.left, top: panel.style.top };
-      safeStorageSet({ [POSITION_KEY]: all });
-    }).catch(() => {});
+    try {
+      chrome.storage.local.get(POSITION_KEY).then((data) => {
+        const all = data[POSITION_KEY] || {};
+        all[host()] = { left: panel.style.left, top: panel.style.top };
+        safeStorageSet({ [POSITION_KEY]: all });
+      }).catch(() => {});
+    } catch (_) {}
   }
 
   function persistSize() {
     if (!panel) return;
     const r = panel.getBoundingClientRect();
-    chrome.storage.local.get(SIZE_KEY).then((data) => {
-      const all = data[SIZE_KEY] || {};
-      all[host()] = { width: Math.round(r.width), height: Math.round(r.height) };
-      safeStorageSet({ [SIZE_KEY]: all });
-    }).catch(() => {});
+    try {
+      chrome.storage.local.get(SIZE_KEY).then((data) => {
+        const all = data[SIZE_KEY] || {};
+        all[host()] = { width: Math.round(r.width), height: Math.round(r.height) };
+        safeStorageSet({ [SIZE_KEY]: all });
+      }).catch(() => {});
+    } catch (_) {}
   }
 
   // ── Drag ──────────────────────────────────────────────────────────────────
@@ -525,7 +537,7 @@
       if (area !== 'local') return;
       if (changes[host()] || changes[FILTER_KEY]) refresh();
     };
-    chrome.storage.onChanged.addListener(storageListener);
+    try { chrome.storage.onChanged.addListener(storageListener); } catch (_) {}
 
     // SPA URL change → re-pull snippets for the new path. Mirrors the dock's
     // own scratch-button refresh, kept independent so the panel doesn't have
@@ -557,7 +569,7 @@
     copyAllBtn = null;
     filterEls = [];
     if (storageListener) {
-      chrome.storage.onChanged.removeListener(storageListener);
+      try { chrome.storage.onChanged.removeListener(storageListener); } catch (_) {}
       storageListener = null;
     }
     if (navListener && window.navigation?.removeEventListener) {

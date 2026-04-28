@@ -234,6 +234,13 @@ window.FuzzyAnchor = {
     // commonAncestorContainer of the original Range), and applyStoredHighlight
     // can then walk its textNodes cleanly without picking up unrelated
     // surrounding content with mismatched punctuation/whitespace.
+    //
+    // Confirmed load-bearing on ChatGPT pages with multiple code blocks —
+    // sibling <code> elements share enough tokens (tag, div, size, etc.) to
+    // both clear the 40 threshold, and without containment filtering the
+    // wrong one wins on raw score and apply fails forever. The size-ratio
+    // guard in Phase A3 doesn't catch this because both candidates are
+    // similar size to the saved fingerprint.
     const containing = [];
     for (const { el, score } of scored) {
       if (score < 40) break;
