@@ -13,6 +13,7 @@
   'use strict';
 
   const FILTER_KEY    = 'adnotaScratchFilter';
+  const TAG_BAR_KEY   = 'adnotaScratchTagBarVisible';
   const POSITION_KEY  = 'adnotaScratchPosition';
   const SIZE_KEY      = 'adnotaScratchSize';
   const REDACTION     = 'adnota-theme-black';
@@ -23,8 +24,16 @@
   let bodyEl       = null;
   let copyAllBtn   = null;
   let filterEls    = [];
+  let tagBarEl     = null;
+  let tagToggleBtn = null;
   let snippetCache = [];
   let activeFilter = 'all';
+  // Tag filter is in-memory only — resets when the panel closes. The bar's
+  // visibility persists globally so opening the panel restores the user's
+  // chrome preference, but the active chip clears so a stale tag doesn't
+  // hide everything on a new host.
+  let activeTag    = null;
+  let tagBarVisible = false;
   let storageListener = null;
   let resizeObserver  = null;
   let resizePersistTimer = null;
@@ -87,6 +96,9 @@
   // Trash glyph mirrors lib/adnotaUI.js ICONS.trash and pages/sites.js so the
   // delete affordance reads identically across Home, HUD, and scratch pad.
   const ICON_TRASH = `<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 17 6"/><path d="M15 6v10a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 9v6"/><path d="M12 9v6"/><path d="M8 6V4h4v2"/></svg>`;
+  // Funnel — toggles the tag-filter sub-header. Mirrors the FILTER label on
+  // pages/sites.js but as an icon to keep the panel header dense.
+  const ICON_FILTER = `<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4h14l-5.5 7v5l-3 1.5V11L3 4z"/></svg>`;
 
   // ── Snippet derivation ────────────────────────────────────────────────────
   async function loadSnippets() {
@@ -120,9 +132,11 @@
   }
 
   function filtered() {
-    if (activeFilter === 'highlights') return snippetCache.filter(s => s.type === 'highlight');
-    if (activeFilter === 'notes')      return snippetCache.filter(s => s.type === 'note');
-    return snippetCache;
+    let list = snippetCache;
+    if (activeFilter === 'highlights') list = list.filter(s => s.type === 'highlight');
+    else if (activeFilter === 'notes') list = list.filter(s => s.type === 'note');
+    if (activeTag) list = list.filter(s => s.tag === activeTag);
+    return list;
   }
 
   // ── Public helper used by the dock to drive its disabled state ───────────
@@ -161,6 +175,17 @@
     }
     header.appendChild(filters);
 
+    tagToggleBtn = document.createElement('button');
+    tagToggleBtn.type = 'button';
+    tagToggleBtn.className = 'adnota-scratchpad-filterbtn';
+    tagToggleBtn.title = 'Filter by tag';
+    tagToggleBtn.innerHTML = ICON_FILTER;
+    tagToggleBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      setTagBarVisible(!tagBarVisible);
+    });
+    header.appendChild(tagToggleBtn);
+
     copyAllBtn = document.createElement('button');
     copyAllBtn.type = 'button';
     copyAllBtn.className = 'adnota-scratchpad-copyall';
@@ -183,6 +208,11 @@
     header.appendChild(closeBtn);
 
     panel.appendChild(header);
+
+    tagBarEl = document.createElement('div');
+    tagBarEl.className = 'adnota-scratchpad-tagbar';
+    tagBarEl.hidden = true;
+    panel.appendChild(tagBarEl);
 
     bodyEl = document.createElement('div');
     bodyEl.className = 'adnota-scratchpad-body';
@@ -228,6 +258,9 @@
     if (!panel) return;
     const list = filtered();
 
+    // Type-filter counts reflect total per type, ignoring the active tag —
+    // mirrors how the home page tag chips work, so each chip group shows
+    // absolute availability rather than a recursive intersection.
     const counts = {
       all:        snippetCache.length,
       highlights: snippetCache.filter(s => s.type === 'highlight').length,
@@ -242,6 +275,8 @@
       c.textContent = String(counts[value] ?? 0);
       btn.appendChild(c);
     }
+
+    renderTagBar();
 
     bodyEl.replaceChildren();
     if (!list.length) {
@@ -277,12 +312,8 @@
     }
     row.appendChild(text);
 
-    if (snippet.tag) {
-      const tag = document.createElement('div');
-      tag.className = 'adnota-scratchpad-tag';
-      tag.textContent = `#${snippet.tag}`;
-      row.appendChild(tag);
-    }
+    // Tags deliberately omitted from the row — they pollute drag-select copy.
+    // Use the funnel button in the header to filter by tag instead.
 
     const gotoBtn = document.createElement('button');
     gotoBtn.type = 'button';
@@ -480,6 +511,95 @@
     window.AdnotaLog?.event('scratchpad', 'filter-change', { filter: value });
   }
 
+  function setActiveTag(tag) {
+    const next = tag || null;
+    if (activeTag === next) return;
+    activeTag = next;
+    render();
+    window.AdnotaLog?.event('scratchpad', 'tag-filter-change', { tag: activeTag });
+  }
+
+  function setTagBarVisible(visible) {
+    tagBarVisible = !!visible;
+    safeStorageSet({ [TAG_BAR_KEY]: tagBarVisible });
+    if (!tagBarVisible && activeTag) {
+      // Clearing the bar also clears any active tag — otherwise the panel
+      // would silently filter with no visible affordance.
+      activeTag = null;
+      render();
+    } else {
+      renderTagBar();
+    }
+    window.AdnotaLog?.event('scratchpad', 'tag-bar-toggle', { visible: tagBarVisible });
+  }
+
+  // Aggregate tag counts across the full snippet cache (ignores the active
+  // type filter, same approach as pages/sites.js so the chip strip shows
+  // absolute availability).
+  function computeTagCounts() {
+    const counts = {};
+    for (const s of snippetCache) {
+      if (s.tag) counts[s.tag] = (counts[s.tag] || 0) + 1;
+    }
+    return counts;
+  }
+
+  function renderTagBar() {
+    if (!tagBarEl || !tagToggleBtn) return;
+    tagToggleBtn.classList.toggle('active', tagBarVisible);
+    if (!tagBarVisible) {
+      tagBarEl.hidden = true;
+      tagBarEl.replaceChildren();
+      return;
+    }
+    tagBarEl.hidden = false;
+    tagBarEl.replaceChildren();
+
+    const tagCounts = computeTagCounts();
+    const sorted = Object.keys(tagCounts).sort((a, b) =>
+      (tagCounts[b] - tagCounts[a]) || a.localeCompare(b)
+    );
+
+    if (sorted.length === 0) {
+      const empty = document.createElement('span');
+      empty.className = 'adnota-scratchpad-tagbar-empty';
+      empty.textContent = 'No tags on this page yet.';
+      tagBarEl.appendChild(empty);
+      return;
+    }
+
+    const allChip = document.createElement('button');
+    allChip.type = 'button';
+    allChip.className = 'adnota-scratchpad-tagchip' + (activeTag === null ? ' active' : '');
+    allChip.textContent = 'All';
+    allChip.addEventListener('click', (e) => {
+      e.stopPropagation();
+      setActiveTag(null);
+    });
+    tagBarEl.appendChild(allChip);
+
+    for (const tag of sorted) {
+      const chip = document.createElement('button');
+      chip.type = 'button';
+      chip.className = 'adnota-scratchpad-tagchip' + (activeTag === tag ? ' active' : '');
+      const hash = document.createElement('span');
+      hash.className = 'adnota-scratchpad-tagchip-hash';
+      hash.textContent = '#';
+      const name = document.createElement('span');
+      name.className = 'adnota-scratchpad-tagchip-name';
+      name.textContent = tag;
+      const count = document.createElement('span');
+      count.className = 'adnota-scratchpad-tagchip-count';
+      count.textContent = String(tagCounts[tag]);
+      chip.append(hash, name, count);
+      chip.addEventListener('click', (e) => {
+        e.stopPropagation();
+        setActiveTag(activeTag === tag ? null : tag);
+      });
+      tagBarEl.appendChild(chip);
+    }
+  }
+
   // ── Position + size persistence (per-host) ────────────────────────────────
   function clampPosition(left, top, w, h) {
     const vw = window.innerWidth, vh = window.innerHeight;
@@ -623,8 +743,9 @@
     buildPanel();
 
     try {
-      const data = await chrome.storage.local.get(FILTER_KEY);
+      const data = await chrome.storage.local.get([FILTER_KEY, TAG_BAR_KEY]);
       activeFilter = data[FILTER_KEY] ?? 'all';
+      tagBarVisible = !!data[TAG_BAR_KEY];
     } catch (_) {}
 
     snippetCache = await loadSnippets();
@@ -665,7 +786,10 @@
     panel = null;
     bodyEl = null;
     copyAllBtn = null;
+    tagBarEl = null;
+    tagToggleBtn = null;
     filterEls = [];
+    activeTag = null;
     if (storageListener) {
       try { chrome.storage.onChanged.removeListener(storageListener); } catch (_) {}
       storageListener = null;
