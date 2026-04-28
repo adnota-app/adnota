@@ -69,6 +69,7 @@
   align-items: center;
   gap: 4px;
   flex: 0 0 auto;
+  margin-right: auto;
 }
 
 .adnota-scratchpad-filter {
@@ -93,14 +94,6 @@
   border-bottom: 1px solid var(--adnota-accent, #7c3aed);
   border-radius: 0;
   padding-bottom: 2px;
-}
-
-.adnota-scratchpad-count {
-  flex: 0 0 auto;
-  font-size: 11px;
-  color: rgba(255, 255, 255, 0.4);
-  font-variant-numeric: tabular-nums;
-  margin-right: auto;
 }
 
 .adnota-scratchpad-copyall {
@@ -205,7 +198,8 @@
 }
 
 .adnota-scratchpad-rowcopy,
-.adnota-scratchpad-rowgoto {
+.adnota-scratchpad-rowgoto,
+.adnota-scratchpad-rowtrash {
   position: absolute;
   top: 2px;
   appearance: none;
@@ -223,19 +217,26 @@
   opacity: 0;
   transition: opacity 0.15s ease, color 0.15s ease, background 0.15s ease;
 }
-.adnota-scratchpad-rowcopy { right: 0; }
-.adnota-scratchpad-rowgoto { right: 26px; }
+.adnota-scratchpad-rowtrash { right: 0; }
+.adnota-scratchpad-rowcopy  { right: 26px; }
+.adnota-scratchpad-rowgoto  { right: 52px; }
 
 .adnota-scratchpad-rowcopy svg,
-.adnota-scratchpad-rowgoto svg { width: 14px; height: 14px; }
+.adnota-scratchpad-rowgoto svg,
+.adnota-scratchpad-rowtrash svg { width: 14px; height: 14px; }
 
 .adnota-scratchpad-row:hover .adnota-scratchpad-rowcopy,
-.adnota-scratchpad-row:hover .adnota-scratchpad-rowgoto { opacity: 1; }
+.adnota-scratchpad-row:hover .adnota-scratchpad-rowgoto,
+.adnota-scratchpad-row:hover .adnota-scratchpad-rowtrash { opacity: 1; }
 
 .adnota-scratchpad-rowcopy:hover,
 .adnota-scratchpad-rowgoto:hover {
   color: #c084fc;
   background: rgba(124, 58, 237, 0.12);
+}
+.adnota-scratchpad-rowtrash:hover {
+  color: #f87171;
+  background: rgba(248, 113, 113, 0.12);
 }
 .adnota-scratchpad-rowcopy.copied {
   opacity: 1;
@@ -243,17 +244,21 @@
   background: rgba(134, 239, 172, 0.12);
 }
 
-/* Inline toast — only ever one visible, anchored to the panel bottom so it
-   can't be missed. */
+/* Inline toast — anchored to the panel bottom. Both the passive goto-miss
+   notice and the per-item delete-with-undo use this surface. The .has-undo
+   variant flips pointer-events back on so the Undo button is clickable. */
 .adnota-scratchpad-toast {
   position: absolute;
   left: 50%;
   bottom: 12px;
   transform: translateX(-50%) translateY(8px);
-  background: rgba(20, 20, 20, 0.92);
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  background: rgba(20, 20, 20, 0.94);
   color: #f3f4f6;
   font-size: 12px;
-  padding: 6px 12px;
+  padding: 6px 10px 6px 12px;
   border-radius: 6px;
   border: 1px solid rgba(255, 255, 255, 0.1);
   pointer-events: none;
@@ -261,10 +266,31 @@
   transition: opacity 0.15s ease, transform 0.18s ease;
   z-index: 1;
   white-space: nowrap;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
 }
 .adnota-scratchpad-toast.visible {
   opacity: 1;
   transform: translateX(-50%) translateY(0);
+}
+.adnota-scratchpad-toast.has-undo {
+  pointer-events: auto;
+}
+.adnota-scratchpad-toast-msg { color: #f3f4f6; }
+.adnota-scratchpad-toast-undo {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: #c084fc;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.adnota-scratchpad-toast-undo:hover {
+  background: rgba(124, 58, 237, 0.18);
+  color: #e9d5ff;
 }
 
 /* Don't print the panel — same behavior as the dock. */
