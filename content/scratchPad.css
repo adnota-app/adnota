@@ -153,6 +153,103 @@
   background: rgba(239, 68, 68, 0.12);
 }
 
+/* Funnel toggle: same 22×22 footprint as the close button so the right-side
+   header trio reads as a row. Active state borrows brand purple to mirror
+   the active type-filter pill. */
+.adnota-scratchpad-filterbtn {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.5);
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: color 0.15s ease, background 0.15s ease;
+}
+.adnota-scratchpad-filterbtn svg { width: 14px; height: 14px; }
+.adnota-scratchpad-filterbtn:hover {
+  color: #e9d5ff;
+  background: rgba(124, 58, 237, 0.18);
+}
+.adnota-scratchpad-filterbtn.active {
+  color: var(--adnota-accent, #c084fc);
+  background: rgba(124, 58, 237, 0.18);
+}
+
+/* ── Tag-filter sub-header ───────────────────────────────────────────────── */
+/* Hidden by default (controlled by the funnel toggle). When visible, sits
+   between the header and body so the chip row scrolls with neither — same
+   layout as the home page tag bar but scaled to the panel width. */
+.adnota-scratchpad-tagbar {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 8px 10px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  background: rgba(0, 0, 0, 0.18);
+}
+.adnota-scratchpad-tagbar[hidden] { display: none; }
+
+.adnota-scratchpad-tagbar-empty {
+  font-size: 11.5px;
+  color: rgba(255, 255, 255, 0.4);
+  font-style: italic;
+}
+
+.adnota-scratchpad-tagchip {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 8px;
+  border: 1px solid rgba(124, 58, 237, 0.22);
+  background: rgba(15, 15, 26, 0.6);
+  color: rgba(220, 220, 230, 0.75);
+  border-radius: 999px;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  line-height: 1.2;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+.adnota-scratchpad-tagchip:hover {
+  background: rgba(124, 58, 237, 0.16);
+  border-color: rgba(124, 58, 237, 0.4);
+  color: #ffffff;
+}
+.adnota-scratchpad-tagchip.active {
+  background: #7c3aed;
+  border-color: #7c3aed;
+  color: #ffffff;
+  font-weight: 600;
+}
+.adnota-scratchpad-tagchip-hash {
+  opacity: 0.7;
+  font-weight: 700;
+}
+.adnota-scratchpad-tagchip-count {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: rgba(124, 58, 237, 0.22);
+  color: #c084fc;
+  margin-left: 2px;
+  font-variant-numeric: tabular-nums;
+}
+.adnota-scratchpad-tagchip.active .adnota-scratchpad-tagchip-count {
+  background: rgba(255, 255, 255, 0.22);
+  color: #ffffff;
+}
+
 /* ── Body ────────────────────────────────────────────────────────────────── */
 .adnota-scratchpad-body {
   flex: 1 1 auto;
@@ -220,13 +317,6 @@
   font-family: monospace;
   letter-spacing: -1px;
   color: rgba(255, 255, 255, 0.55);
-}
-
-.adnota-scratchpad-tag {
-  margin-top: 4px;
-  font-size: 12px;
-  color: rgba(255, 255, 255, 0.4);
-  font-weight: 400;
 }
 
 .adnota-scratchpad-rowcopy,
