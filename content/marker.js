@@ -1642,6 +1642,35 @@ window.addEventListener('blur', () => {
   syncOverlayForShift();
 });
 
+// Self-correct stale shift-mode state. The blur backstop above catches
+// alt-tab and devtools, but macOS Shift+Cmd+4 (the screenshot crosshair)
+// intercepts the Shift keyup at the OS level *without* dropping browser
+// focus — so we receive the keydown but never the keyup, the blur listener
+// never fires, and the class stays stuck. Symptom: every .adnota-marker-
+// wrapper keeps pointer-events:auto via the html.adnota-shift-mode CSS rule
+// in marker.css, wheel events that land on a marker wrapper die in the
+// fixed-overlay's no-scrollable-ancestor chain, and the page appears to
+// have scroll-locked. Pressing Shift again produces a clean keydown→keyup
+// pair that finally clears the class — but users shouldn't have to know
+// that recovery dance.
+//
+// e.shiftKey is the browser's authoritative read of the modifier at event
+// time. If it says Shift isn't held, our class is stale by definition.
+// Capture-phase so we reconcile before any handler that branches on the
+// class. Wired to a few common events so any user activity recovers — the
+// early-out is a single ANDed boolean check, so this is essentially free
+// when state already matches.
+const reconcileShiftState = (e) => {
+  if (e.shiftKey) return;
+  if (!document.documentElement.classList.contains('adnota-shift-mode')) return;
+  document.documentElement.classList.remove('adnota-shift-mode');
+  syncOverlayForShift();
+};
+document.addEventListener('pointermove', reconcileShiftState, { capture: true, passive: true });
+document.addEventListener('wheel', reconcileShiftState, { capture: true, passive: true });
+document.addEventListener('keydown', reconcileShiftState, { capture: true });
+document.addEventListener('pointerdown', reconcileShiftState, { capture: true });
+
 // ═════════════════════════════════════════════════════════════════════════════
 // OVERLAY INIT + STATE SUBSCRIPTION
 // ═════════════════════════════════════════════════════════════════════════════
