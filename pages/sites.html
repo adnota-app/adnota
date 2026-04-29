@@ -172,6 +172,29 @@
   <!-- ─── Toast ─── -->
   <div id="toast" class="toast" aria-live="polite"></div>
 
+  <!-- ─── Bug report (floating, bottom-right) ───
+       Pre-release feedback path. Footer is dead real-estate on long feeds,
+       so a small floating button is the only place users will actually see
+       this prompt. Popover is opt-in (click to open) so the page stays calm
+       at rest. -->
+  <div id="bug-report" class="bug-report">
+    <button id="bug-report-btn" class="bug-report-btn" type="button"
+            aria-label="Report a bug" aria-expanded="false"
+            aria-controls="bug-report-popover">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+           stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <rect x="3" y="5" width="18" height="14" rx="2"/>
+        <path d="m3 7 9 6 9-6"/>
+      </svg>
+    </button>
+    <div id="bug-report-popover" class="bug-report-popover" role="dialog"
+         aria-label="Report a bug" hidden>
+      <h3 class="bug-report-title">Spot a bug?</h3>
+      <p class="bug-report-body">If something looks off, just email me and I'll take a look.</p>
+      <a class="bug-report-email" href="mailto:michael@adnota.app?subject=Adnota%20bug">michael@adnota.app</a>
+    </div>
+  </div>
+
   <script src="../lib/adnotaUI.js"></script>
   <script src="../lib/tagIndex.js"></script>
   <script src="sites.js"></script>
