@@ -552,6 +552,25 @@ function showDeleteBtn(id, rects) {
   deleteBtnHighlightId = id;
 }
 
+// Grace period before the ✕ disappears after the cursor leaves the highlight.
+// Without it, the moment a user moves off the highlighted text the ✕ vanishes
+// — and the gap between highlight and ✕ becomes a no-fly zone. The delay lets
+// the cursor travel from the highlight to the ✕ (or back onto a different
+// highlight rect) without the affordance flickering out.
+const HIDE_DELAY_MS = 400;
+let hideTimer = 0;
+function scheduleHide() {
+  if (hideTimer) return;
+  hideTimer = setTimeout(() => {
+    hideTimer = 0;
+    hideTagTooltip();
+    hideDeleteBtn();
+  }, HIDE_DELAY_MS);
+}
+function cancelHide() {
+  if (hideTimer) { clearTimeout(hideTimer); hideTimer = 0; }
+}
+
 let pendingHitTest = 0;
 let lastPointer = null;
 document.addEventListener('mousemove', (e) => {
@@ -560,24 +579,30 @@ document.addEventListener('mousemove', (e) => {
   pendingHitTest = requestAnimationFrame(() => {
     pendingHitTest = 0;
     if (!lastPointer) return;
-    if (liveHighlights.size === 0) { hideTagTooltip(); hideDeleteBtn(); return; }
+    if (liveHighlights.size === 0) {
+      cancelHide();
+      hideTagTooltip();
+      hideDeleteBtn();
+      return;
+    }
     // Cursor on the ✕ itself → keep it visible, no tooltip.
-    if (deleteBtnEl && lastPointer.target === deleteBtnEl) {
+    if (deleteBtnEl && (lastPointer.target === deleteBtnEl || deleteBtnEl.contains(lastPointer.target))) {
+      cancelHide();
       hideTagTooltip();
       return;
     }
-    // Any other Adnota UI surface → stand down.
+    // Any other Adnota UI surface → schedule hide (don't snap-hide — gives
+    // the user the same grace window as off-highlight moves).
     if (window.AdnotaUI?.isAdnotaElement(lastPointer.target)) {
-      hideTagTooltip();
-      hideDeleteBtn();
+      scheduleHide();
       return;
     }
     const hit = findHighlightAt(lastPointer.x, lastPointer.y);
     if (!hit) {
-      hideTagTooltip();
-      hideDeleteBtn();
+      scheduleHide();
       return;
     }
+    cancelHide();
     if (hit.entry.tag) showTagTooltip(hit.entry.tag, lastPointer.x, lastPointer.y);
     else hideTagTooltip();
     showDeleteBtn(hit.id, hit.rects);
@@ -586,8 +611,8 @@ document.addEventListener('mousemove', (e) => {
 
 // Viewport changes invalidate cached rects. Hiding is cheaper than tracking;
 // the next mousemove re-tests.
-window.addEventListener('scroll', () => { hideTagTooltip(); hideDeleteBtn(); }, { passive: true, capture: true });
-window.addEventListener('resize', () => { hideTagTooltip(); hideDeleteBtn(); }, { passive: true });
+window.addEventListener('scroll', () => { cancelHide(); hideTagTooltip(); hideDeleteBtn(); }, { passive: true, capture: true });
+window.addEventListener('resize', () => { cancelHide(); hideTagTooltip(); hideDeleteBtn(); }, { passive: true });
 
 // Single-item delete. Tears down visual (CSS registry entry or fallback
 // wrapper), drops the storage row, pushes an undo, and shows a 5s toast —
@@ -601,6 +626,7 @@ async function deleteHighlight(id) {
   if (!payload) return null;
   window.AdnotaLog?.event('highlight', 'delete', { id, color: payload.color, text: payload.text });
 
+  const wasFallback = !!entry.fallbackEl;
   if (entry.fallbackEl) {
     entry.fallbackEl._adnotaCleanup?.();
     entry.fallbackEl.remove();
@@ -610,6 +636,18 @@ async function deleteHighlight(id) {
   liveHighlights.delete(id);
 
   await window.AdnotaStorage.deleteItem(location.hostname, '_id', id);
+
+  // Defensive: CSS Custom Highlights' Highlight.delete(range) is object-
+  // identity based. Most of the time the live entry's Range is the exact
+  // same reference that was added to the registry, but a re-apply through
+  // pruneStaleHighlights / restorer can — in rare SPA edge cases — leave a
+  // duplicate range painted that we can't surgically remove. Storage is
+  // already authoritative at this point, so rebuilding from storage clears
+  // anything stranded and reflects reality. Skipped for fallback because
+  // wrapper.remove() is definitive.
+  if (!wasFallback && window.AdnotaUI?._rebuildLiveHighlights) {
+    await window.AdnotaUI._rebuildLiveHighlights();
+  }
 
   let consumed = false;
   const undoEntry = {
