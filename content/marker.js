@@ -1711,3 +1711,59 @@ window.AdnotaState.subscribe(state => {
   }
 });
 
+// ─── Scroll passthrough while DRAW mode is idle ─────────────────────────────
+// Entering a tool shouldn't lock the user out of scrolling the page they're
+// reading — the extension should feel invisible. The capture canvas is
+// position:fixed full-viewport with pointer-events:auto, which is fine on
+// normal scrolling documents (browser's native scroll-chain finds <html>
+// and scrolls), but app shells like claude.ai / chatgpt.com put
+// overflow:hidden on <body> and scroll an internal container. The wheel
+// event hits the canvas, the browser walks up the canvas's ancestor chain
+// looking for a scrollable element, finds none, and the scroll dies.
+//
+// Forward the wheel to the topmost non-Adnota scrollable ancestor under
+// the cursor instead. Mid-stroke (capturePath / captureShape / drag-to-move)
+// we deliberately block scroll — letting it through would create cross-
+// viewport shapes and disconnected pen lines as the page slides under the
+// gesture's coords.
+document.addEventListener('wheel', (e) => {
+  if (!captureSvg || captureSvg.style.display !== 'block') return;
+
+  // Mid-action: block scroll so the in-progress gesture doesn't end up
+  // spanning a viewport's worth of scroll delta.
+  if (capturePath || captureShape || moveDragState) {
+    e.preventDefault();
+    return;
+  }
+
+  // Idle: find the page element under the cursor (skipping our own chrome —
+  // toolbars, sticky notes, dock — so a wheel over a sticky note doesn't
+  // try to scroll it as a page). Then walk up to its nearest scrollable
+  // ancestor and dispatch the scroll there. Mirrors the browser's own
+  // scroll-chain logic: overflow auto/scroll AND content overflows the box.
+  const stack = document.elementsFromPoint(e.clientX, e.clientY);
+  const target = stack.find(el => !el.closest('[data-adnota-ui]'));
+  if (!target) return;
+
+  let node = target;
+  while (node && node !== document.documentElement) {
+    const cs = getComputedStyle(node);
+    const scrollsY = (cs.overflowY === 'auto' || cs.overflowY === 'scroll') &&
+                     node.scrollHeight > node.clientHeight;
+    const scrollsX = (cs.overflowX === 'auto' || cs.overflowX === 'scroll') &&
+                     node.scrollWidth > node.clientWidth;
+    if (scrollsY || scrollsX) {
+      e.preventDefault();
+      node.scrollBy(e.deltaX, e.deltaY);
+      return;
+    }
+    node = node.parentElement;
+  }
+
+  // No scrollable ancestor found in the page subtree. On a normally-
+  // scrolling document the browser's native chain reaches <html> and
+  // scrolls it for free (touch-action: pan-x pan-y on the canvas allows
+  // this). On overflow:hidden app shells with no internal scroll container
+  // under the cursor, there's genuinely nothing to scroll — bail.
+}, { passive: false, capture: true });
+

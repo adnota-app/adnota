@@ -8,7 +8,13 @@
   height: 100vh;
   z-index: 2147483645;
   pointer-events: auto;
-  touch-action: none;
+  /* touch-action: pan-x pan-y so trackpad scroll passes through on normally-
+     scrolling documents without any JS forwarding. App shells with
+     overflow:hidden body still need the wheel-forwarding handler in
+     marker.js since the browser's native scroll-chain dies on the canvas
+     when no ancestor is scrollable. Mid-stroke scroll is blocked by that
+     same handler regardless. Pinch-zoom etc. stays disabled. */
+  touch-action: pan-x pan-y;
   cursor: crosshair;
   background: transparent; /* Invisible overlay */
 }
