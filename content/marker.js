@@ -867,6 +867,23 @@ window.AdnotaMarker = {
     if (overlay) overlay.replaceChildren();
   },
 
+  // Tear down a single marker wrapper by uuid. Used by the restorer's tier
+  // upgrade path: when a marker initially rendered at tier 2 (container
+  // ancestor) or tier 3 (doc pixels) and a later mutation pass finally
+  // resolves the original tier 1 anchor, the existing wrapper has to be
+  // removed before renderMarker can re-render at the right spot
+  // (renderMarker's own duplicate-uuid guard would otherwise short-circuit).
+  // Idempotent — returns false if no wrapper exists for the given uuid.
+  tearDownById: function (uuid) {
+    const overlay = document.getElementById('adnota-marker-overlay');
+    if (!overlay) return false;
+    const wrapper = overlay.querySelector(`.adnota-marker-wrapper[data-uuid="${uuid}"]`);
+    if (!wrapper) return false;
+    wrapper._adnotaCleanup?.();
+    wrapper.remove();
+    return true;
+  },
+
   renderMarker: function (anchorElement, payload) {
     const shapeType = payload.shapeType || (payload.isArrow ? 'arrow' : 'freehand');
 
