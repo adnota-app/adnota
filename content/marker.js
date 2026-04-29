@@ -1727,7 +1727,22 @@ window.AdnotaState.subscribe(state => {
 // viewport shapes and disconnected pen lines as the page slides under the
 // gesture's coords.
 document.addEventListener('wheel', (e) => {
-  if (!captureSvg || captureSvg.style.display !== 'block') return;
+  // Gate on "marker.js is intercepting wheel right now." Two cases:
+  // (1) The capture canvas is visible (pen/arrow/rect/ellipse modes) — it
+  //     covers the full viewport and blocks the wheel from reaching the
+  //     page underneath.
+  // (2) Select mode is active — the AdnotaState subscriber flips every
+  //     marker wrapper to pointer-events:auto so click-to-select works,
+  //     and wheel events that hit a wrapper die because the wrapper sits
+  //     in the fixed-position #adnota-marker-overlay with no scrollable
+  //     ancestor. Without this case the user can't scroll over any marker
+  //     while the Select tool is on.
+  // Text and highlight modes aren't included: highlight uses native
+  // selection (no wheel intercept), and text wrappers are tiny so it's
+  // rare for the wheel to land on one — the native chain handles it.
+  const canvasActive = captureSvg && captureSvg.style.display === 'block';
+  const inSelectMode = window.AdnotaState?.mode === 'select';
+  if (!canvasActive && !inSelectMode) return;
 
   // Mid-action: block scroll so the in-progress gesture doesn't end up
   // spanning a viewport's worth of scroll delta.
