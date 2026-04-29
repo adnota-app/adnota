@@ -1212,6 +1212,84 @@ a.page-path:hover .page-path-icon {
 .toast-undo:hover { background: #7c3aed; }
 
 /* ═══════════════════════════════════════════════
+   BUG REPORT — floating button + popover
+═══════════════════════════════════════════════ */
+.bug-report {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  /* Below the toast (999) so an Undo toast still wins over us. */
+  z-index: 998;
+}
+
+.bug-report-btn {
+  width: 40px; height: 40px;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--adnota-surface);
+  color: var(--adnota-text-muted);
+  border: 1px solid var(--adnota-border-strong);
+  border-radius: 50%;
+  cursor: pointer;
+  box-shadow: var(--adnota-shadow-card);
+  transition: color var(--adnota-t-fast) var(--adnota-ease-out),
+              border-color var(--adnota-t-fast) var(--adnota-ease-out),
+              box-shadow var(--adnota-t-fast) var(--adnota-ease-out),
+              transform var(--adnota-t-fast) var(--adnota-ease-out);
+}
+
+.bug-report-btn:hover {
+  color: var(--adnota-accent);
+  border-color: var(--adnota-accent);
+  box-shadow: var(--adnota-shadow-hover);
+  transform: translateY(-1px);
+}
+
+.bug-report-btn[aria-expanded="true"] {
+  color: var(--adnota-accent);
+  border-color: var(--adnota-accent);
+}
+
+.bug-report-popover {
+  position: absolute;
+  bottom: calc(100% + 10px);
+  right: 0;
+  width: 260px;
+  background: var(--adnota-surface);
+  border: 1px solid var(--adnota-border-strong);
+  border-radius: var(--adnota-r);
+  padding: 14px 16px 16px;
+  box-shadow: var(--adnota-shadow-raise);
+  font-family: var(--adnota-font-body);
+}
+
+.bug-report-title {
+  margin: 0 0 6px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--adnota-text);
+}
+
+.bug-report-body {
+  margin: 0 0 10px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--adnota-text-muted);
+}
+
+.bug-report-email {
+  display: inline-block;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--adnota-accent);
+  text-decoration: none;
+  word-break: break-all;
+}
+
+.bug-report-email:hover {
+  text-decoration: underline;
+}
+
+/* ═══════════════════════════════════════════════
    RESPONSIVE
 ═══════════════════════════════════════════════ */
 @media (max-width: 780px) {

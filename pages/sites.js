@@ -1229,6 +1229,31 @@
     setFeedType(chip.dataset.type);
   });
 
+  // ─── Bug-report popover ──────────────────────────────────────────────────
+  // Floating button (bottom-right) → small note + clickable mailto link.
+  // Pre-release feedback path; opt-in click so the page stays calm at rest.
+  (() => {
+    const root = document.getElementById('bug-report');
+    if (!root) return;
+    const btn = document.getElementById('bug-report-btn');
+    const pop = document.getElementById('bug-report-popover');
+    const setOpen = (open) => {
+      pop.hidden = !open;
+      btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    };
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      setOpen(pop.hidden);
+    });
+    document.addEventListener('click', (e) => {
+      if (pop.hidden) return;
+      if (!root.contains(e.target)) setOpen(false);
+    });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && !pop.hidden) setOpen(false);
+    });
+  })();
+
   // ─── Live storage updates ─────────────────────────────────────────────────
   // Re-build data model whenever storage changes (e.g. user made an edit on
   // another tab while the Sites page was open).
