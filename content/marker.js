@@ -1311,7 +1311,7 @@ function showSelectionUI(wrapper) {
 
   document.documentElement.appendChild(selectBox);
 
-  function syncSelectBox() {
+  function syncSelectBoxNow() {
     if (!selectBox || !selectedWrapper || !selectedWrapper.parentNode) {
       clearSelection();
       return;
@@ -1326,16 +1326,37 @@ function showSelectionUI(wrapper) {
     });
   }
 
-  syncSelectBox();
+  // rAF-throttled wrapper. Has to match the cadence of bindAnchorSync (which
+  // uses the same pattern in lib/adnotaUI.js:183) — running synchronously
+  // here would read the marker wrapper's getBoundingClientRect *before*
+  // bindAnchorSync's rAF callback repositioned it, so the box would freeze
+  // at the wrapper's stale pre-scroll position and only catch up on the
+  // next wheel. Native browser scroll usually fires many tiny scroll events
+  // per gesture so this race was invisible — but our wheel-passthrough
+  // forwarder in DRAW mode emits one big scrollBy per wheel, exposing it.
+  // Both rAF callbacks register during the same scroll event and run in
+  // registration order next frame; bindAnchorSync was registered first
+  // (when the wrapper was rendered) so its wrapper update lands before
+  // syncSelectBox reads.
+  let _selectBoxRaf = 0;
+  function syncSelectBox() {
+    if (_selectBoxRaf) return;
+    _selectBoxRaf = requestAnimationFrame(() => {
+      _selectBoxRaf = 0;
+      syncSelectBoxNow();
+    });
+  }
+
+  syncSelectBoxNow();
   // Capture-phase so we catch scrolls on internal scroll containers (app
   // shells like claude.ai / chatgpt.com put overflow:hidden on <body> and
   // scroll an inner div — scroll doesn't bubble, so a bubble-phase listener
-  // would miss those events and the select box would drift apart from the
-  // marker wrapper, which uses capture-phase via AdnotaUI.bindAnchorSync.
+  // would miss those events).
   window.addEventListener('scroll', syncSelectBox, { capture: true, passive: true });
   window.addEventListener('resize', syncSelectBox);
 
   selectBox._cleanup = () => {
+    if (_selectBoxRaf) cancelAnimationFrame(_selectBoxRaf);
     window.removeEventListener('scroll', syncSelectBox, { capture: true });
     window.removeEventListener('resize', syncSelectBox);
   };
