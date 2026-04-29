@@ -1327,11 +1327,16 @@ function showSelectionUI(wrapper) {
   }
 
   syncSelectBox();
-  window.addEventListener('scroll', syncSelectBox, { passive: true });
+  // Capture-phase so we catch scrolls on internal scroll containers (app
+  // shells like claude.ai / chatgpt.com put overflow:hidden on <body> and
+  // scroll an inner div — scroll doesn't bubble, so a bubble-phase listener
+  // would miss those events and the select box would drift apart from the
+  // marker wrapper, which uses capture-phase via AdnotaUI.bindAnchorSync.
+  window.addEventListener('scroll', syncSelectBox, { capture: true, passive: true });
   window.addEventListener('resize', syncSelectBox);
 
   selectBox._cleanup = () => {
-    window.removeEventListener('scroll', syncSelectBox);
+    window.removeEventListener('scroll', syncSelectBox, { capture: true });
     window.removeEventListener('resize', syncSelectBox);
   };
 }
