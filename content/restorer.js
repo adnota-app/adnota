@@ -1,6 +1,13 @@
 // content/restorer.js
 
 const processedItems = new Set();
+// Markers that rendered at a fallback tier (container ancestor or doc pixels)
+// and are eligible for upgrade to tier 1 (FuzzyAnchor on the original block)
+// on a later mutation pass. Held outside processedItems so the dispatch loop
+// re-enters them; the dispatch checks this set to skip re-rendering at
+// fallback when tier 1 still misses, preventing duplicate wrappers and an
+// every-pass re-paint loop.
+const pendingMarkerUpgrade = new Set();
 let initialRestorationDone = false;
 let lastProcessedUrl = null;
 // In-flight guard: rapid SPA nav (claude.ai chat hopping) can fire the
@@ -115,6 +122,7 @@ async function _performRestoration(trigger) {
   if (isSpaNav) {
     await tearDownAllAnnotations();
     processedItems.clear();
+    pendingMarkerUpgrade.clear();
     initialRestorationDone = false;
   }
   lastProcessedUrl = location.href;
@@ -272,6 +280,8 @@ async function _performRestoration(trigger) {
       item.action === 'HIGHLIGHT' && item.text ? { containsText: item.text } : undefined
     );
 
+    const isMarkerPendingUpgrade = item.action === 'MARKER' && pendingMarkerUpgrade.has(id);
+
     if (match.confidence >= 40 && match.element) {
       // applyStoredHighlight can succeed at the FuzzyAnchor level but still
       // return false if the matched element doesn't actually contain the
@@ -287,6 +297,19 @@ async function _performRestoration(trigger) {
         }
       } else if (item.action === 'MARKER') {
         if (window.AdnotaMarker) {
+          // Tier 1 upgrade: if this marker was previously rendered at tier
+          // 2/3 (visible at the fallback position but not following the
+          // real anchor on app shells), tear the old wrapper down before
+          // re-rendering. renderMarker's own duplicate-uuid guard would
+          // otherwise short-circuit and leave the marker stuck at the
+          // wrong spot forever.
+          if (isMarkerPendingUpgrade) {
+            window.AdnotaMarker.tearDownById?.(item.uuid);
+            pendingMarkerUpgrade.delete(id);
+            window.AdnotaLog?.event('restorer', 'marker-upgrade', {
+              id, score: match.confidence, sel: item.anchor?.cssSelector || null,
+            });
+          }
           window.AdnotaMarker.renderMarker(match.element, item);
           applied = true;
         }
@@ -306,6 +329,14 @@ async function _performRestoration(trigger) {
         });
         brokenThisPass++;
       }
+    } else if (isMarkerPendingUpgrade) {
+      // Already rendered at tier 2/3 on a prior pass; tier 1 still missing.
+      // No re-render (renderMarker's duplicate guard would early-return
+      // anyway, but explicitly skipping avoids the wasted FuzzyAnchor work
+      // on every mutation tick). Stay in pendingMarkerUpgrade so the next
+      // pass tries tier 1 again. Steady-state silence: no broken bump, no
+      // log spam — the existing render is visually fine, we're just
+      // hoping for an upgrade.
     } else if (
       item.action === 'MARKER' &&
       item.fallbackBox &&
@@ -336,7 +367,12 @@ async function _performRestoration(trigger) {
         rendered = true;
         window.AdnotaLog?.event('restorer', 'fallback-used', { id, tier: 'docpx' });
       }
-      if (rendered) processedItems.add(id);
+      // Mark for upgrade rather than processed — tier 1 may resolve on a
+      // later mutation pass once the host page finishes rendering, and we
+      // want to swap the marker to its real anchor when it does. Without
+      // this the marker is locked at tier 2/3 forever (the previous bug:
+      // "doesn't reattach on page load on a lot of the AI sites").
+      if (rendered) pendingMarkerUpgrade.add(id);
       else brokenThisPass++;
     } else {
       // Item hasn't been successfully applied yet — count it as broken for this pass.
