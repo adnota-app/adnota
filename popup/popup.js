@@ -109,6 +109,18 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
   });
 
+  // ─── Auto-restore the dock if it was dismissed on this domain ─────────────
+  // Opening the popup is itself the "I'm engaging with Adnota here" gesture,
+  // and it's the universal recovery path advertised in the first-time dismiss
+  // toast. The content script's restore-dock handler removes the hostname
+  // from adnotaHiddenDomains and unhides — symmetric to the X button.
+  chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+    if (!tabs.length) return;
+    chrome.tabs.sendMessage(tabs[0].id, { action: 'restore-dock' }, () => {
+      void chrome.runtime.lastError;
+    });
+  });
+
   // ─── Live updates — react to keyboard shortcuts while popup is open ────────
   chrome.storage.onChanged.addListener((changes, area) => {
     if (area !== 'local') return;
