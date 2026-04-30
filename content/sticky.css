@@ -272,7 +272,11 @@ html.adnota-hidden .adnota-sticky-container {
   min-height: 52px;
   max-width: 540px;
   border-radius: 12px;
-  overflow: hidden;                                         /* clips the actions section flush */
+  /* overflow stays visible so the corner dismiss X (.adnota-toast-dismiss)
+     can overhang at top:-7px/right:-7px to match the dock's affordance.
+     Children (logo, message, actions) are smaller than the toast and the
+     buttons inside .adnota-toast-actions carry their own border-radius, so
+     none of them bleed past the rounded corners. */
   background: linear-gradient(135deg, #12082b 0%, #0c0519 100%);
   border: 1px solid rgba(124, 58, 237, 0.3);
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(124, 58, 237, 0.08);
@@ -314,10 +318,7 @@ html.adnota-hidden .adnota-sticky-container {
   font-size: 13px;
   font-weight: 500;
   line-height: 1.4;
-  /* Right padding cleared so wrapped message lines don't slide under the
-     vertically-centered dismiss X (16px wide at right:10px → left edge at
-     right:26 from toast edge). 32px keeps a 6px gap. */
-  padding: 0 32px 0 12px;
+  padding: 0 18px 0 12px;
   display: flex;
   align-items: center;
   white-space: normal;                                      /* allow wrapping for longer messages */
@@ -378,37 +379,24 @@ html.adnota-hidden .adnota-sticky-container {
 
 /* Dismiss X — every Adnota surface gets one ("we never get in your way").
    Reuses .adnota-select-delete from marker.css (same red circle as the
-   marker delete and dock dismiss). This rule shrinks it for the toast and
-   tucks it into the top-right corner. Always visible — the toast is itself
-   ephemeral, so an always-on X is more honest than hover-reveal.
+   marker delete and dock dismiss). Overhangs the top-right corner exactly
+   like #adnota-dock .adnota-dock-dismiss does — same shape, same
+   affordance, instantly recognizable. Always visible (no hover reveal) —
+   the toast is itself ephemeral, so an always-on X is more honest than
+   hiding the dismiss path until hover.
 
    Scoped with the parent .adnota-toast class to bump specificity to (0,2,0)
    so it wins on specificity alone over .adnota-select-delete (0,1,0) in
-   marker.css. A bare-class rule (also 0,1,0) would tie and lose by source
-   order — marker.css loads after sticky.css per the manifest — but with
-   the descendant selector specificity is the only thing that matters. Same
-   trick #adnota-dock .adnota-dock-dismiss uses in dock.css. */
+   marker.css. With the descendant selector, source order doesn't matter —
+   specificity is the only thing that does. */
 .adnota-toast .adnota-toast-dismiss {
-  /* Override marker.css base sizing (20px, sized for annotation shapes) —
-     the toast is more compact and the X should read as a small inline
-     control. */
+  /* Match the dock's compact dismiss exactly — same dimensions, same
+     overhang. .adnota-select-delete's base top:-10px / right:-10px would
+     overhang too far for a small ephemeral surface; -7px is the sweet
+     spot the dock has already converged on. */
   width: 16px;
   height: 16px;
-  font-size: 9px;
-  /* Vertically center via margin-top: -half-of-height so it stays aligned
-     with the message text and any Undo button, regardless of toast height
-     (single-line "Marker deleted" and 2-line educational toasts both look
-     balanced). margin-top is used instead of transform: translateY because
-     marker.css's :hover rule sets transform: scale(1.15) — a translateY
-     here would be clobbered on hover. */
-  top: 50%;
-  right: 10px;
-  margin-top: -8px;
-}
-
-/* Push the actions section in so the Undo button doesn't crowd the
-   vertically-centered X. X spans right:10-26 from toast edge; 32px
-   right-padding leaves a 6px gap. Only matters when actions are present. */
-.adnota-toast .adnota-toast-actions {
-  padding-right: 32px;
+  font-size: 8px;
+  top: -7px;
+  right: -7px;
 }
