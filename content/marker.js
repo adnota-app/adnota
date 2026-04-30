@@ -820,20 +820,15 @@ function handlePointerDown(e) {
 function handlePointerMove(e) {
   const mode = window.AdnotaState.mode;
   if (!_overlayModes.has(mode)) return;
-
-  // Reconcile-on-activity, mirrors reconcileShiftState's pattern: if we
-  // think we're mid-draw but the pointer reports no buttons pressed, the
-  // user released somewhere we never heard about (alt-tabbed and released
-  // on another app, OS swallowed the mouseup, etc.). Abort cleanly so the
-  // next pointerdown starts fresh — without this the live shape keeps
-  // tracking the cursor and the user has to click to "finish" it, often
-  // saving a malformed shape at the wrong coords.
-  if (e.buttons === 0 && (capturePath || captureShape)) {
-    abortInFlightDraw();
-    return;
-  }
-
   e.preventDefault();
+
+  // Note: an earlier version of this handler reconciled in-flight draws via
+  // `e.buttons === 0` (mirroring reconcileShiftState). It was too aggressive
+  // — per MDN, `e.buttons` is unreliable on pointermove on some platforms,
+  // which produced spurious mid-stroke aborts that killed normal drawing.
+  // setPointerCapture (handlePointerDown) covers release-outside-window,
+  // pointercancel covers browser-canceled gestures; alt-tab-and-release-on-
+  // another-app is rare enough to handle by pressing Escape if it happens.
 
   switch (mode) {
     case 'pen':     handlePenMove(e); break;
@@ -1774,6 +1769,16 @@ function initCaptureOverlay() {
   // with the setPointerCapture call in handlePointerDown — pointercancel
   // fires when the capture is broken without a normal pointerup.
   captureSvg.addEventListener('pointercancel', abortInFlightDraw);
+
+  // Window blur abort. setPointerCapture covers releases that happen inside
+  // Chrome's reach (over the page, over Chrome chrome, and usually over the
+  // OS desktop) because the OS still delivers mouseup to the originating
+  // app. But if focus shifts to another app mid-drag — release-on-desktop
+  // that activates Finder/Explorer, alt-tab to another window, etc. — the
+  // OS may swallow the mouseup entirely and no pointer event will ever
+  // reach us. Window blur is the only reliable signal for that case;
+  // abort the in-flight draw so the next pointerdown starts fresh.
+  window.addEventListener('blur', abortInFlightDraw);
 
   document.documentElement.appendChild(captureSvg);
 }
