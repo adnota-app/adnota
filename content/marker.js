@@ -75,8 +75,22 @@ function findAnchorBlock(screenX, screenY) {
   if (!targetNode || targetNode.nodeType !== Node.ELEMENT_NODE) {
     targetNode = document.body;
   }
-  const blockElement = targetNode.closest('p, div, section, article, main, li, h1, h2, h3, h4, td') || document.body;
-  return blockElement;
+  let blockElement = targetNode.closest('p, div, section, article, main, li, h1, h2, h3, h4, td') || document.body;
+
+  // Reject degenerate anchors. YouTube's `div.html5-video-container` is the
+  // poster child: position:absolute with 0×0 getBoundingClientRect even when
+  // the video paints visibly (the actual pixels come from a sibling
+  // <video>). Drawing handlers normalize coords by dividing by box.width /
+  // box.height, so a zero-sized block produces NaN/Infinity and the saved
+  // payload renders as <rect y="NaN">. Walk up until we find an ancestor
+  // with real, finite dimensions; <body> is the floor and effectively always
+  // qualifies.
+  while (blockElement && blockElement !== document.body) {
+    const r = blockElement.getBoundingClientRect();
+    if (Number.isFinite(r.width) && Number.isFinite(r.height) && r.width > 0 && r.height > 0) break;
+    blockElement = blockElement.parentElement;
+  }
+  return blockElement || document.body;
 }
 
 // Walk up to the nearest *inner* scrolling ancestor. App shells (claude.ai,
@@ -1019,6 +1033,16 @@ window.AdnotaMarker = {
     function syncBounds() {
       if (!wrapper.parentNode) return;
       const rect = resolveAnchorRect(anchorElement, payload);
+      // Defensive: bail if the anchor's rect is degenerate. The next
+      // ResizeObserver / scroll tick will retry once the host has laid out
+      // the element. Belt-and-suspenders against findAnchorBlock's walk-up
+      // (which fixes new draws) — this also silences legacy payloads stored
+      // before the walk-up fix when they re-render against a sibling that
+      // still reports zero dims.
+      if (!Number.isFinite(rect.width) || !Number.isFinite(rect.height) ||
+          rect.width <= 0 || rect.height <= 0) {
+        return;
+      }
       // Wrapper lives in the fixed-position #adnota-marker-overlay, so its
       // top/left use viewport coords directly — no scrollY/X addition.
       wrapper.style.top = `${rect.top}px`;
@@ -1026,33 +1050,48 @@ window.AdnotaMarker = {
       wrapper.style.width = `${rect.width}px`;
       wrapper.style.height = `${rect.height}px`;
 
+      // Skip non-finite computed values — old payloads may have NaN coords
+      // from pre-walk-up draws on degenerate anchors. Don't error, just
+      // don't paint that attribute (the SVG retains its previous value or
+      // default; the marker will look wrong but won't spam the console).
+      const setNum = (attr, val) => {
+        if (Number.isFinite(val)) shapeEl.setAttribute(attr, val);
+      };
+
       if (shapeType === 'rect') {
         const s = payload.shape;
-        shapeEl.setAttribute('x', (s.x / 100) * rect.width);
-        shapeEl.setAttribute('y', (s.y / 100) * rect.height);
-        shapeEl.setAttribute('width', (s.w / 100) * rect.width);
-        shapeEl.setAttribute('height', (s.h / 100) * rect.height);
+        setNum('x', (s.x / 100) * rect.width);
+        setNum('y', (s.y / 100) * rect.height);
+        setNum('width', (s.w / 100) * rect.width);
+        setNum('height', (s.h / 100) * rect.height);
       } else if (shapeType === 'ellipse') {
         const s = payload.shape;
-        shapeEl.setAttribute('cx', (s.cx / 100) * rect.width);
-        shapeEl.setAttribute('cy', (s.cy / 100) * rect.height);
-        shapeEl.setAttribute('rx', (s.rx / 100) * rect.width);
-        shapeEl.setAttribute('ry', (s.ry / 100) * rect.height);
+        setNum('cx', (s.cx / 100) * rect.width);
+        setNum('cy', (s.cy / 100) * rect.height);
+        setNum('rx', (s.rx / 100) * rect.width);
+        setNum('ry', (s.ry / 100) * rect.height);
       } else if (shapeType === 'arrow' || payload.isArrow) {
         const start = payload.drawing[0];
         const end = payload.drawing[payload.drawing.length - 1];
-        shapeEl.setAttribute('d',
-          `M ${(start.px / 100) * rect.width} ${(start.py / 100) * rect.height} ` +
-          `L ${(end.px / 100) * rect.width} ${(end.py / 100) * rect.height}`
-        );
+        const x1 = (start.px / 100) * rect.width;
+        const y1 = (start.py / 100) * rect.height;
+        const x2 = (end.px / 100) * rect.width;
+        const y2 = (end.py / 100) * rect.height;
+        if (Number.isFinite(x1) && Number.isFinite(y1) && Number.isFinite(x2) && Number.isFinite(y2)) {
+          shapeEl.setAttribute('d', `M ${x1} ${y1} L ${x2} ${y2}`);
+        }
       } else {
         // freehand
-        const d = payload.drawing.map((p, i) => {
+        const parts = [];
+        let allFinite = true;
+        for (let i = 0; i < payload.drawing.length; i++) {
+          const p = payload.drawing[i];
           const px = (p.px / 100) * rect.width;
           const py = (p.py / 100) * rect.height;
-          return (i === 0 ? `M ${px} ${py}` : `L ${px} ${py}`);
-        }).join(' ');
-        shapeEl.setAttribute('d', d);
+          if (!Number.isFinite(px) || !Number.isFinite(py)) { allFinite = false; break; }
+          parts.push((i === 0 ? `M ${px} ${py}` : `L ${px} ${py}`));
+        }
+        if (allFinite) shapeEl.setAttribute('d', parts.join(' '));
       }
     }
 
