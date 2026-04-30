@@ -77,14 +77,16 @@ function findAnchorBlock(screenX, screenY) {
   }
   let blockElement = targetNode.closest('p, div, section, article, main, li, h1, h2, h3, h4, td') || document.body;
 
-  // Reject degenerate anchors. YouTube's `div.html5-video-container` is the
-  // poster child: position:absolute with 0×0 getBoundingClientRect even when
-  // the video paints visibly (the actual pixels come from a sibling
-  // <video>). Drawing handlers normalize coords by dividing by box.width /
-  // box.height, so a zero-sized block produces NaN/Infinity and the saved
-  // payload renders as <rect y="NaN">. Walk up until we find an ancestor
-  // with real, finite dimensions; <body> is the floor and effectively always
-  // qualifies.
+  // Reject degenerate anchors. The `closest()` call above happily picks a
+  // matching block even if its box is 0×0 — the selector list isn't doing
+  // the filtering, this walk-up is. YouTube's `div.html5-video-container`
+  // is the poster child: position:absolute with 0×0 getBoundingClientRect
+  // even when the video paints visibly (the actual pixels come from a
+  // sibling <video>). Drawing handlers normalize coords by dividing by
+  // box.width / box.height, so a zero-sized block produces NaN/Infinity and
+  // the saved payload renders as <rect y="NaN">. Walk up until we find an
+  // ancestor with real, finite dimensions; <body> is the floor and
+  // effectively always qualifies.
   while (blockElement && blockElement !== document.body) {
     const r = blockElement.getBoundingClientRect();
     if (Number.isFinite(r.width) && Number.isFinite(r.height) && r.width > 0 && r.height > 0) break;
@@ -777,11 +779,31 @@ function handleTextDblClick(e) {
 // UNIFIED POINTER HANDLERS — dispatch to the active tool
 // ═════════════════════════════════════════════════════════════════════════════
 
+// Abort any in-flight draw and reset capture state. Used by pointercancel
+// (browser-killed gesture: context menu, etc.) and the pointermove reconcile
+// (released-outside-window detection). All four shape tools share the same
+// transient state, so one helper resets all of it.
+function abortInFlightDraw() {
+  if (!capturePath && !captureShape) return;
+  if (capturePath)  { capturePath.remove();  capturePath  = null; }
+  if (captureShape) { captureShape.remove(); captureShape = null; }
+  currentPathNodes = [];
+  shapeOrigin = null;
+}
+
 function handlePointerDown(e) {
   const mode = window.AdnotaState.mode;
   if (!_overlayModes.has(mode)) return;
   if (isToolbarHit(e)) return;
   e.preventDefault();
+
+  // Capture pointer events for this gesture so a release outside the
+  // browser viewport still fires pointerup here. Without this, the user
+  // could mousedown inside, drag outside, release outside, and find the
+  // draw "stuck in progress" because pointerup was never delivered. The
+  // pointermove reconcile below is the belt-and-suspenders for the case
+  // where the OS swallows mouseup entirely (alt-tab to another app, etc.).
+  try { captureSvg.setPointerCapture(e.pointerId); } catch (_) {}
 
   // Hide mode must never block work — reveal before the stroke starts so the
   // user can see what they're drawing.
@@ -798,6 +820,19 @@ function handlePointerDown(e) {
 function handlePointerMove(e) {
   const mode = window.AdnotaState.mode;
   if (!_overlayModes.has(mode)) return;
+
+  // Reconcile-on-activity, mirrors reconcileShiftState's pattern: if we
+  // think we're mid-draw but the pointer reports no buttons pressed, the
+  // user released somewhere we never heard about (alt-tabbed and released
+  // on another app, OS swallowed the mouseup, etc.). Abort cleanly so the
+  // next pointerdown starts fresh — without this the live shape keeps
+  // tracking the cursor and the user has to click to "finish" it, often
+  // saving a malformed shape at the wrong coords.
+  if (e.buttons === 0 && (capturePath || captureShape)) {
+    abortInFlightDraw();
+    return;
+  }
+
   e.preventDefault();
 
   switch (mode) {
@@ -949,10 +984,22 @@ window.AdnotaMarker = {
       function syncTextPos() {
         if (!wrapper.parentNode) return;
         const rect = resolveAnchorRect(anchorElement, payload);
+        // Defensive: bail on a degenerate anchor rect. Same shape as the
+        // SVG syncBounds guard — without this, "NaNpx" silently fails CSS
+        // parsing and the text marker parks at a stale or default position
+        // (worse UX than the console-spamming SVG path because nothing
+        // signals the problem). Next observer/scroll tick retries.
+        if (!Number.isFinite(rect.width) || !Number.isFinite(rect.height) ||
+            rect.width <= 0 || rect.height <= 0) {
+          return;
+        }
+        // Also skip if the legacy payload itself has non-finite coords.
+        const tp = payload.textPos;
+        if (!tp || !Number.isFinite(tp.x) || !Number.isFinite(tp.y)) return;
         // Wrapper lives in the fixed-position #adnota-marker-overlay, so its
         // children use viewport coords (no scrollY/X addition needed).
-        textEl.style.left = (rect.left + (payload.textPos.x / 100) * rect.width) + 'px';
-        textEl.style.top  = (rect.top  + (payload.textPos.y / 100) * rect.height) + 'px';
+        textEl.style.left = (rect.left + (tp.x / 100) * rect.width) + 'px';
+        textEl.style.top  = (rect.top  + (tp.y / 100) * rect.height) + 'px';
       }
 
       window.AdnotaUI.bindAnchorSync(wrapper, anchorElement, syncTextPos);
@@ -1723,6 +1770,10 @@ function initCaptureOverlay() {
   captureSvg.addEventListener('pointerdown', handlePointerDown);
   captureSvg.addEventListener('pointermove', handlePointerMove);
   captureSvg.addEventListener('pointerup', handlePointerUp);
+  // Browser-killed gestures (context menu, focus loss in some cases). Pair
+  // with the setPointerCapture call in handlePointerDown — pointercancel
+  // fires when the capture is broken without a normal pointerup.
+  captureSvg.addEventListener('pointercancel', abortInFlightDraw);
 
   document.documentElement.appendChild(captureSvg);
 }

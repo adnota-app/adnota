@@ -383,10 +383,11 @@ html.adnota-hidden .adnota-sticky-container {
    ephemeral, so an always-on X is more honest than hover-reveal.
 
    Scoped with the parent .adnota-toast class to bump specificity to (0,2,0)
-   — marker.css loads AFTER sticky.css per the manifest, so a bare class
-   wouldn't beat .adnota-select-delete's base top:-10px / right:-10px
-   overhang on source order. Same trick #adnota-dock .adnota-dock-dismiss
-   uses in dock.css. */
+   so it wins on specificity alone over .adnota-select-delete (0,1,0) in
+   marker.css. A bare-class rule (also 0,1,0) would tie and lose by source
+   order — marker.css loads after sticky.css per the manifest — but with
+   the descendant selector specificity is the only thing that matters. Same
+   trick #adnota-dock .adnota-dock-dismiss uses in dock.css. */
 .adnota-toast .adnota-toast-dismiss {
   /* Override marker.css base sizing (20px, sized for annotation shapes) —
      the toast is more compact and the X should read as a small inline
