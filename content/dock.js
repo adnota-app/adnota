@@ -130,7 +130,7 @@
   const dismissBtn = document.createElement('div');
   dismissBtn.className = 'adnota-select-delete adnota-dock-dismiss';
   dismissBtn.textContent = '✕';
-  dismissBtn.setAttribute('data-tooltip', 'Hide (Alt+A or reload restores)');
+  dismissBtn.setAttribute('data-tooltip', 'Hide on this site (Alt+A restores)');
   dock.appendChild(dismissBtn);
 
   document.documentElement.appendChild(dock);
@@ -139,6 +139,22 @@
   // The dock starts centered (left:50% + transform). On first drag OR first
   // tool mount, commit to absolute px and persist so the spot survives reloads.
   const POSITION_KEY = 'adnotaDockPosition';
+  const HIDDEN_DOMAINS_KEY = 'adnotaHiddenDomains';
+  const TUTORIAL_KEY = 'adnotaDockDismissTutorialShown';
+
+  // Per-domain dismiss state. Mirrored to chrome.storage.local as an array;
+  // a Set in memory for O(1) checks. The X persists this. Alt+A and any
+  // popup-driven restore (popup-open, tool activation) clear it. Symmetric
+  // toggle — whatever the user last did is what sticks.
+  const hiddenDomains = new Set();
+
+  function persistHiddenDomains() {
+    try {
+      chrome.storage.local.set({
+        [HIDDEN_DOMAINS_KEY]: Array.from(hiddenDomains),
+      }).catch(() => {});
+    } catch (_) { /* context invalidated after extension reload */ }
+  }
 
   function commitPositionIfCentered() {
     if (dock.style.left === '50%' || dock.style.left === '') {
@@ -250,13 +266,15 @@
     }
   }, true);
 
-  // ── Restore saved position ────────────────────────────────────────────────
+  // ── Restore saved position + dismiss state ───────────────────────────────
   // Dock is visibility:hidden until this resolves so we never flash at the
-  // default center position when a saved spot exists.
+  // default center position when a saved spot exists. Reading hidden-domains
+  // here too means a blacklisted domain never flashes the dock visible
+  // either — applyDismissState runs before .adnota-dock-ready is added.
   function markReady() {
     dock.classList.add('adnota-dock-ready');
   }
-  chrome.storage.local.get(POSITION_KEY).then((data) => {
+  chrome.storage.local.get([POSITION_KEY, HIDDEN_DOMAINS_KEY]).then((data) => {
     const pos = data[POSITION_KEY];
     if (pos?.left && pos?.top) {
       dock.style.left = pos.left;
@@ -275,6 +293,11 @@
         persistPosition();
       }
     }
+    const stored = data[HIDDEN_DOMAINS_KEY];
+    if (Array.isArray(stored)) {
+      for (const h of stored) hiddenDomains.add(h);
+    }
+    applyDismissState();
     markReady();
   }).catch(markReady);
 
@@ -305,40 +328,94 @@
   }
 
   // ── Dismiss / restore ────────────────────────────────────────────────────
-  // Session-only: never persisted. Every page load starts with the dock
-  // visible so users don't wonder where it went on a future visit.
-  let userDismissed = false;
+  // Per-domain persisted via the hiddenDomains Set. Symmetric toggle:
+  // X writes hidden, Alt+A / popup-open / tool-activation-via-popup all
+  // clear hidden. Whatever the user last did is what sticks.
+  function isHiddenHere() {
+    return hiddenDomains.has(location.hostname);
+  }
 
   function applyDismissState() {
     const modeActive = window.AdnotaState?.mode != null;
-    if (userDismissed && !modeActive) {
+    if (isHiddenHere() && !modeActive) {
       dock.style.display = 'none';
-    } else {
-      dock.style.display = '';
-      if (modeActive) userDismissed = false;
+      return;
     }
+    dock.style.display = '';
+    // Tool activation is a strong "I want this here" signal — un-blacklist
+    // the domain so it persists visible on the next load too. Symmetric to
+    // the X writing hidden.
+    if (modeActive && isHiddenHere()) {
+      hiddenDomains.delete(location.hostname);
+      persistHiddenDomains();
+    }
+  }
+
+  async function maybeShowDismissTutorial() {
+    try {
+      const data = await chrome.storage.local.get(TUTORIAL_KEY);
+      if (data[TUTORIAL_KEY]) return;
+      await chrome.storage.local.set({ [TUTORIAL_KEY]: true });
+      window.AdnotaUI?.showToast(
+        `Adnota hidden on ${location.hostname}. It'll stay hidden here until you bring it back with Alt+A or the extension icon.`,
+        { id: 'adnota-dock-dismiss-tutorial', timeout: 7000 }
+      );
+    } catch (_) { /* context invalidated after extension reload */ }
   }
 
   dismissBtn.addEventListener('click', (e) => {
     e.stopPropagation();
-    window.AdnotaLog?.event('dock', 'dismiss-x');
-    userDismissed = true;
+    window.AdnotaLog?.event('dock', 'dismiss-x', { host: location.hostname });
+    hiddenDomains.add(location.hostname);
+    persistHiddenDomains();
     applyDismissState();
+    maybeShowDismissTutorial();
   });
 
-  // ── Alt+A → toggle dock visibility ────────────────────────────────────────
-  // Always works, regardless of state: pressing while a tool is active exits
-  // the tool AND hides the dock in one keystroke ("get this off my screen").
-  // applyDismissState would otherwise force-show + reset userDismissed when
-  // mode != null, so we have to clear the mode BEFORE flipping the dismiss
-  // flag.
+  // ── Alt+A → toggle dock visibility (per-domain persisted) ─────────────────
+  // Symmetric counterpart to the X button: press on a hidden domain → restore
+  // and un-blacklist; press on a visible domain → hide and blacklist. While
+  // a tool is active, exits the tool AND hides in one keystroke.
+  // applyDismissState would otherwise force-show + un-blacklist when mode !=
+  // null, so we clear the mode BEFORE flipping the hidden state.
+  //
+  // restore-dock is the popup's "I'm engaging — bring it back" ping. It only
+  // un-hides; it doesn't toggle, so opening the popup on an already-visible
+  // dock is a no-op rather than accidentally hiding it.
   chrome.runtime.onMessage.addListener((msg) => {
-    if (msg?.action !== 'toggle-dock') return;
-    const willHide = dock.style.display !== 'none';
-    if (willHide && window.AdnotaState?.mode != null) {
-      window.AdnotaState.set({ mode: null });
+    if (msg?.action === 'toggle-dock') {
+      const willHide = dock.style.display !== 'none';
+      if (willHide && window.AdnotaState?.mode != null) {
+        window.AdnotaState.set({ mode: null });
+      }
+      if (willHide) {
+        hiddenDomains.add(location.hostname);
+      } else {
+        hiddenDomains.delete(location.hostname);
+      }
+      persistHiddenDomains();
+      applyDismissState();
+      return;
     }
-    userDismissed = willHide;
+    if (msg?.action === 'restore-dock') {
+      if (isHiddenHere()) {
+        hiddenDomains.delete(location.hostname);
+        persistHiddenDomains();
+        applyDismissState();
+      }
+    }
+  });
+
+  // Cross-tab consistency: if another tab on the same domain (or the popup)
+  // mutates the hidden set, mirror it here within ~1 frame. Pattern matches
+  // lib/log.js's live debug-flag listener.
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area !== 'local' || !(HIDDEN_DOMAINS_KEY in changes)) return;
+    const next = changes[HIDDEN_DOMAINS_KEY].newValue;
+    hiddenDomains.clear();
+    if (Array.isArray(next)) {
+      for (const h of next) hiddenDomains.add(h);
+    }
     applyDismissState();
   });
 

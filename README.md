@@ -274,7 +274,7 @@ One persistent floating widget (fixed, bottom-center, draggable) that is the onl
 - **Active**: `[drag][← back (tinted)][tool's HUD body]` — tool row collapses, A morphs into an accent-colored back arrow, the tool's own controls fill the body slot.
 - **Back arrow / Escape / clicking the active tool again** all exit the tool and return to idle.
 - **A logo** opens the Sites history page in a new tab.
-- **Dismiss X** (red circle, reuses `.adnota-select-delete` styling) fades in on hover when idle — click to hide the dock for the current page. Any tool activation (popup, keyboard shortcut) or reload restores it. Session-only, never persisted.
+- **Dismiss X** (red circle, reuses `.adnota-select-delete` styling) fades in on hover when idle — click to hide the dock on the current domain. **Per-domain persisted** as a symmetric toggle: the X writes the hostname to `chrome.storage.local.adnotaHiddenDomains`, and any of `Alt+A`, opening the popup, or activating a tool from the popup removes it. Whatever the user last did on a domain is what sticks. The first time across the whole profile that the X is clicked, a one-time educational toast (gated by `adnotaDockDismissTutorialShown`) names the recovery paths; subsequent dismisses are silent so the extension doesn't argue with the user's "go away" gesture. A `chrome.storage.onChanged` listener keeps multiple tabs of the same domain in sync within ~1 frame. Bare-key shortcuts (`e/r/s/d/p`) deliberately do *not* restore — the dock-visible gate stays meaningful.
 - **Drag anywhere** on the dock to reposition. 4px threshold distinguishes drag from click; saved position persists to `chrome.storage.local.adnotaDockPosition` and survives reloads.
 - **Position flash prevention**: `visibility: hidden` until JS has read the saved position and added `.adnota-dock-ready`, so a repositioned dock never blinks at the default center on page load.
 - **Print hide**: `@media print { #adnota-dock { display: none !important; } }` — Ctrl+P never includes the dock.
@@ -349,7 +349,7 @@ Two layers: **global** (work anywhere, always) and **bare-key** (work only when 
 
 | Shortcut | Action |
 |---|---|
-| `Alt+A` | Toggle the Adnota dock. While a tool is active, exits the tool *and* hides the dock in one keystroke (same hide affordance as clicking the dock's X) |
+| `Alt+A` | Toggle the Adnota dock on the current domain. Pressing on a hidden domain restores and un-blacklists; pressing on a visible domain hides and blacklists (per-domain persisted). While a tool is active, exits the tool *and* hides the dock in one keystroke. Symmetric counterpart to clicking the dock's X |
 | `Alt+S` | Show / Hide all annotations |
 | `Ctrl+Z` / `Cmd+Z` | Undo last action (any tool) |
 | `Escape` | Deactivate active tool (universal — works from any tool, any state) / cancel text input |
