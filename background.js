@@ -53,13 +53,32 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
   }
 });
 
-// Storage changes (annotation added or removed) — re-sync badge for the active tab.
-chrome.storage.onChanged.addListener(async (changes, area) => {
+// Storage changes (annotation added or removed) — re-sync badge for the active
+// tab. Trailing-debounced so a fast burst of writes (a long pencil stroke
+// auto-saving, drag-to-move re-anchoring, the autosave debounce flushing)
+// collapses to one chrome.tabs.query instead of one per write. Adnota's own
+// pref keys are all camelCase `adnota*`; domain keys are bare hostnames — so
+// pref-only changes (debug-log toggle, dock position, active mode, etc.)
+// short-circuit before scheduling any work.
+let pendingBadgeUpdate = null;
+
+chrome.storage.onChanged.addListener((changes, area) => {
   if (area !== 'local') return;
-  try {
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    if (tab?.url) await updateBadgeForTab(tab.id, tab.url);
-  } catch { }
+
+  let hasDomainKey = false;
+  for (const key in changes) {
+    if (!key.startsWith('adnota')) { hasDomainKey = true; break; }
+  }
+  if (!hasDomainKey) return;
+
+  if (pendingBadgeUpdate) clearTimeout(pendingBadgeUpdate);
+  pendingBadgeUpdate = setTimeout(async () => {
+    pendingBadgeUpdate = null;
+    try {
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      if (tab?.url) await updateBadgeForTab(tab.id, tab.url);
+    } catch { }
+  }, 150);
 });
 
 // ─── Keyboard command relay ───────────────────────────────────────────────────

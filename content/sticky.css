@@ -42,8 +42,17 @@
 
 .adnota-sticky-container {
   position: absolute;
-  z-index: 2147483640;
-  /* High enough to be on top */
+  /* Sit above committed markers (#adnota-marker-overlay at 2147483640) so a
+     sticky dropped on top of a drawing visibly stays on top. Previously
+     tied at 2147483640, which made paint order depend on DOM source order
+     (marker overlay is appended to documentElement, sticky to body — the
+     overlay wins on most sites, but host-page stacking-context quirks could
+     flip it, producing inconsistent stacking across sites). Stays below
+     .adnota-select-box (2147483644) so an active marker selection still
+     visibly outlines its target through an overlapping sticky, and below
+     #adnota-capture-canvas (2147483645) so a live in-progress draw paints
+     on top of stickies as you create it. */
+  z-index: 2147483642;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   transition: opacity 0.2s ease;
 }

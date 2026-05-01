@@ -1,12 +1,14 @@
 {
   "manifest_version": 3,
   "name": "Adnota",
-  "version": "0.1.0",
+  "short_name": "Adnota",
+  "version": "1.0.0",
   "description": "Annotate the web. Erase, highlight, draw, and annotate any page — persistent across sessions, stored privately on your machine.",
+  "author": "Adnota",
+  "homepage_url": "https://adnota.app",
   "permissions": [
     "storage",
     "activeTab",
-    "scripting",
     "tabs"
   ],
   "host_permissions": [
