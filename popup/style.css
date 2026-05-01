@@ -434,7 +434,7 @@ kbd.shortcut {
 
 /* ─── Footer ─── */
 .footer {
-  padding: 12px 14px 14px;
+  padding: 10px 14px 8px;
   border-top: 1px solid rgba(0, 0, 0, 0.06);
   display: flex;
   flex-direction: column;
@@ -486,6 +486,35 @@ kbd.shortcut {
   gap: 6px;
   transition: all 0.15s ease;
   letter-spacing: 0.01em;
+}
+
+/* Tiny muted footnote — prose stays plain text, only `support` is the click
+   target. No underline at rest; hover reveals it so the affordance shows up
+   only when the user reaches for it. Spacing comes from the parent footer's
+   flex `gap` so this row doesn't add height. */
+.bug-link {
+  margin: 0;
+  padding: 0;
+  font-size: 10.5px;
+  line-height: 1.4;
+  color: rgba(0, 0, 0, 0.4);
+  text-align: center;
+  font-family: 'Inter', sans-serif;
+  letter-spacing: 0.01em;
+}
+
+.bug-link a {
+  color: inherit;
+  text-decoration: none;
+  cursor: pointer;
+  transition: color 0.15s ease;
+}
+
+.bug-link a:hover {
+  color: rgba(0, 0, 0, 0.75);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 2px;
 }
 
 .danger-btn:hover {
