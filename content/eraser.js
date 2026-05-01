@@ -443,12 +443,25 @@ function updateHUD(target) {
 
   let html = '';
 
-  // Confidence score
-  html += `<span style="color:${confColor};font-weight:600">${anchor.score}/100</span>`;
-  html += `<span style="color:${confColor};margin-left:4px">${confLabel}</span>`;
+  // Confidence score — UI commented out for now; the raw 0–100 number isn't
+  // meaningful to most users. Replaced with a Shift+Scroll usage hint that
+  // mirrors the resizer HUD's pattern. Score is still computed above because
+  // findBetterTarget() and getEffectiveAdSignals() consume `anchor`. Revisit
+  // with a friendlier confidence surface (icon? word?) when ready.
+  // html += `<span style="color:${confColor};font-weight:600">${anchor.score}/100</span>`;
+  // html += `<span style="color:${confColor};margin-left:4px">${confLabel}</span>`;
 
-  // Ad signal badges (only when present)
+  // Static usage hint — suppressed when a better-target nudge is already
+  // about to render below (which has its own ↑+Scroll messaging).
+  if (!betterTarget) {
+    html += `<span style="color:#94a3b8"><span style="background:rgba(239,68,68,0.18);color:#fca5a5;padding:1px 4px;border-radius:3px;font-size:11px;font-weight:600;margin-right:4px">⇧+Scroll ↑↓</span>to walk the DOM</span>`;
+  }
+
+  // Ad signal badges (only when present). Lead with the dot separator when
+  // anything else has already rendered, so pills don't butt up against the
+  // hint text.
   if (adSignals.length > 0) {
+    if (html) html += dot;
     for (const s of adSignals) {
       html += `<span style="background:rgba(239,68,68,0.18);color:#fca5a5;padding:1px 6px;border-radius:4px;margin-left:6px;font-size:11px">${escapeHtml(s)}</span>`;
     }
