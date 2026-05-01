@@ -4,7 +4,7 @@
 // NOTE items as plain prose. TEXT IS KING — no per-item color borders, no
 // source chips, no card chrome. Just the text, optional #tag, and per-item
 // copy. Companion to a new dock button (left of the visibility eye) and the
-// bare-key 'p' shortcut.
+// bare-key 'f' shortcut.
 //
 // Public API on window.AdnotaScratchPad:
 //   toggle(), open(), close(), isOpen(), refresh()
