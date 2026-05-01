@@ -14,6 +14,56 @@ document.addEventListener('DOMContentLoaded', async () => {
   btnMySites.addEventListener('click', openSites);
   brand.addEventListener('click', openSites);
 
+  // ─── Bug-report mailto with diagnostic prefill ────────────────────────────
+  // Triage email with extension version + UA + active page URL pre-attached.
+  // User reviews the body in their mail client before sending and can edit
+  // or strip anything they don't want to share — opt-in by definition, since
+  // nothing leaves the machine without their explicit send.
+  //
+  // Routed through chrome.tabs.create instead of the `<a href>`'s default
+  // navigation: an extension popup closes the moment focus shifts to launch
+  // the mail handler, and Chrome can't always reconcile the resulting
+  // navigation as a user-gesture-bound action — surfacing as the "user
+  // gesture is required" warning. chrome.tabs.create is a privileged
+  // extension API that hands the URL to the OS handler cleanly.
+  (() => {
+    const link = document.getElementById('bug-link');
+    if (!link) return;
+
+    let mailtoHref = link.getAttribute('href');
+
+    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+      let activeUrl = 'n/a';
+      let activeHost = 'n/a';
+      try {
+        if (tabs[0]?.url) {
+          activeUrl = tabs[0].url;
+          activeHost = new URL(tabs[0].url).hostname || 'n/a';
+        }
+      } catch {}
+      const version = chrome.runtime.getManifest().version;
+      const body = [
+        'Describe what went wrong:',
+        '',
+        '',
+        '---',
+        `Extension: ${version}`,
+        `Browser: ${navigator.userAgent}`,
+        `URL: ${activeUrl}`,
+        `Host: ${activeHost}`,
+      ].join('\n');
+      const subject = encodeURIComponent('Adnota bug');
+      mailtoHref = `mailto:support@adnota.app?subject=${subject}&body=${encodeURIComponent(body)}`;
+      link.setAttribute('href', mailtoHref);
+    });
+
+    link.addEventListener('click', (e) => {
+      e.preventDefault();
+      chrome.tabs.create({ url: mailtoHref, active: false });
+      window.close();
+    });
+  })();
+
   // ─── Utility: mark the active tool card by mode string ───────────────────
   function setActiveCard(mode) {
     document.querySelectorAll('.tool-card').forEach(c => c.classList.remove('active'));
