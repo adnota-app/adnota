@@ -381,7 +381,10 @@
     if (activeTag && site.tagCounts?.[activeTag]) {
       const tagPill = document.createElement('span');
       tagPill.className = 'pill pill-tag';
-      tagPill.innerHTML = `<span class="pill-dot"></span>#${activeTag} · ${site.tagCounts[activeTag]}`;
+      const dot = document.createElement('span');
+      dot.className = 'pill-dot';
+      tagPill.appendChild(dot);
+      tagPill.appendChild(document.createTextNode(`#${activeTag} · ${site.tagCounts[activeTag]}`));
       pills.appendChild(tagPill);
     }
     body.appendChild(pills);
@@ -559,7 +562,10 @@
       if (activeTag && pageTagMatches > 0) {
         const tagPill = document.createElement('span');
         tagPill.className = 'pill pill-tag';
-        tagPill.innerHTML = `<span class="pill-dot"></span>#${activeTag} · ${pageTagMatches}`;
+        const dot = document.createElement('span');
+        dot.className = 'pill-dot';
+        tagPill.appendChild(dot);
+        tagPill.appendChild(document.createTextNode(`#${activeTag} · ${pageTagMatches}`));
         pagePillsEl.appendChild(tagPill);
       }
       row.appendChild(pagePillsEl);
