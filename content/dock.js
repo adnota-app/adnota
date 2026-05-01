@@ -36,7 +36,7 @@
     { id: 'sticky',  tooltip: 'Sticky Note (s)',         icon: 'sticky',     action: 'toggle-sticky',      mode: 'sticky',    accent: 'sticky'    },
     { id: 'marker',  tooltip: 'Draw (d)',                icon: 'marker',     action: 'toggle-highlighter', mode: 'highlight', accent: 'highlight' },
     { id: 'resizer', tooltip: 'Resizer (r)',             icon: 'resizer',    action: 'toggle-resizer',     mode: 'resizer',   accent: 'resizer'   },
-    { id: 'scratch', tooltip: 'Page snippets (p)',       icon: 'scratch',    action: 'toggle-scratch' },
+    { id: 'scratch', tooltip: 'Page snippets (f)',       icon: 'scratch',    action: 'toggle-scratch' },
     { id: 'vis',     tooltip: 'Show / Hide All (Alt+S)', icon: 'visibility', action: 'toggle-view' },
   ];
 
@@ -434,7 +434,7 @@
   // same content-script context. Disabled-state on the dock button still
   // gates the keypress so the affordances stay in sync.
   const BARE_KEY_DIRECT = {
-    p: () => {
+    f: () => {
       const entry = toolEls.find(t => t.tool.id === 'scratch');
       if (entry?.btn.getAttribute('data-disabled') === '1') return;
       window.AdnotaScratchPad?.toggle();
