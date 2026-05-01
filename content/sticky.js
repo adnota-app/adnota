@@ -537,6 +537,7 @@ window.StickyEngine = {
       originalPath: location.pathname,
       pendingAnchor,
       revealTimer: null,
+      deleted: false,
     };
     activeNotes.set(uuid, noteState);
 
@@ -572,7 +573,7 @@ window.StickyEngine = {
         const { inlineSize: width, blockSize: height } = entry.borderBoxSize[0];
         clearTimeout(resizeTimeout);
         resizeTimeout = setTimeout(async () => {
-          if (!window.AdnotaStorage) return;
+          if (noteState.deleted || !window.AdnotaStorage) return;
           const savedDimensions = { width: Math.round(width), height: Math.round(height) };
           await window.AdnotaStorage.saveNote(
             location.hostname, location.pathname, uuid,
@@ -715,7 +716,7 @@ window.StickyEngine = {
     textarea.addEventListener('input', () => {
       clearTimeout(saveTimeout);
       saveTimeout = setTimeout(async () => {
-        if (!window.AdnotaStorage) return;
+        if (noteState.deleted || !window.AdnotaStorage) return;
         comments[0].text = textarea.value;
         window.AdnotaLog?.event('sticky', 'autosave', {
           id: uuid, text: textarea.value, tag: noteState.tag,
@@ -731,18 +732,20 @@ window.StickyEngine = {
     // Tags ride through the same saveNote merge path as every other field; we
     // keep a separate debounce timer so typing into the tag input doesn't
     // interfere with (and isn't interfered by) the textarea autosave.
+    // tagSaveTimeout is hoisted to renderNote scope so the trash handler
+    // below can clear it alongside saveTimeout / resizeTimeout.
+    let tagSaveTimeout;
     if (tagInput && window.AdnotaTags) {
       window.AdnotaTags.buildAutocompleteDropdown(tagInput);
 
       const commitTag = async () => {
-        if (!window.AdnotaStorage) return;
+        if (noteState.deleted || !window.AdnotaStorage) return;
         await window.AdnotaStorage.saveNote(
           location.hostname, location.pathname, uuid,
           buildSavePayload(noteState)
         );
       };
 
-      let tagSaveTimeout;
       tagInput.addEventListener('input', () => {
         noteState.tag = window.AdnotaTags.normalize(tagInput.value);
         clearTimeout(tagSaveTimeout);
@@ -772,6 +775,17 @@ window.StickyEngine = {
     const trashBtn = container.querySelector('.adnota-trash-btn');
     trashBtn.addEventListener('click', async () => {
       window.AdnotaLog?.event('sticky', 'delete', { id: uuid });
+
+      // Block every save path that could resurrect this note. Without this,
+      // a pending textarea/tag/resize debounce fires after deleteItem and
+      // saveNote upserts the row back — restorer's next MutationObserver
+      // pass then re-renders. Set the flag *before* anything async so the
+      // blur->commitTag race triggered by clicking from a focused tag input
+      // also gets blocked.
+      noteState.deleted = true;
+      clearTimeout(saveTimeout);
+      clearTimeout(tagSaveTimeout);
+      clearTimeout(resizeTimeout);
 
       // Flush latest text/tag/dimensions from DOM in case the autosave
       // debounce (textarea: 1.5s, ResizeObserver: same) hasn't fired yet.
