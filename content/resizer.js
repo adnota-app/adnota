@@ -755,12 +755,6 @@ async function persistResize(el, cssText) {
     },
   };
   window.AdnotaUndo.push(undoEntry);
-
-  // ── Toast ────────────────────────────────────────────────────────────────
-  window.AdnotaUI.showToast('Element resized', {
-    id: 'adnota-resizer-toast',
-    onUndo: () => undoEntry.undo(),
-  });
 }
 
 // ─── Message routing ─────────────────────────────────────────────────────────
