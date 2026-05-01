@@ -25,6 +25,17 @@ const _inlineTags = new Set([
  * Walk from a click target up to find the nearest meaningful block element
  * that FuzzyAnchor can reliably re-identify on reload.
  * Stops at <body>/<html> — we never anchor to those.
+ *
+ * Rejects scroll containers as candidates (see AdnotaUI.isScrollContainer).
+ * The bug this prevents: a click in bare whitespace inside Gemini's
+ * <infinite-scroller> would walk up looking for a block ≥20px tall and
+ * accept the infinite-scroller itself. Tier 1 then resolved against it on
+ * every reload, but `top = scrollerRect.top + dy` pins the note to a fixed
+ * viewport position — the scroller's rect doesn't move when its content
+ * scrolls, only `scrollTop` does. Returning null here lets Tier 2 take over,
+ * which stores the same scroller correctly (with `scrollTop` math) so the
+ * note tracks content scroll. Same logic protects against any other
+ * scroller-as-anchor case (Notion main, ChatGPT message log, etc.).
  */
 function findAnchorTarget(el) {
   let current = el;
@@ -34,13 +45,16 @@ function findAnchorTarget(el) {
       current = current.parentElement;
       continue;
     }
-    // Accept block-level elements with some visual substance
-    if (!_inlineTags.has(current.tagName) && current.offsetHeight >= 20) {
+    // Accept block-level elements with some visual substance, but never an
+    // element that is itself a scroll container — those go to Tier 2.
+    if (!_inlineTags.has(current.tagName) &&
+        current.offsetHeight >= 20 &&
+        !window.AdnotaUI?.isScrollContainer?.(current)) {
       return current;
     }
     current = current.parentElement;
   }
-  return null; // Couldn't find a good target — fall back to percent-only
+  return null; // Couldn't find a good target — fall back to Tier 2/3
 }
 
 // ---------------------------------------------------------------------------
@@ -238,7 +252,11 @@ function buildSavePayload(noteState, dimensions) {
 // than no Tier 2 at all on app shells.
 function buildContainerFallback(clientX, clientY, walkSeedEl) {
   if (!walkSeedEl || !window.AdnotaUI?.findScrollContainer || !window.FuzzyAnchor) return null;
-  const sc = window.AdnotaUI.findScrollContainer(walkSeedEl);
+  // includeSelf because the walk seed may itself be the scroll container —
+  // happens whenever findAnchorTarget rejected the seed for being a scroller
+  // and returned null, leaving us to fall back to the raw click target. We
+  // still want that scroller as our Tier 2 anchor.
+  const sc = window.AdnotaUI.findScrollContainer(walkSeedEl, { includeSelf: true });
   if (!sc) return null;
   const scRect = sc.getBoundingClientRect();
   return {
