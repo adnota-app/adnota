@@ -176,6 +176,79 @@ window.AdnotaState.subscribe(state => {
 });
 
 // ---------------------------------------------------------------------------
+// Render-target overlay + per-note save payload
+// ---------------------------------------------------------------------------
+
+// Lazily-created fixed-position container that hosts every rendered sticky.
+// See #adnota-sticky-overlay in sticky.css for the architectural rationale —
+// short version: appending notes directly to <body> with `position: absolute`
+// and document-pixel `top` values inflated documentElement.scrollHeight on
+// app shells (chatgpt.com, claude.ai), creating swathes of empty whitespace.
+// Mirrors getMarkerOverlay() in marker.js.
+function getStickyOverlay() {
+  let overlay = document.getElementById('adnota-sticky-overlay');
+  if (!overlay) {
+    overlay = document.createElement('div');
+    overlay.id = 'adnota-sticky-overlay';
+    overlay.setAttribute('data-adnota-ui', '1');
+    document.documentElement.appendChild(overlay);
+  }
+  return overlay;
+}
+
+// Single source of truth for the saveNote payload. Six different code paths
+// (initial create, drag commit, resize commit, textarea autosave, tag commit,
+// SPA-teardown flush, delete-undo restore) used to inline this object literal
+// — every new field had to be added in seven places and we already shipped at
+// least one bug from missing one (AdnotaUI._restoreItems forgetting `tag`).
+// `dimensions` is the only field that varies per call site (resize commit
+// passes freshly-measured values; everything else inherits whatever's already
+// in storage via the shallow merge in saveNote).
+function buildSavePayload(noteState, dimensions) {
+  const out = {
+    placement:    noteState.placement,
+    comments:     noteState.comments,
+    theme:        noteState.theme,
+    anchor:       noteState.anchor,
+    anchorOffset: noteState.anchorOffset,
+    fallback:     noteState.fallback,
+    tag:          noteState.tag,
+  };
+  if (dimensions) out.dimensions = dimensions;
+  return out;
+}
+
+// At save time, capture a Tier 2 fallback: the nearest scrolling ancestor of
+// the click point + the click point's offset within that ancestor's
+// scrollable content. On reload, if FuzzyAnchor can't re-resolve the original
+// block (Tier 1 miss), the restorer's updatePosition() can still place the
+// note at the right spot in the conversation by re-finding this scroll
+// container and applying the offset. Without this, Tier 1 misses fell all
+// the way to a percentage of `documentElement.scrollHeight` — which on
+// app shells (chatgpt.com, claude.ai) where the doc itself doesn't scroll is
+// a meaningless number, landing notes in dead whitespace at the page bottom.
+// Mirrors marker.js's `fallbackBox.containerAnchor` (Tier 2 of its 3-tier
+// cascade). Returns null when no inner scroller exists — the page itself is
+// the scroll context and the percentage tier handles that case correctly.
+//
+// `walkSeedEl` is whatever DOM element the caller has at the click point.
+// Prefer the Tier 1 anchor target when available (block-level, stable), but
+// any non-null page element works — findScrollContainer just needs *something*
+// to walk up from. Falling back to a less-stable seed is still strictly better
+// than no Tier 2 at all on app shells.
+function buildContainerFallback(clientX, clientY, walkSeedEl) {
+  if (!walkSeedEl || !window.AdnotaUI?.findScrollContainer || !window.FuzzyAnchor) return null;
+  const sc = window.AdnotaUI.findScrollContainer(walkSeedEl);
+  if (!sc) return null;
+  const scRect = sc.getBoundingClientRect();
+  return {
+    containerAnchor: window.FuzzyAnchor.generate(sc),
+    containerOffsetX: Math.round(clientX - scRect.left + sc.scrollLeft),
+    containerOffsetY: Math.round(clientY - scRect.top  + sc.scrollTop),
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Click to drop a note — hybrid anchor + percentage fallback
 // ---------------------------------------------------------------------------
 
@@ -196,17 +269,13 @@ async function createStickyAt(clientX, clientY, { targetEl = null, theme = null 
   if (anchorTarget && window.FuzzyAnchor) {
     anchor = window.FuzzyAnchor.generate(anchorTarget);
     const rect = anchorTarget.getBoundingClientRect();
-    const scrollTop  = window.pageYOffset || document.documentElement.scrollTop;
-    const scrollLeft = window.pageXOffset || document.documentElement.scrollLeft;
-    const noteAbsX = clientX + scrollLeft;
-    const noteAbsY = clientY + scrollTop;
-    const elAbsX   = rect.left + scrollLeft;
-    const elAbsY   = rect.top  + scrollTop;
     anchorOffset = {
-      dx: Math.round(noteAbsX - elAbsX),
-      dy: Math.round(noteAbsY - elAbsY),
+      dx: Math.round(clientX - rect.left),
+      dy: Math.round(clientY - rect.top),
     };
   }
+
+  const fallback = buildContainerFallback(clientX, clientY, anchorTarget || target);
 
   const uuid     = Date.now() + Math.random().toString();
   const comments = [{ text: '', author: 'Me', createdAt: Date.now() }];
@@ -217,15 +286,16 @@ async function createStickyAt(clientX, clientY, { targetEl = null, theme = null 
     color: resolvedTheme,
     anchor: anchor ? { sel: anchor.cssSelector, tag: anchor.tagName } : null,
     anchorOffset,
+    fallback: fallback ? { containerSel: fallback.containerAnchor?.cssSelector } : null,
     placement,
   });
 
-  window.StickyEngine.renderNote(placement, comments, uuid, true, null, resolvedTheme, anchor, anchorOffset, '');
+  window.StickyEngine.renderNote(placement, comments, uuid, true, null, resolvedTheme, anchor, anchorOffset, '', fallback);
 
   if (window.AdnotaStorage) {
     await window.AdnotaStorage.saveNote(
       location.hostname, location.pathname, uuid,
-      { placement, comments, theme: resolvedTheme, anchor, anchorOffset, tag: '' }
+      { placement, comments, theme: resolvedTheme, anchor, anchorOffset, fallback, tag: '' }
     );
   }
 
@@ -295,19 +365,6 @@ function clientToPlacement(clientX, clientY) {
   };
 }
 
-/**
- * Convert a stored percentage placement back into absolute pixel coordinates,
- * resolved against the current page dimensions at call time.
- */
-function placementToPixels(placement) {
-  const totalWidth  = Math.max(document.documentElement.scrollWidth,  1);
-  const totalHeight = Math.max(document.documentElement.scrollHeight, 1);
-  return {
-    left: placement.xPct       * totalWidth,
-    top:  placement.yScrollPct * totalHeight,
-  };
-}
-
 // ---------------------------------------------------------------------------
 // StickyEngine — render, position, drag, save
 // ---------------------------------------------------------------------------
@@ -364,11 +421,7 @@ window.StickyEngine = {
         : null;
       await window.AdnotaStorage.saveNote(
         state.originalHostname, state.originalPath, uuid,
-        {
-          placement: state.placement, comments: state.comments,
-          theme: state.theme, anchor: state.anchor,
-          anchorOffset: state.anchorOffset, dimensions, tag: state.tag,
-        }
+        buildSavePayload(state, dimensions)
       );
     }
 
@@ -388,8 +441,11 @@ window.StickyEngine = {
    * @param {string}  theme         CSS class name, e.g. 'adnota-theme-yellow'
    * @param {object}  anchor        FuzzyAnchor data or null
    * @param {object}  anchorOffset  { dx, dy } pixel offset from anchor element
+   * @param {string}  tag           Optional user-supplied tag (≤40 chars)
+   * @param {object}  fallback      Tier 2 container-anchor fallback or null
+   *                                { containerAnchor, containerOffsetX, containerOffsetY }
    */
-  renderNote(placement, comments, uuid, isNew = false, dimensions = null, theme = 'adnota-theme-yellow', anchor = null, anchorOffset = null, tag = '') {
+  renderNote(placement, comments, uuid, isNew = false, dimensions = null, theme = 'adnota-theme-yellow', anchor = null, anchorOffset = null, tag = '', fallback = null) {
     // Guard duplicate renders. Restorer retry passes route through
     // updatePosition() directly, so a hit here means an unexpected duplicate
     // render attempt — return false so the caller doesn't treat it as a
@@ -435,7 +491,7 @@ window.StickyEngine = {
       </div>
     `;
 
-    document.body.appendChild(container);
+    getStickyOverlay().appendChild(container);
 
     // Apply stored dimensions before first paint so the restored size matches
     // exactly what the user left the note at.
@@ -455,6 +511,7 @@ window.StickyEngine = {
       placement: { ...placement },
       anchor: anchor || null,
       anchorOffset: anchorOffset || null,
+      fallback: fallback || null,
       theme: theme || 'adnota-theme-yellow',
       tag: window.AdnotaTags ? window.AdnotaTags.normalize(tag) : (tag || ''),
       comments,
@@ -501,7 +558,7 @@ window.StickyEngine = {
           const savedDimensions = { width: Math.round(width), height: Math.round(height) };
           await window.AdnotaStorage.saveNote(
             location.hostname, location.pathname, uuid,
-            { placement: noteState.placement, comments, theme: noteState.theme, anchor: noteState.anchor, anchorOffset: noteState.anchorOffset, dimensions: savedDimensions, tag: noteState.tag }
+            buildSavePayload(noteState, savedDimensions)
           );
         }, DEBOUNCE_MS);
       }
@@ -533,10 +590,12 @@ window.StickyEngine = {
       isDragging = true;
       header.setPointerCapture(e.pointerId);
 
-      const scrollTop  = window.pageYOffset || document.documentElement.scrollTop;
-      const scrollLeft = window.pageXOffset || document.documentElement.scrollLeft;
-      dragOffsetX = e.clientX + scrollLeft - parseFloat(container.style.left || 0);
-      dragOffsetY = e.clientY + scrollTop  - parseFloat(container.style.top  || 0);
+      // Container coords are now viewport-relative (note lives inside the
+      // fixed #adnota-sticky-overlay), so the drag math drops the page-scroll
+      // term entirely — clientX/Y *is* the same coordinate system as
+      // container.style.left/top.
+      dragOffsetX = e.clientX - parseFloat(container.style.left || 0);
+      dragOffsetY = e.clientY - parseFloat(container.style.top  || 0);
 
       container.style.transition = 'none';
       e.preventDefault();
@@ -544,10 +603,8 @@ window.StickyEngine = {
 
     header.addEventListener('pointermove', (e) => {
       if (!isDragging) return;
-      const scrollTop  = window.pageYOffset || document.documentElement.scrollTop;
-      const scrollLeft = window.pageXOffset || document.documentElement.scrollLeft;
-      container.style.left = `${e.clientX + scrollLeft - dragOffsetX}px`;
-      container.style.top  = `${Math.max(0, e.clientY + scrollTop - dragOffsetY)}px`;
+      container.style.left = `${e.clientX - dragOffsetX}px`;
+      container.style.top  = `${Math.max(0, e.clientY - dragOffsetY)}px`;
     });
 
     header.addEventListener('pointerup', async (e) => {
@@ -556,64 +613,78 @@ window.StickyEngine = {
       header.releasePointerCapture(e.pointerId);
       container.style.transition = '';
 
-      // Convert new pixel position back to percentages for durable storage.
+      // newLeft/newTop are viewport-px (fixed-overlay coord system). Storage
+      // percentages are document-relative — convert via current scroll.
       const newLeft = parseFloat(container.style.left);
       const newTop  = parseFloat(container.style.top);
+      const scrollTop  = window.pageYOffset || document.documentElement.scrollTop;
+      const scrollLeft = window.pageXOffset || document.documentElement.scrollLeft;
 
       const totalWidth  = Math.max(document.documentElement.scrollWidth,  1);
       const totalHeight = Math.max(document.documentElement.scrollHeight, 1);
 
       const updatedPlacement = {
         position:   'percent',
-        xPct:       r4(newLeft / totalWidth),
-        yScrollPct: r4(newTop  / totalHeight),
+        xPct:       r4((newLeft + scrollLeft) / totalWidth),
+        yScrollPct: r4((newTop  + scrollTop)  / totalHeight),
       };
 
       noteState.placement = updatedPlacement;
 
-      // Re-anchor to whatever element is now underneath the note's position.
+      // Re-anchor to whatever element is now underneath the note's center.
       // We must query the visual stack (elementsFromPoint, plural) and skip
       // every Adnota UI layer at the drop point, because the sticky note we
-      // just dropped is sitting *exactly* at (centerX, centerY) on top of
-      // the page. document.elementFromPoint (singular) would return the
-      // sticky's own card/textarea, findAnchorTarget would bubble up through
+      // just dropped is sitting *exactly* on top of the page at this point.
+      // document.elementFromPoint (singular) would return the sticky's own
+      // card/textarea, findAnchorTarget would bubble up through
       // [data-adnota-ui] all the way to <body> and return null, and the note
       // would persist with anchor=null — making it scroll-broken (no anchor
       // to track on app shells) and "remember" the broken position across
       // reloads. The plural variant returns the full top-down stack so we
       // can ignore our own chrome and the page content underneath.
-      const centerX = newLeft + 130; // half of card width
-      const centerY = newTop + 70;   // half of card height
-      const scrollTop  = window.pageYOffset || document.documentElement.scrollTop;
-      const scrollLeft = window.pageXOffset || document.documentElement.scrollLeft;
-      const stack = document.elementsFromPoint(centerX - scrollLeft, centerY - scrollTop);
+      // Card center uses measured offsetWidth/Height so a resized note
+      // probes its actual visual center (was hardcoded 130/70 = the default
+      // 260×140 card, off-by-the-resize-amount on any non-default size).
+      const centerXViewport = newLeft + card.offsetWidth  / 2;
+      const centerYViewport = newTop  + card.offsetHeight / 2;
+      const stack = document.elementsFromPoint(centerXViewport, centerYViewport);
       const elAtPoint = stack.find(el => !el.closest('[data-adnota-ui]')) || null;
 
+      let newAnchorTarget = null;
       if (elAtPoint) {
-        const newAnchorTarget = findAnchorTarget(elAtPoint);
+        newAnchorTarget = findAnchorTarget(elAtPoint);
         if (newAnchorTarget && window.FuzzyAnchor) {
           noteState.anchor = window.FuzzyAnchor.generate(newAnchorTarget);
           const rect = newAnchorTarget.getBoundingClientRect();
           noteState.anchorOffset = {
-            dx: Math.round(newLeft - (rect.left + scrollLeft)),
-            dy: Math.round(newTop  - (rect.top  + scrollTop)),
+            dx: Math.round(newLeft - rect.left),
+            dy: Math.round(newTop  - rect.top),
           };
         } else {
           noteState.anchor = null;
           noteState.anchorOffset = null;
         }
+      } else {
+        noteState.anchor = null;
+        noteState.anchorOffset = null;
       }
+
+      // Refresh Tier 2 fallback against the new drop position. Even when the
+      // Tier 1 anchor goes null (drop landed on bare overlay area) the
+      // container fallback still gives us scroll-tracking on app shells.
+      noteState.fallback = buildContainerFallback(newLeft, newTop, newAnchorTarget || elAtPoint);
 
       window.AdnotaLog?.event('sticky', 'drag-commit', {
         id: uuid,
         placement: updatedPlacement,
         anchor: noteState.anchor ? { sel: noteState.anchor.cssSelector, tag: noteState.anchor.tagName } : null,
         anchorOffset: noteState.anchorOffset,
+        fallback: noteState.fallback ? { containerSel: noteState.fallback.containerAnchor?.cssSelector } : null,
       });
       if (window.AdnotaStorage) {
         await window.AdnotaStorage.saveNote(
           location.hostname, location.pathname, uuid,
-          { placement: updatedPlacement, comments, theme: noteState.theme, anchor: noteState.anchor, anchorOffset: noteState.anchorOffset, tag: noteState.tag }
+          buildSavePayload(noteState)
         );
       }
     });
@@ -633,7 +704,7 @@ window.StickyEngine = {
         });
         await window.AdnotaStorage.saveNote(
           location.hostname, location.pathname, uuid,
-          { placement: noteState.placement, comments, theme: noteState.theme, anchor: noteState.anchor, anchorOffset: noteState.anchorOffset, tag: noteState.tag }
+          buildSavePayload(noteState)
         );
       }, DEBOUNCE_MS);
     });
@@ -649,7 +720,7 @@ window.StickyEngine = {
         if (!window.AdnotaStorage) return;
         await window.AdnotaStorage.saveNote(
           location.hostname, location.pathname, uuid,
-          { placement: noteState.placement, comments, theme: noteState.theme, anchor: noteState.anchor, anchorOffset: noteState.anchorOffset, tag: noteState.tag }
+          buildSavePayload(noteState)
         );
       };
 
@@ -699,15 +770,7 @@ window.StickyEngine = {
       const savedDimensions = card
         ? { width: Math.round(card.offsetWidth), height: Math.round(card.offsetHeight) }
         : null;
-      const snapshot = {
-        placement:    noteState.placement,
-        comments:     noteState.comments,
-        theme:        noteState.theme,
-        anchor:       noteState.anchor,
-        anchorOffset: noteState.anchorOffset,
-        tag:          noteState.tag,
-        dimensions:   savedDimensions,
-      };
+      const snapshot = buildSavePayload(noteState, savedDimensions);
 
       // Hard teardown — clear the pending-anchor reveal timer (if any),
       // drop from activeNotes, remove from DOM. Storage delete next.
@@ -732,7 +795,8 @@ window.StickyEngine = {
           window.StickyEngine.renderNote(
             snapshot.placement, snapshot.comments, uuid, false,
             snapshot.dimensions, snapshot.theme,
-            snapshot.anchor, snapshot.anchorOffset, snapshot.tag
+            snapshot.anchor, snapshot.anchorOffset, snapshot.tag,
+            snapshot.fallback
           );
           window.AdnotaUndo.remove(undoEntry);
         }
@@ -751,60 +815,93 @@ window.StickyEngine = {
   /**
    * Reposition a note based on its anchor (preferred) or placement (fallback).
    * Called after initial render and on window resize. Also serves as the
-   * restorer's retry path — returns true when FuzzyAnchor resolved the
-   * note's saved element so the restorer can decide whether the note is
+   * restorer's retry path — returns true when FuzzyAnchor (Tier 1) resolved
+   * the note's saved element so the restorer can decide whether the note is
    * still eligible for re-attempt on the next MutationObserver pass.
    *
-   * Returns true only on anchor success. Percentage / manual fallback and
-   * "no note" early-outs return false. Callers without retry semantics
-   * (the window.resize handler) ignore the value.
+   * Three-tier fallback cascade — mirrors marker.js's resolveAnchorRect:
+   *   1. FuzzyAnchor on the original block (`anchor` + `anchorOffset`)
+   *   2. FuzzyAnchor on the nearest scrolling ancestor (`fallback.containerAnchor`
+   *      + `containerOffsetX/Y`) — tracks inner-container scroll on app shells
+   *      where the document itself doesn't move
+   *   3. Percentage of `documentElement.scrollWidth/Height` — last-resort
+   *      "never lose the work" fallback that lands somewhere reasonable on
+   *      normal scrolling pages and somewhere arbitrary on app shells
+   *
+   * All tier outputs are written to container.style.left/top as VIEWPORT
+   * coordinates because the container lives inside the fixed-position
+   * #adnota-sticky-overlay. The capture-phase scroll listener
+   * (_resyncAllNotes) re-runs this on every scroll so the values stay live
+   * without a per-tier scroll listener.
+   *
+   * Returns true only on Tier 1 success. Tier 2/3 and "no note" early-outs
+   * return false so the restorer keeps the item retryable until Tier 1
+   * actually resolves; the resize/scroll handler ignores the value.
    */
   updatePosition(uuid) {
     const noteState = activeNotes.get(uuid);
     if (!noteState) return false;
 
-    const { container, placement, anchor, anchorOffset } = noteState;
+    const { container, placement, anchor, anchorOffset, fallback } = noteState;
     let left, top;
     let anchorResolved = false;
+    const scrollTop  = window.pageYOffset || document.documentElement.scrollTop;
+    const scrollLeft = window.pageXOffset || document.documentElement.scrollLeft;
 
-    // ── Primary: try FuzzyAnchor resolution ─────────────────────────────────
+    // ── Tier 1: FuzzyAnchor on the original block (viewport coords) ─────────
     if (anchor && anchorOffset && window.FuzzyAnchor) {
       const match = window.FuzzyAnchor.findMatch(anchor);
       if (match.confidence >= 40 && match.element) {
         const rect = match.element.getBoundingClientRect();
-        const scrollTop  = window.pageYOffset || document.documentElement.scrollTop;
-        const scrollLeft = window.pageXOffset || document.documentElement.scrollLeft;
-
-        left = rect.left + scrollLeft + anchorOffset.dx;
-        top  = rect.top  + scrollTop  + anchorOffset.dy;
+        left = rect.left + anchorOffset.dx;
+        top  = rect.top  + anchorOffset.dy;
         anchorResolved = true;
       }
     }
 
-    // ── Fallback: percentage placement (never lose your work) ───────────────
-    if (!anchorResolved) {
+    // ── Tier 2: container-scroll-anchor fallback ────────────────────────────
+    // The fix for chatgpt.com / claude.ai: when Tier 1 misses (the specific
+    // chat turn / paragraph / message wrapper has been re-rendered with a
+    // different selector), re-resolve the surrounding scroll container and
+    // place the note at its saved offset within that container's scrollable
+    // content. The note now tracks the conversation's internal scroll instead
+    // of falling all the way through to the meaningless `scrollHeight` tier.
+    if (!anchorResolved && fallback && fallback.containerAnchor && window.FuzzyAnchor) {
+      const cMatch = window.FuzzyAnchor.findMatch(fallback.containerAnchor);
+      if (cMatch.confidence >= 40 && cMatch.element) {
+        const scRect = cMatch.element.getBoundingClientRect();
+        left = scRect.left + fallback.containerOffsetX - cMatch.element.scrollLeft;
+        top  = scRect.top  + fallback.containerOffsetY - cMatch.element.scrollTop;
+      }
+    }
+
+    // ── Tier 3: percentage placement (never lose your work) ─────────────────
+    if (left === undefined) {
       if (placement.position === 'percent') {
-        ({ left, top } = placementToPixels(placement));
+        const docLeft = placement.xPct       * Math.max(document.documentElement.scrollWidth,  1);
+        const docTop  = placement.yScrollPct * Math.max(document.documentElement.scrollHeight, 1);
+        // Convert document px → viewport px since the container lives in the
+        // fixed overlay. The capture-phase scroll listener fires on every
+        // scroll to re-run this so the value tracks naturally.
+        left = docLeft - scrollLeft;
+        top  = docTop  - scrollTop;
       } else if (placement.position === 'manual') {
-        // Legacy format from before this refactor — treat stored px directly.
-        left = placement.left;
-        top  = placement.top;
+        // Legacy format from before this refactor — stored as document px.
+        left = placement.left - scrollLeft;
+        top  = placement.top  - scrollTop;
       } else {
         return false; // Unknown format — do nothing rather than misplace the note.
       }
     }
 
     container.style.left = `${left}px`;
-    // No clamp: on normal scrolling documents, top is a constant document
-    // coordinate (rect.top + scrollTop + dy) and is always positive — clamping
-    // accomplished nothing. On app-shell pages where the document doesn't
-    // scroll, scrollTop is always 0, so top tracks rect.top + dy and goes
-    // negative as the anchor scrolls above the viewport. Letting it go negative
-    // makes the note correctly scroll off-screen above (clipped by body's
-    // overflow:hidden); clamping pinned it at viewport top forever.
+    // No clamp on top: when an anchor element scrolls above the viewport, top
+    // goes negative and the note correctly scrolls off-screen above. Clamping
+    // pinned the note at viewport top forever, which is wrong on every scroll
+    // model.
     container.style.top  = `${top}px`;
 
-    // First successful anchor resolution reveals a pending-anchor note.
+    // First successful Tier 1 resolution reveals a pending-anchor note.
     // Backstop timer is cleared because we beat it. Subsequent calls (resize,
     // scroll, restorer retry) hit the early-out since pendingAnchor is now
     // false. The 0.2s opacity transition on .adnota-sticky-container handles

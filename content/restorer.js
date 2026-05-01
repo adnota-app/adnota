@@ -214,7 +214,8 @@ async function _performRestoration(trigger) {
             item.theme || 'adnota-theme-yellow',
             item.anchor || null,
             item.anchorOffset || null,
-            item.tag || ''
+            item.tag || '',
+            item.fallback || null
           );
         }
       }
