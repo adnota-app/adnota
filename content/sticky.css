@@ -40,19 +40,42 @@
   --btn-bg: rgba(58, 58, 58, 0.06);
 }
 
-.adnota-sticky-container {
-  position: absolute;
+/* Fixed-position container for every sticky note. Lazily created on first
+   render. Mirrors #adnota-marker-overlay — same problem, same fix:
+   sticky containers used to be appended directly to <body> with
+   `position: absolute; top: <document-px>`. On normal scrolling pages this
+   was harmless (body absolute = document-anchored, scrolls with content for
+   free). On app shells (chatgpt.com, claude.ai, Notion) where body is
+   `overflow: hidden` and the real scroll happens in an inner container, a
+   note dropped near the bottom of a long conversation persisted with a
+   document-px top in the thousands. On reload, that body-appended note
+   inflated documentElement.scrollHeight on every site that doesn't strictly
+   clip — pulling a body-level scrollbar into existence and creating swathes
+   of empty whitespace. The fixed overlay keeps wrapper bounds out of
+   scrollHeight entirely; container coords are viewport-relative as a result
+   and re-computed on every scroll/resize via _resyncAllNotes(). */
+#adnota-sticky-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  overflow: visible;
   /* Sit above committed markers (#adnota-marker-overlay at 2147483640) so a
-     sticky dropped on top of a drawing visibly stays on top. Previously
-     tied at 2147483640, which made paint order depend on DOM source order
-     (marker overlay is appended to documentElement, sticky to body — the
-     overlay wins on most sites, but host-page stacking-context quirks could
-     flip it, producing inconsistent stacking across sites). Stays below
+     sticky dropped on top of a drawing visibly stays on top. Stays below
      .adnota-select-box (2147483644) so an active marker selection still
      visibly outlines its target through an overlapping sticky, and below
      #adnota-capture-canvas (2147483645) so a live in-progress draw paints
      on top of stickies as you create it. */
   z-index: 2147483642;
+}
+
+.adnota-sticky-container {
+  position: absolute;
+  /* pointer-events restored: parent overlay disables them so the bare page is
+     interactive everywhere outside a note. */
+  pointer-events: auto;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   transition: opacity 0.2s ease;
 }
