@@ -252,7 +252,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const noun = window.AdnotaUI.pluralize(count, info.singular, info.plural);
         const ok = await window.AdnotaUI.confirmDialog({
           message: `Delete ${count} ${noun} from this page?`,
-          subtext: 'You\u2019ll have 5 seconds to undo.',
+          subtext: '',
         });
         if (!ok) return;
 
@@ -273,7 +273,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       const noun = window.AdnotaUI.pluralize(total, 'edit', 'edits');
       const ok = await window.AdnotaUI.confirmDialog({
         message: `Delete ${total} ${noun} from this page?`,
-        subtext: 'You\u2019ll have 5 seconds to undo.',
+        subtext: '',
       });
       if (!ok) return;
 
