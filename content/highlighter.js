@@ -927,7 +927,7 @@ window.AdnotaHighlighter = {
     const themeColors = {
       'adnota-theme-yellow': 'rgba(255, 235, 59, 0.4)',
       'adnota-theme-green': 'rgba(76, 175, 80, 0.4)',
-      'adnota-theme-blue': 'rgba(33, 150, 243, 0.4)',
+      'adnota-theme-blue': 'rgba(0, 200, 235, 0.4)',
       'adnota-theme-pink': 'rgba(233, 30, 99, 0.4)',
       // Redaction: fully opaque, no blend mode — must completely cover the text.
       'adnota-theme-black': '#000'
