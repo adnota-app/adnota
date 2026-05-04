@@ -67,6 +67,7 @@ The verdict: Adnota is technically excellent, philosophically interesting, and i
 chrome.storage.local.remove('adnotaDockPosition')
 
 chrome.storage.local.remove('adnotaDockDismissTutorialShown')
+chrome.storage.local.remove('adnotaEraserDomainTutorialShown')
 
 chrome.storage.local.get('readaloudrevival.com', (d) => console.log(JSON.stringify(d, null, 2)));
 
