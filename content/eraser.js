@@ -807,6 +807,22 @@ document.addEventListener('click', async (e) => {
     window.AdnotaStorage.saveItem(domain, pathScope, { action: 'ERASE', anchor, selector: cssSelector, _id: id }).catch(() => { });
   }
 
+  // First-time domain-scope tutorial. Only fires on a plain click against a
+  // non-ad target — Shift+Click means the user already knows the keystroke,
+  // and ads are silently auto-promoted to domain scope so the lesson would
+  // be redundant. If a user only ever erases ads, they never see this toast.
+  if (!e.shiftKey && adSignals.length === 0) {
+    const TUTORIAL_KEY = 'adnotaEraserDomainTutorialShown';
+    chrome.storage.local.get(TUTORIAL_KEY).then((data) => {
+      if (data[TUTORIAL_KEY]) return;
+      chrome.storage.local.set({ [TUTORIAL_KEY]: true });
+      window.AdnotaUI?.showToast(
+        'Tip: hold Shift while clicking to erase across the entire domain.',
+        { id: 'adnota-eraser-domain-tutorial', timeout: 7000 }
+      );
+    }).catch(() => { /* context invalidated after extension reload */ });
+  }
+
   // ── Shared undo closure — used by both toast button and Ctrl+Z ──
   const undoEntry = {
     undo: async () => {
