@@ -35,7 +35,12 @@
 
   pointer-events: auto;
   white-space: nowrap;
-  cursor: default;
+  /* Drag affordance — the whole dock is the drag surface, so the cursor
+     advertises that. Browser flips to `grabbing` mid-drag automatically (set
+     inline by onDragMove). Tool buttons and the back arrow override with
+     `cursor: pointer`; clicks on the logo still fire (Sites History) — the
+     cursor only changes the visual hint, not click handling. */
+  cursor: grab;
 
   /* Idle chip dims out of the way; hover / active snap to full. */
   opacity: 0.55;
@@ -61,27 +66,36 @@
   flex-shrink: 0;
 }
 
+/* Idle = favicon-style mark: rounded-square purple→magenta gradient with a
+   white A, matching icons/favicon.svg (the same icon Chrome shows in the
+   extension bar). On dock hover the row blooms open and the logo morphs to
+   the circle treatment in a parallel 300ms transition — border-radius,
+   background, and color shift together so the shape change reads as a
+   single intentional move rather than three independent property tweens.
+   No `cursor: pointer` here — the logo inherits `cursor: grab` from the
+   dock so the whole idle surface signals "draggable." Click still fires
+   (cursor doesn't suppress click handlers) and opens Sites History. */
 .adnota-dock-logo {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   width: 26px;
   height: 26px;
-  border-radius: 50%;
-  background: rgba(124, 58, 237, 0.28);
-  color: #c084fc;
-  font-weight: 700;
-  font-size: 13px;
+  border-radius: 6px;
+  background: linear-gradient(135deg, #7c3aed 0%, #d946ef 100%);
+  color: #fff;
+  font-weight: 800;
+  font-size: 14px;
   letter-spacing: -0.5px;
   flex-shrink: 0;
   user-select: none;
-  cursor: pointer;
-  transition: background 0.2s ease, color 0.2s ease;
+  transition: background 0.3s ease, color 0.3s ease, border-radius 0.3s ease;
 }
 
-.adnota-dock-logo:hover {
-  background: rgba(124, 58, 237, 0.45);
-  color: #e9d5ff;
+#adnota-dock:hover:not(.adnota-dock-active) .adnota-dock-logo {
+  border-radius: 50%;
+  background: rgba(124, 58, 237, 0.28);
+  color: #c084fc;
 }
 
 .adnota-dock-back {
