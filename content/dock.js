@@ -48,21 +48,19 @@
   dock.id = 'adnota-dock';
   dock.setAttribute('data-adnota-ui', '1');
 
-  const dragHandle = document.createElement('span');
-  dragHandle.className = 'adnota-toolbar-drag';
-  dragHandle.textContent = '⡇';
-  dragHandle.setAttribute('data-tooltip', 'Drag to reposition');
-  dock.appendChild(dragHandle);
-
-  // Home chrome: V logo (idle) OR back arrow (active). They share a slot so
+  // Home chrome: A logo (idle) OR back arrow (active). They share a slot so
   // the dock's left edge is visually anchored across state transitions.
+  // No separate drag-handle glyph — the whole dock has been draggable from
+  // anywhere since day one (4px threshold distinguishes drag from click),
+  // and `cursor: grab` on the dock itself signals the affordance now that
+  // the idle state is collapsed to just the logo.
   const home = document.createElement('div');
   home.className = 'adnota-dock-home';
 
   const logo = document.createElement('span');
   logo.className = 'adnota-dock-logo';
   logo.textContent = 'A';
-  logo.setAttribute('data-tooltip', 'My Edited Sites');
+  logo.setAttribute('data-tooltip', 'My Edited Sites · drag to move');
   logo.addEventListener('click', (e) => {
     e.stopPropagation();
     // Try/catch + .catch: after a Adnota reload, any tab already loaded
@@ -617,6 +615,16 @@
       body.replaceChildren();
       dock.classList.remove('adnota-dock-active');
       dock.removeAttribute('data-accent');
+      // Active→idle while the cursor is still over the dock: pointerenter
+      // doesn't refire (cursor never left), so the toolRow's overflow stays
+      // at the CSS default (clip) and the next button hover shows a clipped
+      // tooltip. Kick off the same unclip timer a fresh hover would have.
+      if (dock.matches(':hover')) {
+        clearTimeout(toolsUnclipTimer);
+        toolsUnclipTimer = setTimeout(() => {
+          toolRow.style.overflow = 'visible';
+        }, SLIDE_MS);
+      }
     },
     element: dock,
     bodyElement: body,
