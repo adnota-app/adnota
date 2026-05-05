@@ -80,3 +80,7 @@ chrome.storage.local.get('readaloudrevival.com', (d) => console.log(JSON.stringi
 
 
 
+❯ Are z-indexes defined somewhere globally in the app? Was that last change
+  in-line with the existing code base? Just curious. Also, is there a min 
+  resize? Sometimes, I can only squeeze elements so tiny (perhaps they have
+  their own min width or hieght rules I can't get past somehow? Thoughts? 

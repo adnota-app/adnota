@@ -16,23 +16,32 @@ const MIN_HEIGHT = 60;
 // — just recolored to the resizer's blue accent.
 const hoverOverlay = window.AdnotaUI.createHoverOverlay('adnota-resizer-overlay', '#3b82f6', 'rgba(59, 130, 246, 0.09)');
 
-// ─── Dimension badge (top-right corner of hover outline) ─────────────────────
-// Same idea as the eraser's dimension chip — shows current W×H in pixels so
-// users can gauge element size before picking it up.
+// ─── Hover chip cluster (top-right corner of hover outline) ─────────────────
+// Two chips share a flex cluster pinned at the overlay's top-right. The
+// dimension badge is read-only; the action chip surfaces structural overrides
+// (currently: unstick / restick for sticky+fixed elements) and is the only
+// clickable hit zone inside the otherwise pointer-events:none overlay.
+const chipCluster = document.createElement('div');
+chipCluster.className = 'adnota-resizer-hover-chips';
+chipCluster.setAttribute('data-adnota-ui', '1');
+hoverOverlay.appendChild(chipCluster);
+
+// Action chip (leftmost — actions on the left, readouts on the right is a
+// common HUD convention). Hidden unless the hovered element is sticky/fixed
+// or already has our unstick override applied. Click toggles the override.
+const actionChip = document.createElement('div');
+actionChip.className = 'adnota-resizer-action-chip';
+actionChip.setAttribute('data-adnota-ui', '1');
+actionChip.style.display = 'none';
+chipCluster.appendChild(actionChip);
+
+// Dimension badge — shows current W×H in pixels. Reuses the selection chip's
+// styling so hover and selected states share the same visual readout.
 const dimensionBadge = document.createElement('div');
 dimensionBadge.id = 'adnota-resizer-dimension-badge';
-// Reuse the selection chip's blue-rectangle styling so hover and selected
-// states share the same visual readout.
 dimensionBadge.className = 'adnota-resizer-selection-dim';
 dimensionBadge.setAttribute('data-adnota-ui', '1');
-// Pinned to the overlay's top-right corner; the visual styling (background,
-// border, font, radius) comes from the shared class.
-Object.assign(dimensionBadge.style, {
-  top: '-2px',
-  right: '-3px',
-  transform: 'translateY(-50%)',
-});
-hoverOverlay.appendChild(dimensionBadge);
+chipCluster.appendChild(dimensionBadge);
 
 // ─── HUD strip (fixed bottom bar, draggable) ────────────────────────────────
 // Mirrors the eraser HUD but tinted with the resizer's blue accent. Persistent
@@ -61,6 +70,7 @@ const resizerHelpBtn = window.AdnotaUI.createHelpButton({
     '<span style="color:#94a3b8">Click to <span style="color:#e4e4e7;font-weight:600">select</span> an element for resizing</span>',
     '<span style="color:#94a3b8"><span style="background:rgba(59,130,246,0.25);color:#93c5fd;padding:1px 4px;border-radius:3px;font-size:11px;font-weight:600;margin-right:4px">⇧+Scroll ↑↓</span>to <span style="color:#e4e4e7;font-weight:600">traverse DOM</span> (select parents/children)</span>',
     '<span style="color:#94a3b8">Drag any <span style="color:#93c5fd;font-weight:600">blue handle</span> to resize from that edge</span>',
+    '<span style="color:#94a3b8">Hover a sticky bar → click <span style="color:#fbbf24;font-weight:600">unstick</span> to stop it following you</span>',
     '<span style="color:#94a3b8">Click the <span style="color:#93c5fd;font-weight:600">↺</span> to completely reset this element</span>',
     '<span style="color:#94a3b8">Press <span style="background:rgba(59,130,246,0.25);color:#93c5fd;padding:1px 4px;border-radius:3px;font-size:11px;font-weight:600;margin-right:2px">Esc</span> to exit any tool</span>',
   ],
@@ -127,6 +137,7 @@ let hoveredEl = null;
 let selectedEl = null;
 let rawHoveredEl = null;   // the actual element under the cursor (before bubble-up)
 let traverseDepth = 0;     // 0 = natural bubble-up target, >0 = walked up N parents
+let hoveredHasUnstickOverride = false;  // current chip state — drives apply vs remove on click
 
 // ─── Handle elements ─────────────────────────────────────────────────────────
 let handleLeft = null;
@@ -137,6 +148,8 @@ let handleCorner = null;
 let selectionBox = null;
 let dismissBtn = null;
 let selectionDimBadge = null;
+let selectionActionChip = null;
+let selectionChipCluster = null;
 
 // ─── Drag state ──────────────────────────────────────────────────────────────
 let dragAxis = null;       // 'x' | 'x-left' | 'y' | 'y-top' | 'xy'
@@ -171,6 +184,16 @@ const isAdnotaElement = window.AdnotaUI.isAdnotaElement;
 function isLayoutSignificant(el) {
   if (INLINE_TAGS.has(el.tagName)) return false;
   const rect = el.getBoundingClientRect();
+  // Sticky/fixed elements are inherently structural chrome — the page
+  // explicitly placed them in viewport-affecting positions, so they're
+  // always a valid resize/unstick target even when shorter than MIN_HEIGHT
+  // (real-world sticky bars: GitHub nav ~52px, HN header ~30px, news-site
+  // banners ~48px — all of which previously fell below the 60px floor and
+  // were silently climbed past).
+  const cs = getComputedStyle(el);
+  if (cs.position === 'sticky' || cs.position === 'fixed') {
+    return rect.width > 0 && rect.height > 0;
+  }
   return rect.width >= MIN_WIDTH && rect.height >= MIN_HEIGHT;
 }
 
@@ -279,6 +302,33 @@ function rebuildResizeStyleTag() {
 }
 window.rebuildResizeStyleTag = rebuildResizeStyleTag;
 
+// ─── Unstick override (single source of truth for the cssText) ──────────────
+// Single label `unstick` for both `position: sticky` and `position: fixed`.
+// User intent ("stop following me") and override are the same; the CSS
+// distinction is invisible to the user.
+//
+// Why `relative` instead of `static`: an absolutely-positioned descendant
+// resolves its top/left/right/bottom against its nearest *positioned*
+// ancestor. When we override a fixed/sticky parent to `static`, descendants
+// (dropdowns, tooltips, popovers) escape upward to <body> and land in
+// nonsensical places (Squarespace's PRODUCTS dropdown ends up in the hero
+// text mid-page). `position: relative` with no offsets keeps the parent as
+// a positioning ancestor — descendants stay where the page intended — while
+// still removing the sticky/fixed viewport-pinning behavior. We also zero
+// out top/left/right/bottom because `relative` honors those values; without
+// that, a sticky bar with `top: 0` would shift down by the same offset.
+const UNSTICK_CSS_TEXT =
+  'position: relative !important; top: auto !important; left: auto !important; right: auto !important; bottom: auto !important';
+
+// Is there an unstick override currently in the live Map for this selector?
+// Used to flip the chip label between `unstick` and `restick`.
+function hasUnstickOverride(selector) {
+  for (const [, rule] of window.AdnotaResizeRules) {
+    if (rule.selector === selector && rule.cssText === UNSTICK_CSS_TEXT) return true;
+  }
+  return false;
+}
+
 // ─── Selection: show drag handles around an element ──────────────────────────
 function selectElement(el) {
   window.AdnotaLog?.event('resizer', 'select', { el: window.AdnotaLog.el(el) });
@@ -358,22 +408,81 @@ function selectElement(el) {
   });
   document.documentElement.appendChild(dismissBtn);
 
-  // Live dimension badge — child of selectionBox so it tracks the box
-  // automatically. Sits just to the left of the dismiss button (16px right
-  // offset = dismiss button's 10px outdent + 6px gap), entirely above the
-  // top edge to mirror the hover chip's placement.
+  // Selection chip cluster — flex row holding the action chip (left) and the
+  // dimension badge (right). Sits just to the left of the dismiss button
+  // (16px right offset = dismiss button's 10px outdent + 6px gap), entirely
+  // above the top edge to mirror the hover chip's placement. Mirrors the
+  // hover state's cluster so users get the same chip surface in both modes.
+  // The selection-state chip exists specifically so the user can pin a
+  // hard-to-hover sticky bar with a click, then move the cursor freely to
+  // reach the chip without losing the hover state.
   selectionDimBadge = document.createElement('div');
   selectionDimBadge.className = 'adnota-resizer-selection-dim';
   selectionDimBadge.setAttribute('data-adnota-ui', '1');
-  Object.assign(selectionDimBadge.style, {
+  // Strip absolute positioning from the dim badge — it'll participate in the
+  // cluster's flex layout instead.
+  selectionDimBadge.style.position = 'static';
+  selectionDimBadge.textContent = `${Math.round(rect.width)}×${Math.round(rect.height)}`;
+
+  selectionActionChip = document.createElement('div');
+  selectionActionChip.className = 'adnota-resizer-action-chip';
+  selectionActionChip.setAttribute('data-adnota-ui', '1');
+  selectionActionChip.style.display = 'none';
+  // Toggle on click: same code path as the hover chip.
+  selectionActionChip.addEventListener('click', async (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!selectedEl) return;
+    if (selectionActionChip._isOverridden) {
+      await removeUnstickRule(selectedEl);
+    } else {
+      await applyUnstickRule(selectedEl);
+    }
+    updateSelectionChip();
+  });
+
+  selectionChipCluster = document.createElement('div');
+  selectionChipCluster.setAttribute('data-adnota-ui', '1');
+  Object.assign(selectionChipCluster.style, {
+    position: 'absolute',
     top: '-2px',
     right: '16px',
     transform: 'translateY(-50%)',
+    display: 'flex',
+    gap: '4px',
+    alignItems: 'center',
+    zIndex: '2147483647',
   });
-  selectionDimBadge.textContent = `${Math.round(rect.width)}×${Math.round(rect.height)}`;
-  selectionBox.appendChild(selectionDimBadge);
+  selectionChipCluster.appendChild(selectionActionChip);
+  selectionChipCluster.appendChild(selectionDimBadge);
+  selectionBox.appendChild(selectionChipCluster);
 
+  updateSelectionChip();
   updateHUD();
+}
+
+// Re-evaluate the selection chip's label/visibility against the current
+// selectedEl. Called from selectElement (initial), the chip's own click
+// handler, and any path that mutates AdnotaResizeRules for this selector
+// (drag persist via refreshHandles, undo).
+function updateSelectionChip() {
+  if (!selectionActionChip || !selectedEl) return;
+  const cs = getComputedStyle(selectedEl);
+  const overridden = hasUnstickOverride(generateCSSSelector(selectedEl));
+  if (cs.position === 'sticky' || cs.position === 'fixed') {
+    selectionActionChip.textContent = 'unstick';
+    selectionActionChip.setAttribute('data-adnota-tooltip', 'Stop this from following you when scrolling');
+    selectionActionChip.style.display = '';
+    selectionActionChip._isOverridden = false;
+  } else if (overridden) {
+    selectionActionChip.textContent = 'restick';
+    selectionActionChip.setAttribute('data-adnota-tooltip', 'Restore the original sticky behavior');
+    selectionActionChip.style.display = '';
+    selectionActionChip._isOverridden = true;
+  } else {
+    selectionActionChip.style.display = 'none';
+    selectionActionChip._isOverridden = false;
+  }
 }
 
 function deselectElement() {
@@ -386,7 +495,10 @@ function deselectElement() {
   if (handleBottom) { handleBottom.remove(); handleBottom = null; }
   if (handleCorner) { handleCorner.remove(); handleCorner = null; }
   if (dismissBtn)   { dismissBtn.remove();   dismissBtn = null; }
-  if (selectionDimBadge) { selectionDimBadge.remove(); selectionDimBadge = null; }
+  // Cluster removal also drops its children (selectionDimBadge + selectionActionChip).
+  if (selectionChipCluster) { selectionChipCluster.remove(); selectionChipCluster = null; }
+  selectionDimBadge = null;
+  selectionActionChip = null;
   if (hadSelection && window.AdnotaState.mode === 'resizer') updateHUD();
 }
 
@@ -494,6 +606,9 @@ function refreshHandles() {
   if (selectionDimBadge) {
     selectionDimBadge.textContent = `${Math.round(rect.width)}×${Math.round(rect.height)}`;
   }
+  // Re-evaluate chip state in case an undo/restick happened while selection
+  // is still active (e.g., user hits Ctrl+Z mid-selection).
+  updateSelectionChip();
   updateHUD();
 }
 
@@ -699,11 +814,25 @@ function startDrag(e, axis) {
   document.addEventListener('mouseup', onUp);
 }
 
-// ─── Persist resize to storage ───────────────────────────────────────────────
-async function persistResize(el, cssText) {
+// ─── Commit a CSS rule for an element ────────────────────────────────────────
+// Shared dance: add to live Map → rebuild style tag → persist to storage →
+// register undo. Used by both the drag-resize commits (width/height/margin)
+// and the unstick chip toggle. The optional `kind` discriminator is written to
+// the storage row so the chip handler can find a specific entry to remove
+// (the unstick entry vs a coexisting width/height entry on the same selector).
+//
+// Resizes default to domain-wide (`path: '*'`). Unlike the eraser — where
+// domain-wide is an explicit user override (Shift+Click) or silent ad-scope
+// promotion — resize targets are almost always structural containers (nav,
+// sidebar, header, article wrapper) that recur across a site with the same
+// selector. Scoping to just the current page would force the user to redo
+// the same change on every sibling page. If the selector falls back to a
+// structural `nth-child` path and matches something unintended on another
+// page, the rule silently no-ops (worst case: reset from that page).
+async function commitResizeRule(el, cssText, kind) {
   const selector = generateCSSSelector(el);
   const id = Date.now() + '-' + Math.random().toString(36).slice(2, 8);
-  window.AdnotaLog?.event('resizer', 'resize-commit', {
+  window.AdnotaLog?.event('resizer', kind ? `${kind}-commit` : 'resize-commit', {
     id, sel: selector, el: window.AdnotaLog.el(el),
     handle: dragAxis, cssText,
   });
@@ -712,14 +841,6 @@ async function persistResize(el, cssText) {
   rebuildResizeStyleTag();
 
   const domain = location.hostname;
-  // Resizes default to domain-wide (`path: '*'`). Unlike the eraser — where
-  // domain-wide is an explicit user override (Shift+Click) or silent ad-scope
-  // promotion — resize targets are almost always structural containers (nav,
-  // sidebar, header, article wrapper) that recur across a site with the same
-  // selector. Scoping to just the current page would force the user to redo
-  // the same resize on every sibling page. If the selector falls back to a
-  // structural `nth-child` path and matches something unintended on another
-  // page, the rule silently no-ops (worst case: reset from that page).
   const path = '*';
 
   const entry = {
@@ -731,6 +852,7 @@ async function persistResize(el, cssText) {
     version: 1,
     timestamp: Date.now(),
   };
+  if (kind) entry.kind = kind;
 
   if (window.AdnotaStorage) {
     const data = await chrome.storage.local.get(domain);
@@ -764,7 +886,92 @@ async function persistResize(el, cssText) {
     },
   };
   window.AdnotaUndo.push(undoEntry);
+  return id;
 }
+
+// Drag-resize commit: thin wrapper over commitResizeRule with no `kind`.
+async function persistResize(el, cssText) {
+  await commitResizeRule(el, cssText);
+}
+
+// ─── Unstick chip: apply / remove the override ──────────────────────────────
+// Apply is a thin wrapper over commitResizeRule with the unstick cssText and
+// `kind: 'unstick'` so the storage row is findable on the inverse path.
+async function applyUnstickRule(el) {
+  await commitResizeRule(el, UNSTICK_CSS_TEXT, 'unstick');
+}
+
+// Targeted removal: deletes only the unstick entry for this selector. Any
+// coexisting width/height resize entry on the same selector is preserved
+// (e.g. user resized AND unstuck a header — restick should keep the resize).
+// The blue ↺ reset on the selection box is the scorched-earth alternative.
+async function removeUnstickRule(el) {
+  const selector = generateCSSSelector(el);
+  const domain = location.hostname;
+
+  if (!window.AdnotaStorage) return;
+  const data = await chrome.storage.local.get(domain);
+  if (!data[domain]) return;
+
+  const matching = data[domain].items.filter(
+    i => i.action === 'RESIZE' && i.selector === selector && i.kind === 'unstick'
+  );
+  if (matching.length === 0) return;
+
+  // Snapshot for undo before mutating.
+  const snapshot = matching.map(i => ({ ...i }));
+
+  // Drop from live Map + rebuild style tag.
+  for (const entry of matching) window.AdnotaResizeRules.delete(entry._id);
+  rebuildResizeStyleTag();
+
+  // Drop from storage.
+  const removedIds = new Set(matching.map(i => i._id));
+  data[domain].items = data[domain].items.filter(i => !removedIds.has(i._id));
+  await chrome.storage.local.set({ [domain]: data[domain] });
+
+  // Force reflow so the page's natural sticky/fixed CSS takes effect now.
+  void el.offsetHeight;
+
+  window.AdnotaLog?.event('resizer', 'restick-commit', {
+    sel: selector, count: matching.length, el: window.AdnotaLog.el(el),
+  });
+
+  // Undo: re-add the entries to both the Map and storage.
+  const undoEntry = {
+    _resizeSelector: selector,
+    undo: async () => {
+      window.AdnotaLog?.event('resizer', 'undo', { sel: selector, kind: 'restick' });
+      for (const entry of snapshot) {
+        window.AdnotaResizeRules.set(entry._id, { selector: entry.selector, cssText: entry.cssText });
+      }
+      rebuildResizeStyleTag();
+      const fresh = await chrome.storage.local.get(domain);
+      const domainData = fresh[domain] || { items: [] };
+      for (const entry of snapshot) domainData.items.push(entry);
+      await chrome.storage.local.set({ [domain]: domainData });
+      window.AdnotaUndo.remove(undoEntry);
+    },
+  };
+  window.AdnotaUndo.push(undoEntry);
+}
+
+// Chip click handler. Fires before the document-level click handler bails on
+// `isAdnotaElement(e.target)`, but the stopPropagation is a defensive belt —
+// the document-level handler already short-circuits on Adnota targets.
+actionChip.addEventListener('click', async (e) => {
+  e.preventDefault();
+  e.stopPropagation();
+  if (!hoveredEl) return;
+  const target = hoveredEl;
+  if (hoveredHasUnstickOverride) {
+    await removeUnstickRule(target);
+  } else {
+    await applyUnstickRule(target);
+  }
+  // Re-evaluate chip state (label flips) after the action settles.
+  updateHoverTarget();
+});
 
 // ─── Message routing ─────────────────────────────────────────────────────────
 chrome.runtime.onMessage.addListener((request) => {
@@ -824,12 +1031,20 @@ document.addEventListener('mousemove', (e) => {
   if (selectedEl) return;     // Don't hover while handles are active
 
   const raw = document.elementFromPoint(e.clientX, e.clientY);
+  // Special case: cursor moved onto our own chip cluster. Don't clear the
+  // hover state — the chip lives INSIDE the hover overlay and dissolving
+  // the overlay the moment the cursor lands on it would make the chip
+  // impossible to click. Hold the previous hover state until the cursor
+  // moves back to the page.
+  if (raw && chipCluster.contains(raw)) return;
   if (!raw || isAdnotaElement(raw)) {
     hoveredEl = null;
     rawHoveredEl = null;
     traverseDepth = 0;
     hoverOverlay.style.display = 'none';
     dimensionBadge.textContent = '';
+    actionChip.style.display = 'none';
+    hoveredHasUnstickOverride = false;
     updateHUD();
     return;
   }
@@ -852,6 +1067,11 @@ function updateHoverTarget() {
     const rect = target.getBoundingClientRect();
     const scrollY = window.pageYOffset || document.documentElement.scrollTop;
     const scrollX = window.pageXOffset || document.documentElement.scrollLeft;
+    // Move overlay to the end of <html> on every show so it wins DOM-order
+    // tie-breaks against page chrome that uses the same max z-index. Cheap
+    // — appendChild on an attached node just relocates it, no reflow of
+    // siblings.
+    document.documentElement.appendChild(hoverOverlay);
     Object.assign(hoverOverlay.style, {
       display: 'block',
       top:    `${rect.top + scrollY}px`,
@@ -860,10 +1080,34 @@ function updateHoverTarget() {
       height: `${rect.height}px`,
     });
     dimensionBadge.textContent = `${Math.round(rect.width)}\u00d7${Math.round(rect.height)}`;
+
+    // Action chip: surface only when there's something to act on.
+    //   - Naturally sticky/fixed -> show `unstick`
+    //   - Naturally static but our override is winning -> show `restick`
+    //   - Naturally static and no override -> no chip
+    const cs = getComputedStyle(target);
+    const selector = generateCSSSelector(target);
+    const overridden = hasUnstickOverride(selector);
+    if (cs.position === 'sticky' || cs.position === 'fixed') {
+      hoveredHasUnstickOverride = false;
+      actionChip.textContent = 'unstick';
+      actionChip.setAttribute('data-adnota-tooltip', 'Stop this from following you when scrolling');
+      actionChip.style.display = '';
+    } else if (overridden) {
+      hoveredHasUnstickOverride = true;
+      actionChip.textContent = 'restick';
+      actionChip.setAttribute('data-adnota-tooltip', 'Restore the original sticky behavior');
+      actionChip.style.display = '';
+    } else {
+      hoveredHasUnstickOverride = false;
+      actionChip.style.display = 'none';
+    }
   } else {
     hoveredEl = null;
     hoverOverlay.style.display = 'none';
     dimensionBadge.textContent = '';
+    actionChip.style.display = 'none';
+    hoveredHasUnstickOverride = false;
   }
   updateHUD();
 }

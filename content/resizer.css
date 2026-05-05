@@ -1,8 +1,14 @@
 /* ─── Resizer selection box ────────────────────────────────────────────────── */
 
+/* All resizer overlays (selection box, handles, dismiss, chips) sit at the
+   max int32 z-index. Modern ad/banner chrome routinely uses 2147483647, so
+   anything lower can get occluded. Ties at this value are broken by DOM
+   order — the resizer always re-appends its overlays to documentElement on
+   show (see updateHoverTarget / selectElement) to win those ties. */
+
 .adnota-resizer-selection {
   position: absolute;
-  z-index: 999998;
+  z-index: 2147483647;
   pointer-events: none;
   border: 2px dashed #3b82f6;
   border-radius: 2px;
@@ -17,7 +23,7 @@
 .adnota-resizer-handle-bottom,
 .adnota-resizer-handle-corner {
   position: absolute;
-  z-index: 999999;
+  z-index: 2147483647;
   background: #3b82f6;
   border: 2px solid #fff;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
@@ -75,7 +81,7 @@
 
 .adnota-resizer-dismiss {
   position: absolute;
-  z-index: 1000000;
+  z-index: 2147483647;
   width: 20px;
   height: 20px;
   border-radius: 50%;
@@ -113,7 +119,7 @@
 
 .adnota-resizer-selection-dim {
   position: absolute;
-  z-index: 1000000;
+  z-index: 2147483647;
   background: #3b82f6;
   color: #fff;
   font: 600 11px/1 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
@@ -123,6 +129,53 @@
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
   white-space: nowrap;
   pointer-events: none;
+}
+
+/* ─── Hover chip cluster (top-right of hover overlay) ────────────────────
+   Flex row holding the read-only dimension badge and the optional action
+   chip (currently: unstick/restick). The dimension badge inside this cluster
+   needs `position: static` to participate in flex layout — its base class
+   carries `position: absolute` for the selection-state usage. */
+
+.adnota-resizer-hover-chips {
+  position: absolute;
+  top: -2px;
+  right: -3px;
+  transform: translateY(-50%);
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  z-index: 2147483647;
+}
+
+.adnota-resizer-hover-chips > .adnota-resizer-selection-dim {
+  position: static;
+}
+
+/* ─── Action chip (unstick / restick) ────────────────────────────────────
+   Amber to read as "action available" and to differentiate from the blue
+   dimension readout next to it. `pointer-events: auto` because the parent
+   hover overlay is `pointer-events: none` — the chip is the only clickable
+   hit zone inside that overlay. */
+
+.adnota-resizer-action-chip {
+  background: var(--adnota-amber);
+  color: #fff;
+  font: 600 11px/1 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  padding: 3px 8px 2px;
+  border-radius: 4px;
+  border: 2px solid #fff;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+  white-space: nowrap;
+  cursor: pointer;
+  pointer-events: auto;
+  transition: transform 0.1s ease, filter 0.1s ease;
+  user-select: none;
+}
+
+.adnota-resizer-action-chip:hover {
+  transform: scale(1.06);
+  filter: brightness(1.1);
 }
 
 /* ─── Drag overlay (captures mouse during drag) ──────────────────────────── */
