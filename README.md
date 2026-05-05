@@ -132,7 +132,7 @@ Also exposes `generateCSSSelector(el)` as a shared utility (used by the resizer)
 
 #### `content/sticky.js` — `window.StickyEngine`
 - Activated via popup tool card, dock button, or bare-key `s` (when dock is visible)
-- Click anywhere on the page to drop a sticky note; stays in sticky mode for rapid placement — exit via `Escape` or re-toggle
+- Click anywhere on the page to drop a sticky note; mode auto-exits on placement so a stray click while writing the note doesn't drop a phantom sticky. Re-enter via bare-key `s` or the dock button to place another
 - **Dark frosted-glass toolbar** (fixed, bottom-center, draggable) — matches marker/eraser HUD aesthetic
 - **Toolbar layout**: drag handle → A logo chip → 5 sticky-note-shaped color swatches → trash → undo. Trash clears every sticky note on the current page after a confirm.
 - **Five colors**: yellow, green, blue, pink, white — swatches are mini sticky note icons (folded corner shape) filled with the theme color. Active swatch gets a purple glow ring. Choice persists to `adnotaStickyColor` in storage.

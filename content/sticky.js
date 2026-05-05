@@ -345,6 +345,13 @@ document.addEventListener('click', async (e) => {
   e.stopPropagation();
 
   await createStickyAt(e.clientX, e.clientY, { targetEl: e.target });
+  // Exit sticky mode after placement. Sticky is punctuated (place → type →
+  // done), unlike pen/eraser/highlight which are continuous. The placed
+  // note's textarea takes focus, so staying in mode would mean any click
+  // outside it (scroll, copy text, click a link) drops a phantom sticky.
+  // Re-entry via bare-key `s` or the dock button is one tap away if the
+  // user wants to drop another.
+  window.AdnotaState.set({ mode: null });
 }, true);
 
 // ---------------------------------------------------------------------------
