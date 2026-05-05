@@ -805,6 +805,9 @@ document.addEventListener('click', async (e) => {
     if (!consumed) {
       target.style.setProperty('display', 'none', 'important');
       window.AdnotaErasedElements.add(target);
+      window.AdnotaUI.attachEraseStyleGuard(target, {
+        id, ruleSelector, reason: 'click',
+      });
       try { activeAnimation.cancel(); } catch { }
       activeAnimation = null;
       // One-shot "did our erase actually take?" probe. Two rAFs to give the
@@ -867,7 +870,9 @@ document.addEventListener('click', async (e) => {
         activeAnimation = null;
       }
 
-      // Restore element to exactly where it was.
+      // Restore element to exactly where it was. Detach the style guard
+      // FIRST so the cssText reset isn't immediately fought back to none.
+      window.AdnotaUI.detachEraseStyleGuard(target);
       target.style.cssText = savedCssText;
       window.AdnotaErasedElements.delete(target);
 
