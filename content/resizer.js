@@ -627,8 +627,10 @@ async function resetElement(el) {
 
   // Clear inline style leftovers
   el.style.removeProperty('width');
+  el.style.removeProperty('min-width');
   el.style.removeProperty('max-width');
   el.style.removeProperty('height');
+  el.style.removeProperty('min-height');
   el.style.removeProperty('max-height');
   el.style.removeProperty('margin-left');
   el.style.removeProperty('margin-top');
@@ -677,8 +679,10 @@ function startDrag(e, axis) {
   // margin-left:auto / margin-top:24px, and dropping those snaps the element.
   const savedInline = {
     width: selectedEl.style.width,
+    minWidth: selectedEl.style.minWidth,
     maxWidth: selectedEl.style.maxWidth,
     height: selectedEl.style.height,
+    minHeight: selectedEl.style.minHeight,
     maxHeight: selectedEl.style.maxHeight,
     marginLeft: selectedEl.style.marginLeft,
     marginTop: selectedEl.style.marginTop,
@@ -689,8 +693,10 @@ function startDrag(e, axis) {
       else selectedEl.style.removeProperty(prop);
     };
     apply('width', savedInline.width);
+    apply('min-width', savedInline.minWidth);
     apply('max-width', savedInline.maxWidth);
     apply('height', savedInline.height);
+    apply('min-height', savedInline.minHeight);
     apply('max-height', savedInline.maxHeight);
     apply('margin-left', savedInline.marginLeft);
     apply('margin-top', savedInline.marginTop);
@@ -720,33 +726,37 @@ function startDrag(e, axis) {
       // Pinning lets users move auto-centered elements via two operations
       // (drag left handle out, drag right handle in) instead of having the
       // element re-center every release.
-      const newW = Math.max(60, startWidth + dx);
+      const newW = Math.max(0, startWidth + dx);
       selectedEl.style.setProperty('width', newW + 'px', 'important');
+      selectedEl.style.setProperty('min-width', '0', 'important');
       selectedEl.style.setProperty('max-width', 'none', 'important');
       selectedEl.style.setProperty('margin-left', startMarginLeft + 'px', 'important');
     }
     if (axis === 'x-left') {
       // Left handle: grow/shrink from the left edge, right edge stays fixed.
       // Offset margin-left relative to the original so the right edge stays pinned.
-      const newW = Math.max(60, startWidth - dx);
+      const newW = Math.max(0, startWidth - dx);
       const widthDelta = newW - startWidth; // positive = grew, negative = shrank
       selectedEl.style.setProperty('width', newW + 'px', 'important');
+      selectedEl.style.setProperty('min-width', '0', 'important');
       selectedEl.style.setProperty('max-width', 'none', 'important');
       selectedEl.style.setProperty('margin-left', (startMarginLeft - widthDelta) + 'px', 'important');
     }
     if (axis === 'y' || axis === 'xy') {
       // Bottom handle: grow/shrink from the bottom edge, top edge pinned.
-      const newH = Math.max(40, startHeight + dy);
+      const newH = Math.max(0, startHeight + dy);
       selectedEl.style.setProperty('height', newH + 'px', 'important');
+      selectedEl.style.setProperty('min-height', '0', 'important');
       selectedEl.style.setProperty('max-height', 'none', 'important');
       selectedEl.style.setProperty('margin-top', startMarginTop + 'px', 'important');
     }
     if (axis === 'y-top') {
       // Top handle: grow/shrink from the top edge, bottom edge stays pinned via
       // margin-top compensation — mirrors the left-handle math.
-      const newH = Math.max(40, startHeight - dy);
+      const newH = Math.max(0, startHeight - dy);
       const heightDelta = newH - startHeight;
       selectedEl.style.setProperty('height', newH + 'px', 'important');
+      selectedEl.style.setProperty('min-height', '0', 'important');
       selectedEl.style.setProperty('max-height', 'none', 'important');
       selectedEl.style.setProperty('margin-top', (startMarginTop - heightDelta) + 'px', 'important');
     }
@@ -777,28 +787,32 @@ function startDrag(e, axis) {
     const cssParts = [];
 
     if (axis === 'x' || axis === 'xy') {
-      const newW = Math.max(60, startWidth + dx);
+      const newW = Math.max(0, startWidth + dx);
       cssParts.push(`width: ${newW}px !important`);
+      cssParts.push(`min-width: 0 !important`);
       cssParts.push(`max-width: none !important`);
       cssParts.push(`margin-left: ${startMarginLeft}px !important`);
     }
     if (axis === 'x-left') {
-      const newW = Math.max(60, startWidth - dx);
+      const newW = Math.max(0, startWidth - dx);
       const widthDelta = newW - startWidth;
       cssParts.push(`width: ${newW}px !important`);
+      cssParts.push(`min-width: 0 !important`);
       cssParts.push(`max-width: none !important`);
       cssParts.push(`margin-left: ${startMarginLeft - widthDelta}px !important`);
     }
     if (axis === 'y' || axis === 'xy') {
-      const newH = Math.max(40, startHeight + dy);
+      const newH = Math.max(0, startHeight + dy);
       cssParts.push(`height: ${newH}px !important`);
+      cssParts.push(`min-height: 0 !important`);
       cssParts.push(`max-height: none !important`);
       cssParts.push(`margin-top: ${startMarginTop}px !important`);
     }
     if (axis === 'y-top') {
-      const newH = Math.max(40, startHeight - dy);
+      const newH = Math.max(0, startHeight - dy);
       const heightDelta = newH - startHeight;
       cssParts.push(`height: ${newH}px !important`);
+      cssParts.push(`min-height: 0 !important`);
       cssParts.push(`max-height: none !important`);
       cssParts.push(`margin-top: ${startMarginTop - heightDelta}px !important`);
     }
