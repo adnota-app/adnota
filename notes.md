@@ -64,6 +64,8 @@ The verdict: Adnota is technically excellent, philosophically interesting, and i
       "description": "Toggle CSS Nudge (Layout) Mode"
     }
 
+chrome.storage.local.set({ adnotaDebugLog: true })
+
 chrome.storage.local.remove('adnotaDockPosition')
 
 chrome.storage.local.remove('adnotaDockDismissTutorialShown')
