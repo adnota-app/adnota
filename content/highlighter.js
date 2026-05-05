@@ -234,8 +234,20 @@ function svgCursor(svg, hx, hy, fallback = 'crosshair') {
   return `url("data:image/svg+xml;utf8,${encoded}") ${hx} ${hy}, ${fallback}`;
 }
 
+// Bicolor (black core + white halo) SVGs survive any page background AND any
+// Windows custom pointer color. Win11 Accessibility lets users pick a pointer
+// color that propagates to *all* system cursor variants (crosshair, ew-resize,
+// etc.) — a "White" pointer on a white wikipedia page made our crosshair and
+// resize handles invisible. System-cursor fallbacks stay as the last token in
+// each url(...) so older browsers/headless envs still get something.
 const CURSORS = {
-  crosshair: 'crosshair',
+  crosshair: svgCursor(
+    `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 18 18">
+       <path d="M9 1 L9 17 M1 9 L17 9"
+             stroke="white" stroke-width="3" stroke-linecap="round"/>
+       <path d="M9 1 L9 17 M1 9 L17 9"
+             stroke="black" stroke-width="1.2" stroke-linecap="round"/>
+     </svg>`, 9, 9, 'crosshair'),
   // I-beam for highlight + text. Plain native cursor gives the crispest
   // selection feedback — a custom SVG on a slant confused the hotspot.
   text: 'text',
@@ -244,7 +256,34 @@ const CURSORS = {
     `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 18 18">
        <path d="M2 1 L2 14 L5 11 L7 15 L9 14 L7 10 L12 10 Z"
              fill="white" stroke="black" stroke-width="1.2" stroke-linejoin="round"/>
-     </svg>`, 2, 1, 'default')
+     </svg>`, 2, 1, 'default'),
+  ewResize: svgCursor(
+    `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="12" viewBox="0 0 24 12">
+       <path d="M6 6 L18 6 M6 6 L9 3 M6 6 L9 9 M18 6 L15 3 M18 6 L15 9"
+             stroke="white" stroke-width="3.5" fill="none"
+             stroke-linecap="round" stroke-linejoin="round"/>
+       <path d="M6 6 L18 6 M6 6 L9 3 M6 6 L9 9 M18 6 L15 3 M18 6 L15 9"
+             stroke="black" stroke-width="1.5" fill="none"
+             stroke-linecap="round" stroke-linejoin="round"/>
+     </svg>`, 12, 6, 'ew-resize'),
+  nsResize: svgCursor(
+    `<svg xmlns="http://www.w3.org/2000/svg" width="12" height="24" viewBox="0 0 12 24">
+       <path d="M6 6 L6 18 M6 6 L3 9 M6 6 L9 9 M6 18 L3 15 M6 18 L9 15"
+             stroke="white" stroke-width="3.5" fill="none"
+             stroke-linecap="round" stroke-linejoin="round"/>
+       <path d="M6 6 L6 18 M6 6 L3 9 M6 6 L9 9 M6 18 L3 15 M6 18 L9 15"
+             stroke="black" stroke-width="1.5" fill="none"
+             stroke-linecap="round" stroke-linejoin="round"/>
+     </svg>`, 6, 12, 'ns-resize'),
+  nwseResize: svgCursor(
+    `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 18 18">
+       <path d="M5 5 L13 13 M5 5 L9 5 M5 5 L5 9 M13 13 L9 13 M13 13 L13 9"
+             stroke="white" stroke-width="3.5" fill="none"
+             stroke-linecap="round" stroke-linejoin="round"/>
+       <path d="M5 5 L13 13 M5 5 L9 5 M5 5 L5 9 M13 13 L9 13 M13 13 L13 9"
+             stroke="black" stroke-width="1.5" fill="none"
+             stroke-linecap="round" stroke-linejoin="round"/>
+     </svg>`, 9, 9, 'nwse-resize')
 };
 
 // Inject/update a stylesheet that forces the tool cursor on every non-Adnota
@@ -282,7 +321,7 @@ function setCursorLock(cursor) {
 
 // Expose for other content scripts (sticky.js re-applies the cursor when its
 // color swatch changes so the sticky-note cursor tracks the active color).
-window.AdnotaCursor = { set: setCursorLock, svgCursor };
+window.AdnotaCursor = { set: setCursorLock, svgCursor, cursors: CURSORS };
 
 // Global AdnotaState Subscription — single place that owns cursor and toolbar state
 // for ALL modes. Eraser and sticky manage their own overlays but delegate cursor here.

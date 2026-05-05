@@ -7,8 +7,7 @@
   "author": "Adnota",
   "homepage_url": "https://adnota.app",
   "permissions": [
-    "storage",
-    "tabs"
+    "storage"
   ],
   "host_permissions": [
     "*://*/*"
