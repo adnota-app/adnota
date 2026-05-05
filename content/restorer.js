@@ -46,8 +46,15 @@ async function tearDownAllAnnotations() {
   }
   // Inline-style erases tracked on real DOM nodes — those nodes are usually
   // already gone after the React swap, but clear the Set so we don't hold
-  // stale references and the show/hide toggle starts fresh.
-  if (window.AdnotaErasedElements) window.AdnotaErasedElements.clear();
+  // stale references and the show/hide toggle starts fresh. Detach style
+  // guards along the way; any element that survived the swap shouldn't keep
+  // an idle MutationObserver into the next route.
+  if (window.AdnotaErasedElements) {
+    for (const el of window.AdnotaErasedElements) {
+      window.AdnotaUI?.detachEraseStyleGuard(el);
+    }
+    window.AdnotaErasedElements.clear();
+  }
 }
 
 function showBrokenAnchorsToast(count) {
@@ -265,6 +272,11 @@ async function _performRestoration(trigger) {
       if (match.confidence >= 40 && match.element) {
         match.element.style.setProperty('display', 'none', 'important');
         if (window.AdnotaErasedElements) window.AdnotaErasedElements.add(match.element);
+        // Re-assert against late inline-style overrides (Freestar-style ad
+        // slot init that fires seconds after page load and clobbers our rule).
+        window.AdnotaUI?.attachEraseStyleGuard(match.element, {
+          id, ruleSelector, reason: 'restore',
+        });
       }
       // Two-rAF probe: if the page (Freestar et al.) re-asserts inline
       // display:block !important on the erased element after our rule fires,
