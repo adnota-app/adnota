@@ -266,6 +266,32 @@ async function _performRestoration(trigger) {
         match.element.style.setProperty('display', 'none', 'important');
         if (window.AdnotaErasedElements) window.AdnotaErasedElements.add(match.element);
       }
+      // Two-rAF probe: if the page (Freestar et al.) re-asserts inline
+      // display:block !important on the erased element after our rule fires,
+      // computed display will still be visible. Inline !important beats our
+      // stylesheet !important — the user sees the ad come back. Log loudly
+      // so the failure mode is self-evident from the console.
+      if (match.confidence >= 40 && match.element) {
+        const probed = match.element;
+        requestAnimationFrame(() => requestAnimationFrame(() => {
+          try {
+            if (!probed.isConnected) return;
+            const cs = getComputedStyle(probed);
+            if (cs.display !== 'none') {
+              window.AdnotaLog?.event('restorer', 'erase-defeated', {
+                id,
+                ruleSelector,
+                savedSelector: item.selector,
+                computedDisplay: cs.display,
+                targetInlineStyle: probed.style.cssText || null,
+                parentInlineStyle: probed.parentElement?.style.cssText || null,
+                parentComputedDisplay: probed.parentElement
+                  ? getComputedStyle(probed.parentElement).display : null,
+              });
+            }
+          } catch { }
+        }));
+      }
       // CSS rule has us covered — mark processed regardless of FuzzyAnchor result
       processedItems.add(id);
       erasuresCount++;

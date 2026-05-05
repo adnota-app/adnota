@@ -769,6 +769,10 @@ document.addEventListener('click', async (e) => {
   // same slot is hidden too without a second click. No-op for generic tags.
   const ruleSelector = window.AdnotaUI.maybeGeneralizeAdSelector(cssSelector, target.tagName);
   const adSignals = getEffectiveAdSignals(target);
+  // Snapshot the element's inline style and a short outerHTML at click time —
+  // when an erased ad reappears, the diagnostic question is almost always
+  // "did the page have inline display:block !important that beats our rule?"
+  // and "did we save what we think we saved?". Both answers live here.
   window.AdnotaLog?.event('eraser', 'click', {
     el: window.AdnotaLog.el(target),
     scope: useDomain ? 'domain' : 'page',
@@ -776,6 +780,12 @@ document.addEventListener('click', async (e) => {
     shiftClick: !!e.shiftKey,
     adSignals,
     ruleSelector,
+    savedSelector: cssSelector,
+    anchorTag: anchor?.tagName || null,
+    anchorAttrs: anchor?.attributes ? Object.keys(anchor.attributes) : [],
+    inlineStyle: target.style.cssText || null,
+    parentInlineStyle: target.parentElement?.style.cssText || null,
+    outerHTML: (target.outerHTML || '').slice(0, 240),
     id,
   });
   window.AdnotaEraseRules.set(id, ruleSelector);
@@ -797,6 +807,27 @@ document.addEventListener('click', async (e) => {
       window.AdnotaErasedElements.add(target);
       try { activeAnimation.cancel(); } catch { }
       activeAnimation = null;
+      // One-shot "did our erase actually take?" probe. Two rAFs to give the
+      // browser a paint cycle for any ad-system MutationObserver to react and
+      // re-assert inline display:block !important. If the element is still
+      // visible, log it loudly — that's the Freestar-style override pattern.
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        try {
+          if (!target.isConnected) return;
+          const cs = getComputedStyle(target);
+          if (cs.display !== 'none') {
+            window.AdnotaLog?.event('eraser', 'erase-defeated', {
+              id,
+              ruleSelector,
+              computedDisplay: cs.display,
+              targetInlineStyle: target.style.cssText || null,
+              parentInlineStyle: target.parentElement?.style.cssText || null,
+              parentComputedDisplay: target.parentElement
+                ? getComputedStyle(target.parentElement).display : null,
+            });
+          }
+        } catch { }
+      }));
     }
   }).catch(() => {
     // Animation was cancelled by undo — do nothing.
