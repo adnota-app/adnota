@@ -634,6 +634,7 @@ async function resetElement(el) {
   el.style.removeProperty('max-height');
   el.style.removeProperty('margin-left');
   el.style.removeProperty('margin-top');
+  el.style.removeProperty('overflow');
   void el.offsetHeight; // force reflow
 
   // Remove from storage
@@ -686,6 +687,7 @@ function startDrag(e, axis) {
     maxHeight: selectedEl.style.maxHeight,
     marginLeft: selectedEl.style.marginLeft,
     marginTop: selectedEl.style.marginTop,
+    overflow: selectedEl.style.overflow,
   };
   const restoreInline = () => {
     const apply = (prop, value) => {
@@ -700,6 +702,7 @@ function startDrag(e, axis) {
     apply('max-height', savedInline.maxHeight);
     apply('margin-left', savedInline.marginLeft);
     apply('margin-top', savedInline.marginTop);
+    apply('overflow', savedInline.overflow);
   };
 
   // Add a full-viewport overlay to capture all mouse events during drag
@@ -720,6 +723,13 @@ function startDrag(e, axis) {
   function onMove(ev) {
     const dx = ev.clientX - dragStartX;
     const dy = ev.clientY - dragStartY;
+
+    // Clip overflow on every resize so the visual matches the new bounds.
+    // Without this, ad iframes / oversized images / absolutely-positioned
+    // children paint outside the resized container — the layout is smaller
+    // but the user sees no change. Set once per drag tick, regardless of
+    // axis. See README's resizer cssText format note for the rationale.
+    selectedEl.style.setProperty('overflow', 'hidden', 'important');
 
     if (axis === 'x' || axis === 'xy') {
       // Right handle: grow/shrink from the right edge, left edge pinned.
@@ -783,8 +793,11 @@ function startDrag(e, axis) {
     // rule's !important takes over for the props we resized.
     restoreInline();
 
-    // Build CSS rule from final dimensions
-    const cssParts = [];
+    // Build CSS rule from final dimensions. `overflow: hidden` is set once
+    // for every resize regardless of axis — clips ad iframes, oversized
+    // images, and abs-positioned children so the visual matches the new
+    // bounds.
+    const cssParts = [`overflow: hidden !important`];
 
     if (axis === 'x' || axis === 'xy') {
       const newW = Math.max(0, startWidth + dx);
