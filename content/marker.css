@@ -15,7 +15,10 @@
      when no ancestor is scrollable. Mid-stroke scroll is blocked by that
      same handler regardless. Pinch-zoom etc. stays disabled. */
   touch-action: pan-x pan-y;
-  cursor: crosshair;
+  /* Cursor is set inline from marker.js using the bicolor SVG crosshair so it
+     matches the rest of the app — see initCaptureOverlay. The `data-adnota-ui`
+     attribute excludes this canvas from highlighter.js's cursor lock, which
+     would otherwise apply that same SVG via the global stylesheet. */
   background: transparent; /* Invisible overlay */
 }
 

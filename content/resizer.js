@@ -297,32 +297,39 @@ function selectElement(el) {
   positionBox(selectionBox, rect, scrollX, scrollY);
   document.documentElement.appendChild(selectionBox);
 
+  // Bicolor SVG resize cursors so they stay visible against any background and
+  // any Win11 system-pointer color (see CURSORS in highlighter.js).
+  const cursors = window.AdnotaCursor?.cursors;
+  const ewResize   = cursors?.ewResize   ?? 'ew-resize';
+  const nsResize   = cursors?.nsResize   ?? 'ns-resize';
+  const nwseResize = cursors?.nwseResize ?? 'nwse-resize';
+
   // Left-edge handle (width — shrink by dragging right, or grow by dragging left)
-  handleLeft = createHandle('adnota-resizer-handle-left', 'ew-resize');
+  handleLeft = createHandle('adnota-resizer-handle-left', ewResize);
   positionHandleLeft(handleLeft, rect, scrollX, scrollY);
   handleLeft.addEventListener('mousedown', (e) => startDrag(e, 'x-left'));
   document.documentElement.appendChild(handleLeft);
 
   // Right-edge handle (width)
-  handleRight = createHandle('adnota-resizer-handle-right', 'ew-resize');
+  handleRight = createHandle('adnota-resizer-handle-right', ewResize);
   positionHandleRight(handleRight, rect, scrollX, scrollY);
   handleRight.addEventListener('mousedown', (e) => startDrag(e, 'x'));
   document.documentElement.appendChild(handleRight);
 
   // Top-edge handle (height from the top — bottom stays pinned via margin-top)
-  handleTop = createHandle('adnota-resizer-handle-top', 'ns-resize');
+  handleTop = createHandle('adnota-resizer-handle-top', nsResize);
   positionHandleTop(handleTop, rect, scrollX, scrollY);
   handleTop.addEventListener('mousedown', (e) => startDrag(e, 'y-top'));
   document.documentElement.appendChild(handleTop);
 
   // Bottom-edge handle (height)
-  handleBottom = createHandle('adnota-resizer-handle-bottom', 'ns-resize');
+  handleBottom = createHandle('adnota-resizer-handle-bottom', nsResize);
   positionHandleBottom(handleBottom, rect, scrollX, scrollY);
   handleBottom.addEventListener('mousedown', (e) => startDrag(e, 'y'));
   document.documentElement.appendChild(handleBottom);
 
   // Corner handle (both)
-  handleCorner = createHandle('adnota-resizer-handle-corner', 'nwse-resize');
+  handleCorner = createHandle('adnota-resizer-handle-corner', nwseResize);
   positionHandleCorner(handleCorner, rect, scrollX, scrollY);
   handleCorner.addEventListener('mousedown', (e) => startDrag(e, 'xy'));
   document.documentElement.appendChild(handleCorner);
@@ -581,9 +588,11 @@ function startDrag(e, axis) {
   Object.assign(dragOverlay.style, {
     position: 'fixed', top: '0', left: '0', width: '100vw', height: '100vh',
     zIndex: '2147483647',
-    cursor: (axis === 'x' || axis === 'x-left') ? 'ew-resize'
-          : (axis === 'y' || axis === 'y-top') ? 'ns-resize'
-          : 'nwse-resize',
+    cursor: (axis === 'x' || axis === 'x-left')
+              ? (window.AdnotaCursor?.cursors?.ewResize   ?? 'ew-resize')
+          : (axis === 'y' || axis === 'y-top')
+              ? (window.AdnotaCursor?.cursors?.nsResize   ?? 'ns-resize')
+              : (window.AdnotaCursor?.cursors?.nwseResize ?? 'nwse-resize'),
   });
   document.documentElement.appendChild(dragOverlay);
 
