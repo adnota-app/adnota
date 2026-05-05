@@ -45,7 +45,7 @@ function makeToolBtn(name, title, mode) {
   const btn = document.createElement('div');
   btn.className = 'adnota-tool-btn';
   btn.dataset.tool = mode;
-  btn.setAttribute('data-tooltip', title);
+  btn.setAttribute('data-adnota-tooltip', title);
   btn.appendChild(svgIcon(name));
   btn.onclick = (e) => {
     e.stopPropagation();
@@ -89,7 +89,7 @@ highlightToolbar.appendChild(Object.assign(document.createElement('div'), { clas
 function makeFillBtn({ iconKey, cls, title, filled }) {
   const btn = document.createElement('div');
   btn.className = `adnota-tool-btn ${cls}`;
-  btn.setAttribute('data-tooltip', title);
+  btn.setAttribute('data-adnota-tooltip', title);
   const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
   svg.setAttribute('viewBox', '0 0 20 20');
   svg.innerHTML = toolIcons[iconKey];
@@ -134,7 +134,7 @@ function resolvePaintColor(c) {
 // renderer since CSS Custom Highlights need pre-registered theme names.
 const eyedropperSwatch = document.createElement('div');
 eyedropperSwatch.className = 'adnota-color-swatch adnota-eyedropper-swatch';
-eyedropperSwatch.setAttribute('data-tooltip', 'Current color — click to pick any color from the page');
+eyedropperSwatch.setAttribute('data-adnota-tooltip', 'Current color — click to pick any color from the page');
 const eyeSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
 eyeSvg.setAttribute('viewBox', '0 0 20 20');
 eyeSvg.innerHTML = toolIcons.eyedropper;
@@ -166,11 +166,11 @@ for (const [themeClass, colorHex] of Object.entries(themes)) {
   swatch.className = 'adnota-color-swatch';
   swatch.style.backgroundColor = colorHex;
   if (themeClass === 'adnota-theme-black') {
-    swatch.setAttribute('data-tooltip', 'Redact');
+    swatch.setAttribute('data-adnota-tooltip', 'Redact');
   } else {
     let tooltipName = themeClass.replace('adnota-theme-', '');
     tooltipName = tooltipName.charAt(0).toUpperCase() + tooltipName.slice(1);
-    swatch.setAttribute('data-tooltip', tooltipName);
+    swatch.setAttribute('data-adnota-tooltip', tooltipName);
   }
   swatch.onclick = (e) => {
     e.stopPropagation();
@@ -193,7 +193,7 @@ const strokeBtns = {};
 for (const preset of strokePresets) {
   const btn = document.createElement('div');
   btn.className = 'adnota-stroke-btn';
-  btn.setAttribute('data-tooltip', preset.label);
+  btn.setAttribute('data-adnota-tooltip', preset.label);
   const dot = document.createElement('div');
   dot.className = 'adnota-stroke-dot';
   dot.style.width = preset.dotSize + 'px';

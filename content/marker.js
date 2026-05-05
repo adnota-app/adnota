@@ -1383,7 +1383,7 @@ function showSelectionUI(wrapper) {
   const delBtn = document.createElement('div');
   delBtn.className = 'adnota-select-delete';
   delBtn.textContent = '\u2715';
-  delBtn.setAttribute('data-tooltip', 'Delete');
+  delBtn.setAttribute('data-adnota-tooltip', 'Delete');
   delBtn.onclick = async (e) => {
     e.stopPropagation();
     await deleteSelectedMarker(wrapper);

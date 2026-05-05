@@ -60,7 +60,7 @@
   const logo = document.createElement('span');
   logo.className = 'adnota-dock-logo';
   logo.textContent = 'A';
-  logo.setAttribute('data-tooltip', 'My Edited Sites · drag to move');
+  logo.setAttribute('data-adnota-tooltip', 'My Edited Sites · drag to move');
   logo.addEventListener('click', (e) => {
     e.stopPropagation();
     // Try/catch + .catch: after a Adnota reload, any tab already loaded
@@ -78,7 +78,7 @@
   const back = document.createElement('button');
   back.type = 'button';
   back.className = 'adnota-dock-back';
-  back.setAttribute('data-tooltip', 'Exit tool (Esc)');
+  back.setAttribute('data-adnota-tooltip', 'Exit tool (Esc)');
   back.innerHTML = icons.back;
   back.addEventListener('click', (e) => {
     e.stopPropagation();
@@ -98,7 +98,7 @@
     btn.type = 'button';
     btn.className = 'adnota-dock-tool';
     btn.setAttribute('data-adnota-ui', '1');
-    btn.setAttribute('data-tooltip', tool.tooltip);
+    btn.setAttribute('data-adnota-tooltip', tool.tooltip);
     btn.setAttribute('data-tool-id', tool.id);
     if (tool.accent) btn.setAttribute('data-accent', tool.accent);
     btn.innerHTML = icons[tool.icon];
@@ -128,7 +128,7 @@
   const dismissBtn = document.createElement('div');
   dismissBtn.className = 'adnota-select-delete adnota-dock-dismiss';
   dismissBtn.textContent = '✕';
-  dismissBtn.setAttribute('data-tooltip', 'Hide on this site (Alt+A restores)');
+  dismissBtn.setAttribute('data-adnota-tooltip', 'Hide on this site (Alt+A restores)');
   dock.appendChild(dismissBtn);
 
   document.documentElement.appendChild(dock);
@@ -525,7 +525,7 @@
     const visEntry = toolEls.find(t => t.tool.id === 'vis');
     if (!visEntry) return;
     visEntry.btn.innerHTML = isHidden ? icons.visibilityOff : icons.visibility;
-    visEntry.btn.setAttribute('data-tooltip', isHidden ? 'Show All (Alt+S)' : 'Hide All (Alt+S)');
+    visEntry.btn.setAttribute('data-adnota-tooltip', isHidden ? 'Show All (Alt+S)' : 'Hide All (Alt+S)');
   }
 
   if (window.AdnotaVisibility?.subscribe) {
