@@ -14,7 +14,10 @@
   align-items: center;
   justify-content: center;
   animation: adnota-modal-fade-in 0.15s ease-out;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  /* !important on font-family — hosts like Reddit ship high-specificity
+     body-text rules that otherwise win over inherit chains and bleed their
+     brand font (Reddit-Sans, IBM Plex, etc.) into our dialog body. */
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif !important;
 }
 
 @keyframes adnota-modal-fade-in {
@@ -62,24 +65,41 @@
   user-select: none;
 }
 
-.adnota-modal-title {
+/* Modal text selectors prefix [data-adnota-ui] for the same reason as the
+   tooltip rule: hosts like Reddit ship body-text rules with selector chains
+   like `.shreddit-comment p` (0,2,1) that out-specify a single class, so we
+   need to chain attribute + class to reach (0,2,0)+ and let !important win. */
+[data-adnota-ui] .adnota-modal-title {
   color: rgba(255, 255, 255, 0.95);
-  font-size: 14px;
-  font-weight: 600;
-  letter-spacing: 0.01em;
+  font-family: inherit !important;
+  font-size: 14px !important;
+  font-weight: 600 !important;
+  font-style: normal !important;
+  letter-spacing: 0.01em !important;
+  text-transform: none !important;
 }
 
-.adnota-modal-message {
+[data-adnota-ui] .adnota-modal-message {
   color: rgba(255, 255, 255, 0.9);
-  font-size: 13.5px;
-  line-height: 1.5;
+  font-family: inherit !important;
+  font-size: 13.5px !important;
+  font-weight: 400 !important;
+  font-style: normal !important;
+  letter-spacing: normal !important;
+  line-height: 1.5 !important;
+  text-transform: none !important;
   margin: 4px 0 2px;
 }
 
-.adnota-modal-subtext {
+[data-adnota-ui] .adnota-modal-subtext {
   color: rgba(255, 255, 255, 0.55);
-  font-size: 12px;
-  line-height: 1.45;
+  font-family: inherit !important;
+  font-size: 12px !important;
+  font-weight: 400 !important;
+  font-style: normal !important;
+  letter-spacing: normal !important;
+  line-height: 1.45 !important;
+  text-transform: none !important;
   margin-bottom: 16px;
 }
 
@@ -90,73 +110,109 @@
   margin-top: 14px;
 }
 
-.adnota-modal-btn {
-  font-family: inherit;
-  font-size: 12.5px;
-  font-weight: 600;
-  padding: 7px 14px;
-  border-radius: 7px;
-  cursor: pointer;
-  border: 1px solid transparent;
-  letter-spacing: 0.02em;
+/* Same hardening pattern as the modal text rules: [data-adnota-ui] prefix
+   bumps specificity to (0,2,0) and !important on every visual property
+   stops Reddit-style host button rules from leaking through. */
+[data-adnota-ui] .adnota-modal-btn {
+  font-family: inherit !important;
+  font-size: 12.5px !important;
+  font-weight: 600 !important;
+  font-style: normal !important;
+  letter-spacing: 0.02em !important;
+  text-transform: none !important;
+  text-decoration: none !important;
+  text-shadow: none !important;
+  line-height: 1.2 !important;
+  padding: 7px 14px !important;
+  border-radius: 7px !important;
+  cursor: pointer !important;
+  border: 1px solid transparent !important;
+  min-height: 0 !important;
+  height: auto !important;
+  width: auto !important;
   transition: background 0.15s, border-color 0.15s, color 0.15s;
 }
 
-.adnota-modal-btn:focus {
-  outline: none;
-  box-shadow: 0 0 0 2px rgba(124, 58, 237, 0.55);
+[data-adnota-ui] .adnota-modal-btn:focus {
+  outline: none !important;
+  box-shadow: 0 0 0 2px rgba(124, 58, 237, 0.55) !important;
 }
 
-.adnota-modal-cancel {
-  background: transparent;
-  border-color: rgba(255, 255, 255, 0.18);
-  color: rgba(255, 255, 255, 0.8);
+[data-adnota-ui] .adnota-modal-cancel {
+  background: transparent !important;
+  border-color: rgba(255, 255, 255, 0.18) !important;
+  color: rgba(255, 255, 255, 0.8) !important;
 }
-.adnota-modal-cancel:hover {
-  background: rgba(255, 255, 255, 0.06);
-  border-color: rgba(255, 255, 255, 0.3);
-  color: #fff;
+[data-adnota-ui] .adnota-modal-cancel:hover {
+  background: rgba(255, 255, 255, 0.06) !important;
+  border-color: rgba(255, 255, 255, 0.3) !important;
+  color: #fff !important;
 }
 
-.adnota-modal-danger {
-  background: linear-gradient(135deg, rgba(239, 68, 68, 0.85) 0%, rgba(220, 38, 38, 0.85) 100%);
-  border-color: rgba(239, 68, 68, 0.55);
-  color: #fff;
+[data-adnota-ui] .adnota-modal-danger {
+  background: linear-gradient(135deg, rgba(239, 68, 68, 0.85) 0%, rgba(220, 38, 38, 0.85) 100%) !important;
+  border-color: rgba(239, 68, 68, 0.55) !important;
+  color: #fff !important;
 }
-.adnota-modal-danger:hover {
-  background: linear-gradient(135deg, rgba(239, 68, 68, 1) 0%, rgba(220, 38, 38, 1) 100%);
-  border-color: rgba(239, 68, 68, 0.9);
+[data-adnota-ui] .adnota-modal-danger:hover {
+  background: linear-gradient(135deg, rgba(239, 68, 68, 1) 0%, rgba(220, 38, 38, 1) 100%) !important;
+  border-color: rgba(239, 68, 68, 0.9) !important;
 }
 
 /* ─── HUD Global Styles & Custom Tooltips ────────────────────────────────── */
 
+/* Position rule keeps :where() — needs to LOSE specificity wars against
+   per-element positioning (e.g., .adnota-select-delete is position:absolute,
+   raising this rule above (0,1,0) would knock the X into normal flow). */
 :where([data-adnota-ui])[data-tooltip],
 :where([data-adnota-ui]) [data-tooltip] {
   position: relative;
 }
 
-:where([data-adnota-ui])[data-tooltip]:hover::after,
-:where([data-adnota-ui]) [data-tooltip]:hover::after {
-  content: attr(data-tooltip);
-  position: absolute;
-  bottom: calc(100% + 8px);
-  left: 50%;
-  transform: translateX(-50%);
-  background: rgba(15, 15, 15, 0.95);
-  color: var(--adnota-hud-text);
-  /* Reset typography that hosts like .adnota-toolbar-drag bake in (bold +
-     tight letter-spacing for the braille dot glyph) — otherwise the tooltip
-     inherits them and doesn't match the rest of the HUD tooltips. */
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  font-size: 11px;
-  font-weight: 500;
-  letter-spacing: normal;
-  line-height: 1.2;
-  padding: 3px 8px;
-  border-radius: 4px;
-  white-space: nowrap;
+/* Tooltip pseudo-element rule deliberately drops :where() — host sites
+   (Reddit especially) ship `button::after` rules for icon-fonts/spinners
+   with selector chains that out-specify a 0-specificity wrapper. We need
+   [data-adnota-ui] to actually count, putting our descendant form at (0,3,1). */
+[data-adnota-ui][data-tooltip]:hover::after,
+[data-adnota-ui] [data-tooltip]:hover::after {
+  /* `content` and visual properties use !important because hosts (Reddit,
+     Tailwind-heavy CMS sites) ship blanket pseudo-element resets like
+     `*::after { content: none }` or text transforms on `*` that otherwise
+     suppress or mangle the tooltip. The :where() wrapper has 0 specificity
+     so any host rule wins without these. */
+  content: attr(data-tooltip) !important;
+  display: block !important;
+  position: absolute !important;
+  bottom: calc(100% + 8px) !important;
+  left: 50% !important;
+  right: auto !important;
+  top: auto !important;
+  transform: translateX(-50%) !important;
+  clip: auto !important;
+  clip-path: none !important;
+  width: auto !important;
+  height: auto !important;
+  max-width: none !important;
+  max-height: none !important;
+  background: rgba(15, 15, 15, 0.95) !important;
+  color: var(--adnota-hud-text) !important;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
+  font-size: 11px !important;
+  font-weight: 500 !important;
+  font-style: normal !important;
+  letter-spacing: normal !important;
+  line-height: 1.2 !important;
+  text-transform: none !important;
+  text-decoration: none !important;
+  text-shadow: none !important;
+  text-indent: 0 !important;
+  padding: 3px 8px !important;
+  border-radius: 4px !important;
+  white-space: nowrap !important;
   pointer-events: none;
-  border: 1px solid var(--adnota-tooltip-border, rgba(124, 58, 237, 0.3));
+  border: 1px solid var(--adnota-tooltip-border, rgba(124, 58, 237, 0.3)) !important;
+  opacity: 1 !important;
+  visibility: visible !important;
   z-index: 2147483647;
 }
 
