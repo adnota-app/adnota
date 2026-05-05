@@ -74,3 +74,11 @@ chrome.storage.local.get('readaloudrevival.com', (d) => console.log(JSON.stringi
     turn on debug logging for bubbling up parent elements:
     localStorage.setItem('adnota-debug-bubble', '1')
     localStorage.removeItem('adnota-debug-bubble')
+
+
+
+
+Perhaps we should have a settings page, and we should allow users to enable
+shortcuts? My son was just complaining about this add on getting in his way,
+esp saying the shortcuts would popup tools, but he didn't want to use it at
+all. Perhaps people could opt-in to shortcuts? Thoughts?
