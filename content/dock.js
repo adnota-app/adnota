@@ -139,6 +139,7 @@
   const POSITION_KEY = 'adnotaDockPosition';
   const HIDDEN_DOMAINS_KEY = 'adnotaHiddenDomains';
   const TUTORIAL_KEY = 'adnotaDockDismissTutorialShown';
+  const TOOL_ESC_TUTORIAL_KEY = 'adnotaToolEscTutorialShown';
 
   // Per-domain dismiss state. Mirrored to chrome.storage.local as an array;
   // a Set in memory for O(1) checks. The X persists this. Alt+A and any
@@ -357,6 +358,23 @@
       window.AdnotaUI?.showToast(
         `Adnota hidden on ${location.hostname}. It'll stay hidden here until you bring it back with Alt+A or the extension icon.`,
         { id: 'adnota-dock-dismiss-tutorial', timeout: 7000 }
+      );
+    } catch (_) { /* context invalidated after extension reload */ }
+  }
+
+  // First-tool-activation toast: tells the user that Esc exits any tool, so
+  // they don't have to discover the back-arrow tooltip mid-task. Same one-
+  // time pattern as the dismiss tutorial — gated by a profile-wide storage
+  // flag, fires from AdnotaDock.mount on the first activation regardless of
+  // which tool the user opens first.
+  async function maybeShowToolEscTutorial() {
+    try {
+      const data = await chrome.storage.local.get(TOOL_ESC_TUTORIAL_KEY);
+      if (data[TOOL_ESC_TUTORIAL_KEY]) return;
+      await chrome.storage.local.set({ [TOOL_ESC_TUTORIAL_KEY]: true });
+      window.AdnotaUI?.showToast(
+        `Tip: press Esc to exit any tool.`,
+        { id: 'adnota-tool-esc-tutorial', timeout: 5000 }
       );
     } catch (_) { /* context invalidated after extension reload */ }
   }
@@ -594,6 +612,7 @@
     // a moving target as its info text changes width.
     mount(toolId, buildBodyFn) {
       window.AdnotaLog?.event('dock', 'mount', { toolId });
+      maybeShowToolEscTutorial();
       commitPositionIfCentered();
       body.replaceChildren();
       const frag = buildBodyFn?.();
