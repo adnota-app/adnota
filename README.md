@@ -274,7 +274,7 @@ Premium dark-header popup (360px wide). Features:
 
 #### `content/dock.js` + `content/dock.css` — The Adnota Dock
 One persistent floating widget (fixed, bottom-center, draggable) that is the only Adnota chrome on the page. Two visual states, toggled by which tool (if any) is active:
-- **Idle**: `[drag][A][eraser][sticky][marker][resizer][scratch][vis]` — always-visible tool row, one click away. At `opacity: 0.55` so it stays out of the way. The scratch button is a non-tool utility (no mode), greyed to 30% opacity when the page has no HIGHLIGHT or NOTE items so it never teases when there's nothing to recall.
+- **Idle**: `[drag][A]` until hovered, then bloom-expands rightward to `[drag][A][eraser][sticky][marker][resizer][scratch][vis]`. The collapsed footprint cedes real estate back to the host page when the user isn't reaching for the dock; hover snaps it to full width via a `max-width` transition on `.adnota-dock-tools` (same overflow-x:clip pattern the body slot uses on tool mount). Sits at `opacity: 0.55` while collapsed, `1` while expanded. The scratch button is a non-tool utility (no mode), greyed to 30% opacity when the page has no HIGHLIGHT or NOTE items so it never teases when there's nothing to recall.
 - **Active**: `[drag][← back (tinted)][tool's HUD body]` — tool row collapses, A morphs into an accent-colored back arrow, the tool's own controls fill the body slot.
 - **Back arrow / Escape / clicking the active tool again** all exit the tool and return to idle.
 - **A logo** opens the Sites history page in a new tab.
