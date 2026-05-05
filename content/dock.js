@@ -570,6 +570,24 @@
   const SLIDE_MS = 180;
   let unclipTimer = null;
 
+  // Same trick for the idle tool row's hover-expand: clip while the row is
+  // sliding open (so buttons don't briefly poke out of a still-narrow box),
+  // then lift the clip once expanded so tooltips on the leftmost/rightmost
+  // buttons can render past the row's edges. pointerenter/leave don't bubble,
+  // so we get exactly one fire per dock entry/exit.
+  let toolsUnclipTimer = null;
+  dock.addEventListener('pointerenter', () => {
+    if (dock.classList.contains('adnota-dock-active')) return;
+    clearTimeout(toolsUnclipTimer);
+    toolsUnclipTimer = setTimeout(() => {
+      toolRow.style.overflow = 'visible';
+    }, SLIDE_MS);
+  });
+  dock.addEventListener('pointerleave', () => {
+    clearTimeout(toolsUnclipTimer);
+    toolRow.style.overflow = '';
+  });
+
   // ── Public API ────────────────────────────────────────────────────────────
   window.AdnotaDock = {
     // Lock the dock to its current pixel coordinates BEFORE filling the

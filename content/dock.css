@@ -122,13 +122,24 @@
 #adnota-dock.adnota-dock-active .adnota-dock-back { display: inline-flex; }
 
 /* ── Tool row (idle) ───────────────────────────────────────────────────── */
-/* Instant swap, no width animation: the body's grow animation is the ONLY
-   thing the eye tracks during a state change. Animating both at once made
-   the body look like it slid in from the right as the tools collapsed. */
+/* Collapsed-by-default so the idle dock is just drag + A — the page keeps
+   its real estate until the user reaches for the dock. Hover bloom-expands
+   the row using the same max-width / overflow-x:clip pattern the body slot
+   uses below. Tool-active state still hides the row entirely (rule below):
+   the tool body owns the slot, so the collapse animation isn't relevant. */
 .adnota-dock-tools {
   display: inline-flex;
   align-items: center;
   gap: 4px;
+  max-width: 0;
+  margin-left: 0;
+  overflow-x: clip;
+  overflow-y: visible;
+  transition: max-width 0.18s ease-out, margin-left 0.18s ease-out;
+}
+
+#adnota-dock:hover:not(.adnota-dock-active) .adnota-dock-tools {
+  max-width: 300px;
   margin-left: 8px;
 }
 
