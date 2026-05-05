@@ -121,7 +121,7 @@ for (const [themeClass, info] of Object.entries(STICKY_THEMES)) {
   swatch.className = 'adnota-sticky-swatch';
   let tooltipName = themeClass.replace('adnota-theme-', '');
   tooltipName = tooltipName.charAt(0).toUpperCase() + tooltipName.slice(1);
-  swatch.setAttribute('data-tooltip', tooltipName);
+  swatch.setAttribute('data-adnota-tooltip', tooltipName);
   swatch.innerHTML = stickyNoteSVG(info.swatch);
   swatch.dataset.theme = themeClass;
   swatch.onclick = (e) => {
@@ -502,7 +502,7 @@ window.StickyEngine = {
       <div class="adnota-sticky-card">
         <div class="adnota-sticky-header">
           <span class="adnota-timestamp">${ts}</span>
-          <button class="adnota-trash-btn" data-tooltip="Delete note" aria-label="Delete note">
+          <button class="adnota-trash-btn" data-adnota-tooltip="Delete note" aria-label="Delete note">
             <svg width="9" height="9" viewBox="0 0 9 9" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
               <line x1="1" y1="1" x2="8" y2="8"/><line x1="8" y1="1" x2="1" y2="8"/>
             </svg>

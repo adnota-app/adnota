@@ -210,7 +210,7 @@
 .adnota-dock-tool[data-accent="highlight"] { --tool-color: var(--adnota-accent); --tool-glow: rgba(124, 58, 237, 0.3); }
 .adnota-dock-tool[data-accent="resizer"]   { --tool-color: #3b82f6; --tool-glow: rgba(59, 130, 246, 0.3); }
 
-/* Tool buttons need position:relative so the shared [data-tooltip]::after
+/* Tool buttons need position:relative so the shared [data-adnota-tooltip]::after
    rule from adnotaUI.css positions correctly. */
 .adnota-dock-tool { position: relative; }
 
@@ -236,7 +236,7 @@
   /* overflow-x: clip + overflow-y: visible is the one combination CSS allows
      where vertical content escapes while horizontal content stays clipped.
      We need horizontal clipping for the max-width slide-in; vertical escape
-     lets each HUD button's [data-tooltip]::after pseudo-element render
+     lets each HUD button's [data-adnota-tooltip]::after pseudo-element render
      above the dock instead of getting cropped at the body's top edge. */
   overflow-x: clip;
   overflow-y: visible;
