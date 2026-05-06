@@ -266,20 +266,6 @@ function buildContainerFallback(clientX, clientY, walkSeedEl) {
   };
 }
 
-// Walk up from `el` to find its nearest scrolling ancestor. Used by goto's
-// Tier 1 path so we can scroll *whatever moves the anchor* — the document
-// for normal pages, an inner div for app shells (claude.ai, chatgpt.com).
-// Falls back to document.scrollingElement when no inner scroller is found
-// so we never return null for the document case.
-function getScrollerFor(el) {
-  let cur = el && el.parentElement;
-  while (cur && cur !== document.documentElement && cur !== document.body) {
-    if (window.AdnotaUI?.isScrollContainer?.(cur)) return cur;
-    cur = cur.parentElement;
-  }
-  return document.scrollingElement || document.documentElement;
-}
-
 // ---------------------------------------------------------------------------
 // Click to drop a note — hybrid anchor + percentage fallback
 // ---------------------------------------------------------------------------
@@ -417,15 +403,18 @@ window.StickyEngine = {
   // The scratch pad's GOTO button uses the return value to surface a
   // "couldn't locate" toast.
   //
-  // We can't call scrollIntoView on the container itself: stickies live
-  // inside #adnota-sticky-overlay (position: fixed), so the browser treats
-  // the container as already viewport-anchored and the call is a no-op.
-  // Instead, mirror highlighter.scrollTo: re-resolve the note's anchor
-  // (Tier 1 → Tier 2) like updatePosition does and scroll *that* DOM node
-  // into view — scrollIntoView walks up to find the right scroll container,
-  // which matters on app shells (claude.ai, chatgpt.com) where the
-  // document itself doesn't scroll. Tier 3 (no anchor) falls through to
-  // window.scrollTo using the stored percentage placement.
+  // We can't call scrollIntoView on the sticky container — it lives inside
+  // #adnota-sticky-overlay (position: fixed), so the browser treats it as
+  // already viewport-anchored and the call no-ops. We also can't call
+  // scrollIntoView on the resolved Tier 1 anchor: a sticky dropped in
+  // page whitespace anchors to a tall wrapper (Wikipedia's <main> at
+  // 24,000px is the canonical case) and centering the wrapper leaves the
+  // sticky thousands of pixels away. Instead, mirror updatePosition's
+  // tier cascade and compute a target scrollTop directly:
+  //   Tier 1: math from anchor rect + anchorOffset.dy in scroller-content space
+  //   Tier 2: containerOffsetY (already in scroller-content space)
+  //   Tier 3: yScrollPct * scrollHeight
+  // Centers the sticky vertically in the scroller (or window for Tier 3).
   scrollTo(uuid) {
     if (!uuid) return false;
     const noteState = activeNotes.get(uuid);
@@ -469,10 +458,19 @@ window.StickyEngine = {
       const match = window.FuzzyAnchor.findMatch(anchor);
       if (match.confidence >= 40 && match.element) {
         const r = match.element.getBoundingClientRect();
-        const sc = getScrollerFor(match.element);
+        // Use the same walker as buildContainerFallback so save-time and
+        // goto-time agree on which ancestor is the scroll context.
+        // findScrollContainer returns null when no inner scroller exists
+        // — fall through to scrollingElement so the document case works.
+        const sc = window.AdnotaUI?.findScrollContainer?.(match.element)
+          || document.scrollingElement
+          || document.documentElement;
         const isDoc = sc === document.scrollingElement || sc === document.documentElement || sc === document.body;
         const scRectTop = isDoc ? 0 : sc.getBoundingClientRect().top;
-        const containerH = container?.offsetHeight || 140;
+        // 140px = default sticky card height (sticky.css). Belt-and-
+        // suspenders for the brief pendingAnchor/opacity:0 window where
+        // offsetHeight could read 0 mid-restore.
+        const containerH = container.offsetHeight || 140;
         // Position of sticky's vertical center, expressed in scroller-content space:
         //   (viewport y of sticky top) - (viewport y of scroller) + scroller's scrollTop + half-height
         const stickyCenterInContent =
