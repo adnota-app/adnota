@@ -1,6 +1,6 @@
 /* content/marker.css */
 
-#vellum-capture-canvas {
+#adnota-capture-canvas {
   position: fixed;
   top: 0;
   left: 0;
@@ -8,23 +8,48 @@
   height: 100vh;
   z-index: 2147483645;
   pointer-events: auto;
-  touch-action: none;
-  cursor: crosshair;
+  /* touch-action: pan-x pan-y so trackpad scroll passes through on normally-
+     scrolling documents without any JS forwarding. App shells with
+     overflow:hidden body still need the wheel-forwarding handler in
+     marker.js since the browser's native scroll-chain dies on the canvas
+     when no ancestor is scrollable. Mid-stroke scroll is blocked by that
+     same handler regardless. Pinch-zoom etc. stays disabled. */
+  touch-action: pan-x pan-y;
+  /* Cursor is set inline from marker.js using the bicolor SVG crosshair so it
+     matches the rest of the app — see initCaptureOverlay. The `data-adnota-ui`
+     attribute excludes this canvas from highlighter.js's cursor lock, which
+     would otherwise apply that same SVG via the global stylesheet. */
   background: transparent; /* Invisible overlay */
 }
 
-.vellum-marker-wrapper {
+/* Single fixed overlay that hosts every marker wrapper. Fixed positioning
+   keeps wrapper bounds out of documentElement's scroll size, so a shape
+   placed near a page edge can't trigger a body-level scrollbar on app
+   shells (claude.ai, Notion, etc.). All wrappers inside use viewport
+   coordinates as a result. */
+#adnota-marker-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  overflow: visible;
+  z-index: 2147483640;
+}
+
+.adnota-marker-wrapper {
   position: absolute;
   pointer-events: none;
   z-index: 2147483640; /* Elevated but slightly under highlighters/toasts */
   transition: opacity 0.2s ease;
 }
 
-html.vellum-hidden .vellum-marker-wrapper {
+html.adnota-hidden .adnota-marker-wrapper {
   display: none !important;
 }
 
-.vellum-marker-wrapper svg {
+.adnota-marker-wrapper svg {
   display: block;
   width: 100%;
   height: 100%;
@@ -32,7 +57,7 @@ html.vellum-hidden .vellum-marker-wrapper {
 }
 
 /* ── Select tool ─────────────────────────────────────────────────────────── */
-.vellum-select-box {
+.adnota-select-box {
   z-index: 2147483644;
   pointer-events: none;
   border: 1.5px dashed rgba(124, 58, 237, 0.7);
@@ -41,9 +66,9 @@ html.vellum-hidden .vellum-marker-wrapper {
 }
 
 /* Grab affordance on marker wrappers whenever select mode is active. JS toggles
-   the `vellum-select-mode` class on <html> so this rule stays inert otherwise. */
-html.vellum-select-mode .vellum-marker-wrapper,
-html.vellum-select-mode .vellum-marker-wrapper * {
+   the `adnota-select-mode` class on <html> so this rule stays inert otherwise. */
+html.adnota-select-mode .adnota-marker-wrapper,
+html.adnota-select-mode .adnota-marker-wrapper * {
   cursor: grab;
 }
 
@@ -56,30 +81,30 @@ html.vellum-select-mode .vellum-marker-wrapper * {
    their anchor element's bbox (not the visible shape), so the outline looked
    like it was grabbing a random page element. The dashed selection box on
    actual click is the real affordance; grab cursor is enough for hover. */
-html.vellum-shift-mode .vellum-marker-wrapper,
-html.vellum-shift-mode .vellum-marker-wrapper * {
+html.adnota-shift-mode .adnota-marker-wrapper,
+html.adnota-shift-mode .adnota-marker-wrapper * {
   pointer-events: auto !important;
   cursor: grab !important;
 }
-html.vellum-shift-mode.vellum-dragging .vellum-marker-wrapper,
-html.vellum-shift-mode.vellum-dragging .vellum-marker-wrapper * {
+html.adnota-shift-mode.adnota-dragging .adnota-marker-wrapper,
+html.adnota-shift-mode.adnota-dragging .adnota-marker-wrapper * {
   cursor: grabbing !important;
 }
 
 /* Suppress accidental text selection while select mode is active (drags would
    otherwise paint selections across page text). Contenteditable text
    annotations still allow editing via the override below. */
-html.vellum-select-mode body {
+html.adnota-select-mode body {
   user-select: none;
   -webkit-user-select: none;
 }
 
-html.vellum-select-mode [contenteditable="true"] {
+html.adnota-select-mode [contenteditable="true"] {
   user-select: text;
   -webkit-user-select: text;
 }
 
-.vellum-select-delete {
+.adnota-select-delete {
   position: absolute;
   top: -10px;
   right: -10px;
@@ -100,17 +125,17 @@ html.vellum-select-mode [contenteditable="true"] {
   z-index: 2147483645;
 }
 
-.vellum-select-delete:hover {
+.adnota-select-delete:hover {
   background: rgba(220, 38, 38, 1);
   transform: scale(1.15);
 }
 
 /* ── Text tool ───────────────────────────────────────────────────────────── */
-.vellum-text-content {
+.adnota-text-content {
   z-index: 2147483640;
 }
 
-.vellum-text-content[contenteditable="true"] {
+.adnota-text-content[contenteditable="true"] {
   outline: 1px dashed rgba(124, 58, 237, 0.5);
   background: rgba(15, 15, 15, 0.05);
   border-radius: 2px;

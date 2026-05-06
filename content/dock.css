@@ -1,4 +1,4 @@
-/* ── Vellum Dock ──────────────────────────────────────────────────────────
+/* ── Adnota Dock ──────────────────────────────────────────────────────────
    The unified, persistent widget. One DOM surface, two visual states:
      idle   — drag | V | tool row (vis, eraser, sticky, marker, resizer)
      active — drag | ← back (tinted) | tool's HUD body
@@ -6,7 +6,7 @@
    swap happen in place, so the dock's left edge stays pinned.
 ───────────────────────────────────────────────────────────────────────────── */
 
-#vellum-dock {
+#adnota-dock {
   position: fixed;
   bottom: 20px;
   left: 50%;
@@ -21,70 +21,84 @@
   min-height: 42px;
   box-sizing: border-box;
 
-  background: rgba(15, 15, 15, 0.92);
+  background: var(--adnota-hud-bg);
   -webkit-backdrop-filter: blur(8px);
   backdrop-filter: blur(8px);
-  color: #e4e4e7;
+  color: var(--adnota-hud-text);
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   font-size: 12.5px;
   line-height: 1;
 
   border-radius: 10px;
-  border: 1px solid var(--dock-accent-border, rgba(124, 58, 237, 0.45));
+  border: 1px solid var(--dock-accent-border, var(--adnota-hud-border));
   box-shadow: 0 4px 24px rgba(0, 0, 0, 0.5);
 
   pointer-events: auto;
   white-space: nowrap;
-  cursor: default;
+  /* Drag affordance — the whole dock is the drag surface, so the cursor
+     advertises that. Browser flips to `grabbing` mid-drag automatically (set
+     inline by onDragMove). Tool buttons and the back arrow override with
+     `cursor: pointer`; clicks on the logo still fire (Sites History) — the
+     cursor only changes the visual hint, not click handling. */
+  cursor: grab;
 
   /* Idle chip dims out of the way; hover / active snap to full. */
   opacity: 0.55;
-  /* Hidden until .vellum-dock-ready — JS adds it after the saved position
+  /* Hidden until .adnota-dock-ready — JS adds it after the saved position
      has been read from storage so we never flash at the default center. */
   visibility: hidden;
   transition: border-color 0.3s ease, opacity 0.2s ease;
 }
 
-#vellum-dock.vellum-dock-ready {
+#adnota-dock.adnota-dock-ready {
   visibility: visible;
 }
 
-#vellum-dock:hover,
-#vellum-dock.vellum-dock-active {
+#adnota-dock:hover,
+#adnota-dock.adnota-dock-active {
   opacity: 1;
 }
 
 /* ── Home slot: V logo (idle) OR back arrow (active) ───────────────────── */
-.vellum-dock-home {
+.adnota-dock-home {
   display: inline-flex;
   align-items: center;
   flex-shrink: 0;
 }
 
-.vellum-dock-logo {
+/* Idle = favicon-style mark: rounded-square purple→magenta gradient with a
+   white A, matching icons/favicon.svg (the same icon Chrome shows in the
+   extension bar). On dock hover the row blooms open and the logo morphs to
+   the circle treatment in a parallel 300ms transition — border-radius,
+   background, and color shift together so the shape change reads as a
+   single intentional move rather than three independent property tweens.
+   No `cursor: pointer` here — the logo inherits `cursor: grab` from the
+   dock so the whole idle surface signals "draggable." Click still fires
+   (cursor doesn't suppress click handlers) and opens Sites History. */
+.adnota-dock-logo {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   width: 26px;
   height: 26px;
-  border-radius: 50%;
-  background: rgba(124, 58, 237, 0.28);
-  color: #c084fc;
-  font-weight: 700;
-  font-size: 13px;
+  border-radius: 6px;
+  background: linear-gradient(135deg, #7c3aed 0%, #d946ef 100%);
+  color: #fff;
+  font-weight: 800;
+  font-size: 14px;
   letter-spacing: -0.5px;
   flex-shrink: 0;
   user-select: none;
-  cursor: pointer;
-  transition: background 0.2s ease, color 0.2s ease;
+  transition: background 0.3s ease, color 0.3s ease, border-radius 0.3s ease;
 }
 
-.vellum-dock-logo:hover {
-  background: rgba(124, 58, 237, 0.45);
-  color: #e9d5ff;
+#adnota-dock:hover:not(.adnota-dock-active) .adnota-dock-logo {
+  border-radius: 50%;
+  background: rgba(124, 58, 237, 0.28);
+  color: #c084fc;
 }
 
-.vellum-dock-back {
+.adnota-dock-back {
   display: none;
   align-items: center;
   justify-content: center;
@@ -101,7 +115,7 @@
   transition: background 0.2s ease, color 0.2s ease;
 }
 
-.vellum-dock-back svg {
+.adnota-dock-back svg {
   width: 16px;
   height: 16px;
   fill: none;
@@ -114,29 +128,40 @@
   transform: translateX(-1px);
 }
 
-.vellum-dock-back:hover {
+.adnota-dock-back:hover {
   background: rgba(124, 58, 237, 0.45);
 }
 
-#vellum-dock.vellum-dock-active .vellum-dock-logo { display: none; }
-#vellum-dock.vellum-dock-active .vellum-dock-back { display: inline-flex; }
+#adnota-dock.adnota-dock-active .adnota-dock-logo { display: none; }
+#adnota-dock.adnota-dock-active .adnota-dock-back { display: inline-flex; }
 
 /* ── Tool row (idle) ───────────────────────────────────────────────────── */
-/* Instant swap, no width animation: the body's grow animation is the ONLY
-   thing the eye tracks during a state change. Animating both at once made
-   the body look like it slid in from the right as the tools collapsed. */
-.vellum-dock-tools {
+/* Collapsed-by-default so the idle dock is just drag + A — the page keeps
+   its real estate until the user reaches for the dock. Hover bloom-expands
+   the row using the same max-width / overflow-x:clip pattern the body slot
+   uses below. Tool-active state still hides the row entirely (rule below):
+   the tool body owns the slot, so the collapse animation isn't relevant. */
+.adnota-dock-tools {
   display: inline-flex;
   align-items: center;
   gap: 4px;
+  max-width: 0;
+  margin-left: 0;
+  overflow-x: clip;
+  overflow-y: visible;
+  transition: max-width 0.18s ease-out, margin-left 0.18s ease-out;
+}
+
+#adnota-dock:hover:not(.adnota-dock-active) .adnota-dock-tools {
+  max-width: 300px;
   margin-left: 8px;
 }
 
-#vellum-dock.vellum-dock-active .vellum-dock-tools {
+#adnota-dock.adnota-dock-active .adnota-dock-tools {
   display: none;
 }
 
-.vellum-dock-tool {
+.adnota-dock-tool {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -152,7 +177,7 @@
   transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
-.vellum-dock-tool svg {
+.adnota-dock-tool svg {
   width: 14px;
   height: 14px;
   fill: none;
@@ -163,37 +188,46 @@
   transition: stroke 0.15s ease;
 }
 
-.vellum-dock-tool:hover {
+.adnota-dock-tool:hover {
   background: rgba(255, 255, 255, 0.06);
   border-color: var(--tool-color, rgba(124, 58, 237, 0.6));
 }
-.vellum-dock-tool:hover svg {
+.adnota-dock-tool:hover svg {
   stroke: var(--tool-color, #c084fc);
 }
 
-.vellum-dock-tool.active {
+.adnota-dock-tool.active {
   border-color: var(--tool-color, rgba(124, 58, 237, 0.7));
   box-shadow: 0 0 8px var(--tool-glow, rgba(124, 58, 237, 0.25));
 }
-.vellum-dock-tool.active svg {
+.adnota-dock-tool.active svg {
   stroke: var(--tool-color, #c084fc);
 }
 
 /* Per-tool accent for the idle row buttons */
-.vellum-dock-tool[data-accent="eraser"]    { --tool-color: #ef4444; --tool-glow: rgba(239, 68, 68, 0.3); }
-.vellum-dock-tool[data-accent="sticky"]    { --tool-color: #f59e0b; --tool-glow: rgba(245, 158, 11, 0.3); }
-.vellum-dock-tool[data-accent="highlight"] { --tool-color: #7c3aed; --tool-glow: rgba(124, 58, 237, 0.3); }
-.vellum-dock-tool[data-accent="resizer"]   { --tool-color: #3b82f6; --tool-glow: rgba(59, 130, 246, 0.3); }
+.adnota-dock-tool[data-accent="eraser"]    { --tool-color: #ef4444; --tool-glow: rgba(239, 68, 68, 0.3); }
+.adnota-dock-tool[data-accent="sticky"]    { --tool-color: #f59e0b; --tool-glow: rgba(245, 158, 11, 0.3); }
+.adnota-dock-tool[data-accent="highlight"] { --tool-color: var(--adnota-accent); --tool-glow: rgba(124, 58, 237, 0.3); }
+.adnota-dock-tool[data-accent="resizer"]   { --tool-color: #3b82f6; --tool-glow: rgba(59, 130, 246, 0.3); }
 
-/* Tool buttons need position:relative so the shared [data-tooltip]::after
-   rule from vellumUI.css positions correctly. */
-.vellum-dock-tool { position: relative; }
+/* Tool buttons need position:relative so the shared [data-adnota-tooltip]::after
+   rule from adnotaUI.css positions correctly. */
+.adnota-dock-tool { position: relative; }
+
+/* Disabled affordance for utility buttons (currently the scratch pad when
+   the page has no snippets). Kept visible so the feature is discoverable —
+   the user adds a highlight or note and the button enables itself. */
+.adnota-dock-tool[data-disabled="1"] {
+  opacity: 0.3;
+  pointer-events: none;
+  cursor: default;
+}
 
 /* ── Tool body (active) ────────────────────────────────────────────────── */
 /* Grows left-to-right from width 0 when a tool mounts. The min-height gives
    child shadows (active swatch rings, button glows) a few px of vertical
    breathing room so they don't clip against the body's overflow. */
-.vellum-dock-body {
+.adnota-dock-body {
   display: inline-flex;
   align-items: center;
   min-height: 30px;
@@ -202,7 +236,7 @@
   /* overflow-x: clip + overflow-y: visible is the one combination CSS allows
      where vertical content escapes while horizontal content stays clipped.
      We need horizontal clipping for the max-width slide-in; vertical escape
-     lets each HUD button's [data-tooltip]::after pseudo-element render
+     lets each HUD button's [data-adnota-tooltip]::after pseudo-element render
      above the dock instead of getting cropped at the body's top edge. */
   overflow-x: clip;
   overflow-y: visible;
@@ -212,23 +246,23 @@
               margin-left 0.18s ease-out;
 }
 
-#vellum-dock.vellum-dock-active .vellum-dock-body {
+#adnota-dock.adnota-dock-active .adnota-dock-body {
   max-width: 1200px;   /* generous cap — marker HUD is the widest */
   opacity: 1;
   margin-left: 8px;
 }
 
 /* ── Dismiss X — "get off my screen" ──────────────────────────────────────
-   Reuses .vellum-select-delete from marker.css (same red circle as the
+   Reuses .adnota-select-delete from marker.css (same red circle as the
    select-tool delete affordance). This rule only adds dock-specific
    behavior: top-right corner positioning and hover-reveal while idle.
    Hidden when a tool is active — the dock IS the HUD then, so the user
    needs the back arrow, not an escape hatch that strands them. */
-/* Scoped to #vellum-dock to beat .vellum-select-delete on specificity —
+/* Scoped to #adnota-dock to beat .adnota-select-delete on specificity —
    marker.css loads after dock.css per the manifest, so a bare class wouldn't
    override the shared 20px sizing. */
-#vellum-dock .vellum-dock-dismiss {
-  /* Shrink the shared .vellum-select-delete (sized for annotation shapes)
+#adnota-dock .adnota-dock-dismiss {
+  /* Shrink the shared .adnota-select-delete (sized for annotation shapes)
      down to something proportionate to the compact dock. */
   width: 16px;
   height: 16px;
@@ -241,7 +275,7 @@
   z-index: 1;
 }
 
-#vellum-dock:hover:not(.vellum-dock-active) .vellum-dock-dismiss {
+#adnota-dock:hover:not(.adnota-dock-active) .adnota-dock-dismiss {
   opacity: 1;
   pointer-events: auto;
 }
@@ -249,22 +283,22 @@
 /* Never print the dock — otherwise a user reaching for Ctrl+P has to
    disable the extension just to get it out of the way. */
 @media print {
-  #vellum-dock { display: none !important; }
+  #adnota-dock { display: none !important; }
 }
 
 /* ── Per-tool accent: border + back arrow pick up the active tool's color ── */
-#vellum-dock[data-accent="eraser"]    { --dock-accent-border: rgba(239, 68, 68, 0.55); }
-#vellum-dock[data-accent="eraser"]    .vellum-dock-back { background: rgba(239, 68, 68, 0.35); color: #fca5a5; }
-#vellum-dock[data-accent="eraser"]    .vellum-dock-back:hover { background: rgba(239, 68, 68, 0.55); }
+#adnota-dock[data-accent="eraser"]    { --dock-accent-border: rgba(239, 68, 68, 0.55); }
+#adnota-dock[data-accent="eraser"]    .adnota-dock-back { background: rgba(239, 68, 68, 0.35); color: #fca5a5; }
+#adnota-dock[data-accent="eraser"]    .adnota-dock-back:hover { background: rgba(239, 68, 68, 0.55); }
 
-#vellum-dock[data-accent="sticky"]    { --dock-accent-border: rgba(245, 158, 11, 0.55); }
-#vellum-dock[data-accent="sticky"]    .vellum-dock-back { background: rgba(245, 158, 11, 0.35); color: #fcd34d; }
-#vellum-dock[data-accent="sticky"]    .vellum-dock-back:hover { background: rgba(245, 158, 11, 0.55); }
+#adnota-dock[data-accent="sticky"]    { --dock-accent-border: rgba(245, 158, 11, 0.55); }
+#adnota-dock[data-accent="sticky"]    .adnota-dock-back { background: rgba(245, 158, 11, 0.35); color: #fcd34d; }
+#adnota-dock[data-accent="sticky"]    .adnota-dock-back:hover { background: rgba(245, 158, 11, 0.55); }
 
-#vellum-dock[data-accent="highlight"] { --dock-accent-border: rgba(124, 58, 237, 0.55); }
-#vellum-dock[data-accent="highlight"] .vellum-dock-back { background: rgba(124, 58, 237, 0.35); color: #c084fc; }
-#vellum-dock[data-accent="highlight"] .vellum-dock-back:hover { background: rgba(124, 58, 237, 0.55); }
+#adnota-dock[data-accent="highlight"] { --dock-accent-border: rgba(124, 58, 237, 0.55); }
+#adnota-dock[data-accent="highlight"] .adnota-dock-back { background: rgba(124, 58, 237, 0.35); color: #c084fc; }
+#adnota-dock[data-accent="highlight"] .adnota-dock-back:hover { background: rgba(124, 58, 237, 0.55); }
 
-#vellum-dock[data-accent="resizer"]   { --dock-accent-border: rgba(59, 130, 246, 0.55); }
-#vellum-dock[data-accent="resizer"]   .vellum-dock-back { background: rgba(59, 130, 246, 0.35); color: #93c5fd; }
-#vellum-dock[data-accent="resizer"]   .vellum-dock-back:hover { background: rgba(59, 130, 246, 0.55); }
+#adnota-dock[data-accent="resizer"]   { --dock-accent-border: rgba(59, 130, 246, 0.55); }
+#adnota-dock[data-accent="resizer"]   .adnota-dock-back { background: rgba(59, 130, 246, 0.35); color: #93c5fd; }
+#adnota-dock[data-accent="resizer"]   .adnota-dock-back:hover { background: rgba(59, 130, 246, 0.55); }

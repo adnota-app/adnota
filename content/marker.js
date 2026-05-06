@@ -40,13 +40,13 @@ function simplifyPathRDP(points, epsilon) {
 // or a raw hex (from the eyedropper swatch).
 function getStrokeColor() {
   const themes = {
-    'vellum-theme-yellow': '#fbc02d',
-    'vellum-theme-green': '#388e3c',
-    'vellum-theme-blue': '#1976d2',
-    'vellum-theme-pink': '#c2185b',
-    'vellum-theme-black': '#111'
+    'adnota-theme-yellow': '#fbc02d',
+    'adnota-theme-green': '#388e3c',
+    'adnota-theme-blue': '#1976d2',
+    'adnota-theme-pink': '#c2185b',
+    'adnota-theme-black': '#111'
   };
-  const c = window.VellumState.color;
+  const c = window.AdnotaState.color;
   if (typeof c === 'string' && (c.startsWith('#') || c.startsWith('rgb'))) return c;
   return themes[c] || '#fbc02d';
 }
@@ -60,7 +60,7 @@ const _freehandModes = new Set(['pen']);
 const _shapeModes = new Set(['arrow', 'rect', 'ellipse']);
 
 function isToolbarHit(e) {
-  const toolbar = document.getElementById('vellum-highlighter-widget');
+  const toolbar = document.getElementById('adnota-highlighter-widget');
   if (!toolbar) return false;
   if (toolbar.contains(e.target)) return true;
   const rect = toolbar.getBoundingClientRect();
@@ -75,33 +75,131 @@ function findAnchorBlock(screenX, screenY) {
   if (!targetNode || targetNode.nodeType !== Node.ELEMENT_NODE) {
     targetNode = document.body;
   }
-  const blockElement = targetNode.closest('p, div, section, article, main, li, h1, h2, h3, h4, td') || document.body;
-  return blockElement;
+  let blockElement = targetNode.closest('p, div, section, article, main, li, h1, h2, h3, h4, td') || document.body;
+
+  // Reject degenerate anchors. The `closest()` call above happily picks a
+  // matching block even if its box is 0×0 — the selector list isn't doing
+  // the filtering, this walk-up is. YouTube's `div.html5-video-container`
+  // is the poster child: position:absolute with 0×0 getBoundingClientRect
+  // even when the video paints visibly (the actual pixels come from a
+  // sibling <video>). Drawing handlers normalize coords by dividing by
+  // box.width / box.height, so a zero-sized block produces NaN/Infinity and
+  // the saved payload renders as <rect y="NaN">. Walk up until we find an
+  // ancestor with real, finite dimensions; <body> is the floor and
+  // effectively always qualifies.
+  while (blockElement && blockElement !== document.body) {
+    const r = blockElement.getBoundingClientRect();
+    if (Number.isFinite(r.width) && Number.isFinite(r.height) && r.width > 0 && r.height > 0) break;
+    blockElement = blockElement.parentElement;
+  }
+  return blockElement || document.body;
+}
+
+// Walk up to the nearest *inner* scrolling ancestor. App shells (claude.ai,
+// Notion, etc.) have body { overflow: hidden } and a scrollable inner div —
+// that's what we want to anchor against. Returns null when no inner scroller
+// exists; the page itself is the scroll context, and the doc-pixel fallback
+// (which uses window.scrollY directly) handles that case correctly without
+// needing a synthetic anchor.
+function findScrollContainer(el) {
+  let cur = el && el.parentElement;
+  while (cur && cur !== document.documentElement && cur !== document.body) {
+    const cs = getComputedStyle(cur);
+    const oy = cs.overflowY, ox = cs.overflowX;
+    const yScrolls = (oy === 'auto' || oy === 'scroll' || oy === 'overlay') && cur.scrollHeight > cur.clientHeight;
+    const xScrolls = (ox === 'auto' || ox === 'scroll' || ox === 'overlay') && cur.scrollWidth  > cur.clientWidth;
+    if (yScrolls || xScrolls) return cur;
+    cur = cur.parentElement;
+  }
+  return null;
+}
+
+// Fallback positioning data for restorer.js when FuzzyAnchor can't resolve
+// the original block. Two layers, tried in order:
+//
+//   1. Container-anchored — render relative to the nearest *inner* scrolling
+//      ancestor (offset within its scroll-content). Only written when an
+//      inner scroller exists; window.scroll-capture fires on its scroll, so
+//      syncBounds re-reads container rect + scrollTop and the marker tracks
+//      content. The whole point is app shells where the page itself doesn't
+//      scroll.
+//
+//   2. Doc-pixel — absolute (docLeft, docTop, docWidth, docHeight). Used
+//      both when the inner scroller can't be re-resolved AND as the *only*
+//      fallback when the page itself is the scroll context (no inner
+//      scroller — `fb.docTop - window.scrollY` already tracks page scroll
+//      correctly via the fixed overlay).
+function computeFallbackBox(blockElement) {
+  const rect = blockElement.getBoundingClientRect();
+  const scrollTop  = window.pageYOffset || document.documentElement.scrollTop;
+  const scrollLeft = window.pageXOffset || document.documentElement.scrollLeft;
+
+  const out = {
+    docLeft:   parseFloat((rect.left + scrollLeft).toFixed(1)),
+    docTop:    parseFloat((rect.top  + scrollTop).toFixed(1)),
+    docWidth:  parseFloat(rect.width.toFixed(1)),
+    docHeight: parseFloat(rect.height.toFixed(1)),
+  };
+
+  const sc = findScrollContainer(blockElement);
+  if (sc) {
+    const scRect = sc.getBoundingClientRect();
+    out.containerAnchor  = window.FuzzyAnchor.generate(sc);
+    out.containerOffsetX = parseFloat((rect.left - scRect.left + sc.scrollLeft).toFixed(1));
+    out.containerOffsetY = parseFloat((rect.top  - scRect.top  + sc.scrollTop ).toFixed(1));
+  }
+
+  return out;
 }
 
 function restoreOverlay() {
-  const stillActive = window.VellumState.isVisible && _overlayModes.has(window.VellumState.mode);
+  const stillActive = window.AdnotaState.isVisible && _overlayModes.has(window.AdnotaState.mode);
   captureSvg.style.display = stillActive ? 'block' : 'none';
   captureSvg.style.pointerEvents = stillActive ? 'auto' : 'none';
 }
 
+// Fixed-position container for every marker wrapper. Lazily created on first
+// render. See #adnota-marker-overlay in marker.css for why this exists.
+function getMarkerOverlay() {
+  let overlay = document.getElementById('adnota-marker-overlay');
+  if (!overlay) {
+    overlay = document.createElement('div');
+    overlay.id = 'adnota-marker-overlay';
+    overlay.setAttribute('data-adnota-ui', '1');
+    document.documentElement.appendChild(overlay);
+  }
+  return overlay;
+}
+
 // ── Save + undo helper ──────────────────────────────────────────────────────
 async function saveMarkerPayload(blockElement, payload) {
-  window.VellumMarker.renderMarker(blockElement, payload);
+  payload.fallbackBox = computeFallbackBox(blockElement);
+  window.AdnotaLog?.event('marker', 'commit', {
+    id: payload.uuid,
+    shapeType: payload.shapeType,
+    color: payload.color,
+    strokeWidth: payload.strokeWidth,
+    filled: payload.filled,
+    anchor: payload.anchor ? { sel: payload.anchor.cssSelector, tag: payload.anchor.tagName } : null,
+    block: window.AdnotaLog.el(blockElement),
+  });
+  window.AdnotaMarker.renderMarker(blockElement, payload);
   restoreOverlay();
 
-  if (window.VellumStorage) {
-    await window.VellumStorage.saveItem(location.hostname, location.pathname, payload);
+  if (window.AdnotaStorage) {
+    await window.AdnotaStorage.saveItem(location.hostname, location.pathname, payload);
   }
 
   const capturedUuid = payload.uuid;
   const capturedDomain = location.hostname;
-  window.VellumUndo.push({
+  const capturedShape = payload.shapeType;
+  window.AdnotaUndo.push({
     undo: async () => {
-      const el = document.querySelector(`.vellum-marker-wrapper[data-uuid="${capturedUuid}"]`);
+      window.AdnotaLog?.event('marker', 'undo', { id: capturedUuid, shapeType: capturedShape });
+      const el = document.querySelector(`.adnota-marker-wrapper[data-uuid="${capturedUuid}"]`);
       if (el) el.remove();
-      if (window.VellumStorage) {
-        await window.VellumStorage.deleteItem(capturedDomain, 'uuid', capturedUuid);
+      if (window.AdnotaStorage) {
+        await window.AdnotaStorage.deleteItem(capturedDomain, 'uuid', capturedUuid);
       }
     }
   });
@@ -115,7 +213,7 @@ function handlePenDown(e) {
   currentPathNodes = [{ x: e.clientX, y: e.clientY }];
   capturePath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
   capturePath.setAttribute('stroke', getStrokeColor());
-  capturePath.setAttribute('stroke-width', String(window.VellumState.strokeWidth));
+  capturePath.setAttribute('stroke-width', String(window.AdnotaState.strokeWidth));
   capturePath.setAttribute('fill', 'none');
   capturePath.setAttribute('stroke-linecap', 'round');
   capturePath.setAttribute('stroke-linejoin', 'round');
@@ -132,11 +230,13 @@ function handlePenMove(e) {
 async function handlePenUp(e) {
   if (!capturePath) return;
 
-  // A tap with no real stroke — dismiss the tool entirely.
+  // A tap with no real stroke — drop it and stay in pen mode (matches the
+  // shape tools' "too-small drag cancels" behavior, so a misclick doesn't
+  // kick the user out).
   if (currentPathNodes.length < 3) {
     capturePath.remove();
     capturePath = null;
-    window.VellumState.set({ mode: null });
+    currentPathNodes = [];
     return;
   }
 
@@ -158,7 +258,7 @@ async function handlePenUp(e) {
     shapeType: 'freehand',
     drawing: normalizedPath,
     color: getStrokeColor(),
-    strokeWidth: window.VellumState.strokeWidth
+    strokeWidth: window.AdnotaState.strokeWidth
   };
 
   capturePath.remove();
@@ -187,22 +287,22 @@ function handleArrowDown(e) {
   captureShape.setAttribute('x2', e.clientX);
   captureShape.setAttribute('y2', e.clientY);
   captureShape.setAttribute('stroke', getStrokeColor());
-  captureShape.setAttribute('stroke-width', String(window.VellumState.strokeWidth));
+  captureShape.setAttribute('stroke-width', String(window.AdnotaState.strokeWidth));
   captureShape.setAttribute('stroke-linecap', 'round');
 
   // Live arrowhead marker
-  const defs = captureSvg.querySelector('defs#vellum-live-defs') || (() => {
+  const defs = captureSvg.querySelector('defs#adnota-live-defs') || (() => {
     const d = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
-    d.id = 'vellum-live-defs';
+    d.id = 'adnota-live-defs';
     captureSvg.insertBefore(d, captureSvg.firstChild);
     return d;
   })();
   // Remove old live arrow marker if any
-  const oldMarker = defs.querySelector('#vellum-live-arrowhead');
+  const oldMarker = defs.querySelector('#adnota-live-arrowhead');
   if (oldMarker) oldMarker.remove();
 
   const marker = document.createElementNS('http://www.w3.org/2000/svg', 'marker');
-  marker.setAttribute('id', 'vellum-live-arrowhead');
+  marker.setAttribute('id', 'adnota-live-arrowhead');
   marker.setAttribute('markerWidth', '6');
   marker.setAttribute('markerHeight', '6');
   marker.setAttribute('refX', '5');
@@ -215,7 +315,7 @@ function handleArrowDown(e) {
   marker.appendChild(polygon);
   defs.appendChild(marker);
 
-  captureShape.setAttribute('marker-end', 'url(#vellum-live-arrowhead)');
+  captureShape.setAttribute('marker-end', 'url(#adnota-live-arrowhead)');
   captureSvg.appendChild(captureShape);
 }
 
@@ -258,7 +358,7 @@ async function handleArrowUp(e) {
     drawing: normalizedPath,
     isArrow: true,
     color: getStrokeColor(),
-    strokeWidth: window.VellumState.strokeWidth
+    strokeWidth: window.AdnotaState.strokeWidth
   };
 
   captureShape.remove();
@@ -281,12 +381,12 @@ function handleRectDown(e) {
   captureShape.setAttribute('height', '0');
   captureShape.setAttribute('rx', '2');
   const color = getStrokeColor();
-  if (window.VellumState.filled) {
+  if (window.AdnotaState.filled) {
     captureShape.setAttribute('fill', color);
     captureShape.setAttribute('stroke', 'none');
   } else {
     captureShape.setAttribute('stroke', color);
-    captureShape.setAttribute('stroke-width', String(window.VellumState.strokeWidth));
+    captureShape.setAttribute('stroke-width', String(window.AdnotaState.strokeWidth));
     captureShape.setAttribute('fill', 'none');
     captureShape.setAttribute('stroke-linejoin', 'round');
   }
@@ -337,8 +437,8 @@ async function handleRectUp(e) {
       h:  parseFloat((h / box.height * 100).toFixed(2)),
     },
     color: getStrokeColor(),
-    strokeWidth: window.VellumState.strokeWidth,
-    filled: !!window.VellumState.filled
+    strokeWidth: window.AdnotaState.strokeWidth,
+    filled: !!window.AdnotaState.filled
   };
 
   captureShape.remove();
@@ -360,12 +460,12 @@ function handleEllipseDown(e) {
   captureShape.setAttribute('rx', '0');
   captureShape.setAttribute('ry', '0');
   const color = getStrokeColor();
-  if (window.VellumState.filled) {
+  if (window.AdnotaState.filled) {
     captureShape.setAttribute('fill', color);
     captureShape.setAttribute('stroke', 'none');
   } else {
     captureShape.setAttribute('stroke', color);
-    captureShape.setAttribute('stroke-width', String(window.VellumState.strokeWidth));
+    captureShape.setAttribute('stroke-width', String(window.AdnotaState.strokeWidth));
     captureShape.setAttribute('fill', 'none');
   }
   captureSvg.appendChild(captureShape);
@@ -416,8 +516,8 @@ async function handleEllipseUp(e) {
       ry: parseFloat((ry / box.height * 100).toFixed(2)),
     },
     color: getStrokeColor(),
-    strokeWidth: window.VellumState.strokeWidth,
-    filled: !!window.VellumState.filled
+    strokeWidth: window.AdnotaState.strokeWidth,
+    filled: !!window.AdnotaState.filled
   };
 
   captureShape.remove();
@@ -435,7 +535,7 @@ const _textFontSizes = { 2: 16, 4: 24, 8: 36 };
 let activeTextEditor = null; // the currently open editable text element
 
 function getTextFontSize() {
-  return _textFontSizes[window.VellumState.strokeWidth] || 24;
+  return _textFontSizes[window.AdnotaState.strokeWidth] || 24;
 }
 
 function commitActiveText() {
@@ -462,13 +562,13 @@ function commitActiveText() {
   const elRect = editor.el.getBoundingClientRect();
 
   // If this is an edit of an existing text, update payload in place
-  if (editor.isEdit && editor.wrapper._vellumPayload) {
-    const payload = editor.wrapper._vellumPayload;
+  if (editor.isEdit && editor.wrapper._adnotaPayload) {
+    const payload = editor.wrapper._adnotaPayload;
     payload.text = text;
     // Re-save
-    if (window.VellumStorage) {
-      window.VellumStorage.deleteItem(location.hostname, 'uuid', payload.uuid).then(() => {
-        window.VellumStorage.saveItem(location.hostname, location.pathname, payload);
+    if (window.AdnotaStorage) {
+      window.AdnotaStorage.deleteItem(location.hostname, 'uuid', payload.uuid).then(() => {
+        window.AdnotaStorage.saveItem(location.hostname, location.pathname, payload);
       });
     }
     return;
@@ -489,7 +589,7 @@ function commitActiveText() {
     },
     color: editor.color,
     fontSize: editor.fontSize,
-    strokeWidth: window.VellumState.strokeWidth
+    strokeWidth: window.AdnotaState.strokeWidth
   };
 
   // Remove the live-editing wrapper and re-render via renderMarker for proper sync
@@ -498,14 +598,14 @@ function commitActiveText() {
 }
 
 function handleTextClick(e) {
-  if (window.VellumState.mode !== 'text') return;
+  if (window.AdnotaState.mode !== 'text') return;
   if (e.shiftKey) return;                              // Shift shortcut owns the click
   if (isToolbarHit(e)) return;
-  if (e.target.closest('.vellum-select-box')) return;
-  if (e.target.closest('[data-vellum-ui]')) return;
+  if (e.target.closest('.adnota-select-box')) return;
+  if (e.target.closest('[data-adnota-ui]')) return;
 
   // If clicking on an existing text marker, start editing it instead
-  const existingText = e.target.closest('.vellum-text-content');
+  const existingText = e.target.closest('.adnota-text-content');
   if (existingText) return; // let dblclick handle editing
 
   // Commit any active editor first
@@ -515,7 +615,7 @@ function handleTextClick(e) {
   e.stopPropagation();
 
   // Hide mode must never block work — reveal before placing the editor.
-  window.VellumVisibility.show();
+  window.AdnotaVisibility.show();
 
   const screenX = e.clientX;
   const screenY = e.clientY;
@@ -523,8 +623,8 @@ function handleTextClick(e) {
   // Find anchor block
   let targetNode = document.elementFromPoint(screenX, screenY);
   if (!targetNode || targetNode.nodeType !== Node.ELEMENT_NODE) targetNode = document.body;
-  // Skip Vellum UI elements
-  if (targetNode.closest('[data-vellum-ui]')) {
+  // Skip Adnota UI elements
+  if (targetNode.closest('[data-adnota-ui]')) {
     targetNode = document.body;
   }
   const blockElement = targetNode.closest('p, div, section, article, main, li, h1, h2, h3, h4, td') || document.body;
@@ -535,8 +635,8 @@ function handleTextClick(e) {
   // Create a temporary wrapper for live editing — pin to document origin
   // so the textEl's absolute coordinates work correctly.
   const wrapper = document.createElement('div');
-  wrapper.className = 'vellum-marker-wrapper vellum-text-wrapper';
-  wrapper.setAttribute('data-vellum-ui', '1');
+  wrapper.className = 'adnota-marker-wrapper adnota-text-wrapper';
+  wrapper.setAttribute('data-adnota-ui', '1');
   wrapper.style.pointerEvents = 'auto';
   wrapper.style.top = '0';
   wrapper.style.left = '0';
@@ -544,7 +644,7 @@ function handleTextClick(e) {
   wrapper.style.height = '0';
 
   const textEl = document.createElement('div');
-  textEl.className = 'vellum-text-content';
+  textEl.className = 'adnota-text-content';
   textEl.contentEditable = 'true';
   textEl.spellcheck = false;
   Object.assign(textEl.style, {
@@ -604,20 +704,20 @@ function handleTextClick(e) {
       e.preventDefault();
       commitActiveText();
     }
-    // Stop propagation so Ctrl+Z doesn't trigger VellumUndo while typing
+    // Stop propagation so Ctrl+Z doesn't trigger AdnotaUndo while typing
     e.stopPropagation();
   });
 }
 
 // Double-click to edit existing text (works in both text and select modes)
 function handleTextDblClick(e) {
-  if (window.VellumState.mode !== 'select' && window.VellumState.mode !== 'text') return;
+  if (window.AdnotaState.mode !== 'select' && window.AdnotaState.mode !== 'text') return;
 
-  const textContent = e.target.closest('.vellum-text-content');
+  const textContent = e.target.closest('.adnota-text-content');
   if (!textContent) return;
 
-  const wrapper = textContent.closest('.vellum-marker-wrapper');
-  if (!wrapper || !wrapper._vellumPayload) return;
+  const wrapper = textContent.closest('.adnota-marker-wrapper');
+  if (!wrapper || !wrapper._adnotaPayload) return;
 
   e.preventDefault();
   e.stopPropagation();
@@ -646,10 +746,10 @@ function handleTextDblClick(e) {
   activeTextEditor = {
     el: textContent,
     wrapper: wrapper,
-    blockElement: wrapper._vellumAnchorElement || document.body,
+    blockElement: wrapper._adnotaAnchorElement || document.body,
     screenX: 0, screenY: 0, // not needed for edits
-    color: wrapper._vellumPayload.color,
-    fontSize: wrapper._vellumPayload.fontSize,
+    color: wrapper._adnotaPayload.color,
+    fontSize: wrapper._adnotaPayload.fontSize,
     isEdit: true,
   };
 
@@ -665,7 +765,7 @@ function handleTextDblClick(e) {
     if (ev.key === 'Escape') {
       ev.preventDefault();
       // Restore original text on cancel
-      textContent.textContent = wrapper._vellumPayload.text;
+      textContent.textContent = wrapper._adnotaPayload.text;
       commitActiveText();
     } else if (ev.key === 'Enter' && !ev.shiftKey) {
       ev.preventDefault();
@@ -679,15 +779,35 @@ function handleTextDblClick(e) {
 // UNIFIED POINTER HANDLERS — dispatch to the active tool
 // ═════════════════════════════════════════════════════════════════════════════
 
+// Abort any in-flight draw and reset capture state. Used by pointercancel
+// (browser-killed gesture: context menu, etc.) and the pointermove reconcile
+// (released-outside-window detection). All four shape tools share the same
+// transient state, so one helper resets all of it.
+function abortInFlightDraw() {
+  if (!capturePath && !captureShape) return;
+  if (capturePath)  { capturePath.remove();  capturePath  = null; }
+  if (captureShape) { captureShape.remove(); captureShape = null; }
+  currentPathNodes = [];
+  shapeOrigin = null;
+}
+
 function handlePointerDown(e) {
-  const mode = window.VellumState.mode;
+  const mode = window.AdnotaState.mode;
   if (!_overlayModes.has(mode)) return;
   if (isToolbarHit(e)) return;
   e.preventDefault();
 
+  // Capture pointer events for this gesture so a release outside the
+  // browser viewport still fires pointerup here. Without this, the user
+  // could mousedown inside, drag outside, release outside, and find the
+  // draw "stuck in progress" because pointerup was never delivered. The
+  // pointermove reconcile below is the belt-and-suspenders for the case
+  // where the OS swallows mouseup entirely (alt-tab to another app, etc.).
+  try { captureSvg.setPointerCapture(e.pointerId); } catch (_) {}
+
   // Hide mode must never block work — reveal before the stroke starts so the
   // user can see what they're drawing.
-  window.VellumVisibility.show();
+  window.AdnotaVisibility.show();
 
   switch (mode) {
     case 'pen':     handlePenDown(e); break;
@@ -698,9 +818,17 @@ function handlePointerDown(e) {
 }
 
 function handlePointerMove(e) {
-  const mode = window.VellumState.mode;
+  const mode = window.AdnotaState.mode;
   if (!_overlayModes.has(mode)) return;
   e.preventDefault();
+
+  // Note: an earlier version of this handler reconciled in-flight draws via
+  // `e.buttons === 0` (mirroring reconcileShiftState). It was too aggressive
+  // — per MDN, `e.buttons` is unreliable on pointermove on some platforms,
+  // which produced spurious mid-stroke aborts that killed normal drawing.
+  // setPointerCapture (handlePointerDown) covers release-outside-window,
+  // pointercancel covers browser-canceled gestures; alt-tab-and-release-on-
+  // another-app is rare enough to handle by pressing Escape if it happens.
 
   switch (mode) {
     case 'pen':     handlePenMove(e); break;
@@ -711,7 +839,7 @@ function handlePointerMove(e) {
 }
 
 async function handlePointerUp(e) {
-  const mode = window.VellumState.mode;
+  const mode = window.AdnotaState.mode;
   if (!_overlayModes.has(mode)) return;
   e.preventDefault();
 
@@ -727,8 +855,79 @@ async function handlePointerUp(e) {
 // RENDER MARKER — handles all shape types for both live creation and restore
 // ═════════════════════════════════════════════════════════════════════════════
 
-// Bug 1 fix: Define VellumMarker BEFORE initCaptureOverlay and VellumState.subscribe
-window.VellumMarker = {
+// Bug 1 fix: Define AdnotaMarker BEFORE initCaptureOverlay and AdnotaState.subscribe
+//
+// resolveAnchorRect — viewport-coords bounding box of the marker's anchor.
+// Normally just `anchorElement.getBoundingClientRect()`, but when the restorer
+// is rendering via fallback (FuzzyAnchor missed the original block), we
+// reconstruct the rect from persisted offsets:
+//
+//   - Container fallback: anchorElement is the scroll-container ancestor and
+//     payload._fallbackContainer === anchorElement is the in-memory sentinel.
+//     Rect = container's viewport rect + stored offset - current scroll.
+//     Tracks the user's scroll naturally on every site.
+//
+//   - Doc-pixel fallback: anchorElement === document.documentElement and we
+//     return absolute document-pixel coords. Used only when the scroll
+//     container can't be re-found.
+function resolveAnchorRect(anchorElement, payload) {
+  const fb = payload.fallbackBox;
+  if (!fb) return anchorElement.getBoundingClientRect();
+
+  if (anchorElement === payload._fallbackContainer && fb.containerOffsetY != null) {
+    const scRect = anchorElement.getBoundingClientRect();
+    return {
+      left:   scRect.left + fb.containerOffsetX - anchorElement.scrollLeft,
+      top:    scRect.top  + fb.containerOffsetY - anchorElement.scrollTop,
+      width:  fb.docWidth,
+      height: fb.docHeight,
+    };
+  }
+
+  if (anchorElement === document.documentElement && fb.docLeft != null) {
+    const scrollTop  = window.pageYOffset || document.documentElement.scrollTop;
+    const scrollLeft = window.pageXOffset || document.documentElement.scrollLeft;
+    return {
+      left:   fb.docLeft - scrollLeft,
+      top:    fb.docTop  - scrollTop,
+      width:  fb.docWidth,
+      height: fb.docHeight,
+    };
+  }
+
+  return anchorElement.getBoundingClientRect();
+}
+
+window.AdnotaMarker = {
+  // Drop every rendered shape from the DOM. Called on SPA URL change so
+  // shapes from /chats/<uuid-A> don't bleed into /chats/<uuid-B> on app
+  // shells where React doesn't unmount our overlay (it lives outside
+  // React's tree under data-adnota-ui). Storage is left untouched —
+  // subsequent restoration will repaint whatever belongs to the new URL.
+  // Listener triads on each wrapper auto-clean via the parent-childList
+  // MutationObserver installed by AdnotaUI.bindAnchorSync.
+  tearDownAll: function () {
+    const overlay = document.getElementById('adnota-marker-overlay');
+    if (overlay) overlay.replaceChildren();
+  },
+
+  // Tear down a single marker wrapper by uuid. Used by the restorer's tier
+  // upgrade path: when a marker initially rendered at tier 2 (container
+  // ancestor) or tier 3 (doc pixels) and a later mutation pass finally
+  // resolves the original tier 1 anchor, the existing wrapper has to be
+  // removed before renderMarker can re-render at the right spot
+  // (renderMarker's own duplicate-uuid guard would otherwise short-circuit).
+  // Idempotent — returns false if no wrapper exists for the given uuid.
+  tearDownById: function (uuid) {
+    const overlay = document.getElementById('adnota-marker-overlay');
+    if (!overlay) return false;
+    const wrapper = overlay.querySelector(`.adnota-marker-wrapper[data-uuid="${uuid}"]`);
+    if (!wrapper) return false;
+    wrapper._adnotaCleanup?.();
+    wrapper.remove();
+    return true;
+  },
+
   renderMarker: function (anchorElement, payload) {
     const shapeType = payload.shapeType || (payload.isArrow ? 'arrow' : 'freehand');
 
@@ -737,14 +936,14 @@ window.VellumMarker = {
     if ((shapeType === 'rect' || shapeType === 'ellipse') && !payload.shape) return;
     if (shapeType === 'text' && !payload.text) return;
 
-    const existing = document.querySelector(`.vellum-marker-wrapper[data-uuid="${payload.uuid}"]`);
+    const existing = document.querySelector(`.adnota-marker-wrapper[data-uuid="${payload.uuid}"]`);
     if (existing) return;
 
     // ── TEXT SHAPE — uses HTML, not SVG ──────────────────────────────────
     if (shapeType === 'text') {
       const wrapper = document.createElement('div');
-      wrapper.className = 'vellum-marker-wrapper';
-      wrapper.setAttribute('data-vellum-ui', '1');
+      wrapper.className = 'adnota-marker-wrapper';
+      wrapper.setAttribute('data-adnota-ui', '1');
       wrapper.dataset.uuid = payload.uuid;
       wrapper.dataset.shapeType = 'text';
       // Pin to document origin so textEl absolute coords work correctly
@@ -755,7 +954,7 @@ window.VellumMarker = {
       wrapper.style.overflow = 'visible';
 
       const textEl = document.createElement('div');
-      textEl.className = 'vellum-text-content';
+      textEl.className = 'adnota-text-content';
       textEl.textContent = payload.text;
       Object.assign(textEl.style, {
         position: 'absolute',
@@ -773,31 +972,39 @@ window.VellumMarker = {
         userSelect: 'none',
       });
       wrapper.appendChild(textEl);
-      wrapper._vellumPayload = payload;
-      wrapper._vellumAnchorElement = anchorElement;
-      document.documentElement.appendChild(wrapper);
+      wrapper._adnotaPayload = payload;
+      wrapper._adnotaAnchorElement = anchorElement;
+      getMarkerOverlay().appendChild(wrapper);
 
       function syncTextPos() {
         if (!wrapper.parentNode) return;
-        const rect = anchorElement.getBoundingClientRect();
-        const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
-        const scrollLeft = window.pageXOffset || document.documentElement.scrollLeft;
-        textEl.style.left = (rect.left + scrollLeft + (payload.textPos.x / 100) * rect.width) + 'px';
-        textEl.style.top = (rect.top + scrollTop + (payload.textPos.y / 100) * rect.height) + 'px';
+        const rect = resolveAnchorRect(anchorElement, payload);
+        // Defensive: bail on a degenerate anchor rect. Same shape as the
+        // SVG syncBounds guard — without this, "NaNpx" silently fails CSS
+        // parsing and the text marker parks at a stale or default position
+        // (worse UX than the console-spamming SVG path because nothing
+        // signals the problem). Next observer/scroll tick retries.
+        if (!Number.isFinite(rect.width) || !Number.isFinite(rect.height) ||
+            rect.width <= 0 || rect.height <= 0) {
+          return;
+        }
+        // Also skip if the legacy payload itself has non-finite coords.
+        const tp = payload.textPos;
+        if (!tp || !Number.isFinite(tp.x) || !Number.isFinite(tp.y)) return;
+        // Wrapper lives in the fixed-position #adnota-marker-overlay, so its
+        // children use viewport coords (no scrollY/X addition needed).
+        textEl.style.left = (rect.left + (tp.x / 100) * rect.width) + 'px';
+        textEl.style.top  = (rect.top  + (tp.y / 100) * rect.height) + 'px';
       }
 
-      syncTextPos();
-      window.addEventListener('resize', syncTextPos);
-      window.addEventListener('scroll', syncTextPos, { passive: true });
-      const observer = new ResizeObserver(() => syncTextPos());
-      observer.observe(anchorElement);
+      window.AdnotaUI.bindAnchorSync(wrapper, anchorElement, syncTextPos);
       return;
     }
 
     // ── SVG SHAPES (freehand, arrow, rect, ellipse) ─────────────────────
     const wrapper = document.createElement('div');
-    wrapper.className = 'vellum-marker-wrapper';
-    wrapper.setAttribute('data-vellum-ui', '1');
+    wrapper.className = 'adnota-marker-wrapper';
+    wrapper.setAttribute('data-adnota-ui', '1');
     wrapper.dataset.uuid = payload.uuid;
     wrapper.dataset.shapeType = shapeType;
 
@@ -861,56 +1068,76 @@ window.VellumMarker = {
     svg.appendChild(shapeEl);
     wrapper.appendChild(svg);
     // Stash payload + anchor for select-tool operations (delete, undo, move).
-    wrapper._vellumPayload = payload;
-    wrapper._vellumAnchorElement = anchorElement;
-    document.documentElement.appendChild(wrapper);
+    wrapper._adnotaPayload = payload;
+    wrapper._adnotaAnchorElement = anchorElement;
+    getMarkerOverlay().appendChild(wrapper);
 
     function syncBounds() {
       if (!wrapper.parentNode) return;
-      const rect = anchorElement.getBoundingClientRect();
-      const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
-      const scrollLeft = window.pageXOffset || document.documentElement.scrollLeft;
-
-      wrapper.style.top = `${rect.top + scrollTop}px`;
-      wrapper.style.left = `${rect.left + scrollLeft}px`;
+      const rect = resolveAnchorRect(anchorElement, payload);
+      // Defensive: bail if the anchor's rect is degenerate. The next
+      // ResizeObserver / scroll tick will retry once the host has laid out
+      // the element. Belt-and-suspenders against findAnchorBlock's walk-up
+      // (which fixes new draws) — this also silences legacy payloads stored
+      // before the walk-up fix when they re-render against a sibling that
+      // still reports zero dims.
+      if (!Number.isFinite(rect.width) || !Number.isFinite(rect.height) ||
+          rect.width <= 0 || rect.height <= 0) {
+        return;
+      }
+      // Wrapper lives in the fixed-position #adnota-marker-overlay, so its
+      // top/left use viewport coords directly — no scrollY/X addition.
+      wrapper.style.top = `${rect.top}px`;
+      wrapper.style.left = `${rect.left}px`;
       wrapper.style.width = `${rect.width}px`;
       wrapper.style.height = `${rect.height}px`;
 
+      // Skip non-finite computed values — old payloads may have NaN coords
+      // from pre-walk-up draws on degenerate anchors. Don't error, just
+      // don't paint that attribute (the SVG retains its previous value or
+      // default; the marker will look wrong but won't spam the console).
+      const setNum = (attr, val) => {
+        if (Number.isFinite(val)) shapeEl.setAttribute(attr, val);
+      };
+
       if (shapeType === 'rect') {
         const s = payload.shape;
-        shapeEl.setAttribute('x', (s.x / 100) * rect.width);
-        shapeEl.setAttribute('y', (s.y / 100) * rect.height);
-        shapeEl.setAttribute('width', (s.w / 100) * rect.width);
-        shapeEl.setAttribute('height', (s.h / 100) * rect.height);
+        setNum('x', (s.x / 100) * rect.width);
+        setNum('y', (s.y / 100) * rect.height);
+        setNum('width', (s.w / 100) * rect.width);
+        setNum('height', (s.h / 100) * rect.height);
       } else if (shapeType === 'ellipse') {
         const s = payload.shape;
-        shapeEl.setAttribute('cx', (s.cx / 100) * rect.width);
-        shapeEl.setAttribute('cy', (s.cy / 100) * rect.height);
-        shapeEl.setAttribute('rx', (s.rx / 100) * rect.width);
-        shapeEl.setAttribute('ry', (s.ry / 100) * rect.height);
+        setNum('cx', (s.cx / 100) * rect.width);
+        setNum('cy', (s.cy / 100) * rect.height);
+        setNum('rx', (s.rx / 100) * rect.width);
+        setNum('ry', (s.ry / 100) * rect.height);
       } else if (shapeType === 'arrow' || payload.isArrow) {
         const start = payload.drawing[0];
         const end = payload.drawing[payload.drawing.length - 1];
-        shapeEl.setAttribute('d',
-          `M ${(start.px / 100) * rect.width} ${(start.py / 100) * rect.height} ` +
-          `L ${(end.px / 100) * rect.width} ${(end.py / 100) * rect.height}`
-        );
+        const x1 = (start.px / 100) * rect.width;
+        const y1 = (start.py / 100) * rect.height;
+        const x2 = (end.px / 100) * rect.width;
+        const y2 = (end.py / 100) * rect.height;
+        if (Number.isFinite(x1) && Number.isFinite(y1) && Number.isFinite(x2) && Number.isFinite(y2)) {
+          shapeEl.setAttribute('d', `M ${x1} ${y1} L ${x2} ${y2}`);
+        }
       } else {
         // freehand
-        const d = payload.drawing.map((p, i) => {
+        const parts = [];
+        let allFinite = true;
+        for (let i = 0; i < payload.drawing.length; i++) {
+          const p = payload.drawing[i];
           const px = (p.px / 100) * rect.width;
           const py = (p.py / 100) * rect.height;
-          return (i === 0 ? `M ${px} ${py}` : `L ${px} ${py}`);
-        }).join(' ');
-        shapeEl.setAttribute('d', d);
+          if (!Number.isFinite(px) || !Number.isFinite(py)) { allFinite = false; break; }
+          parts.push((i === 0 ? `M ${px} ${py}` : `L ${px} ${py}`));
+        }
+        if (allFinite) shapeEl.setAttribute('d', parts.join(' '));
       }
     }
 
-    syncBounds();
-    window.addEventListener('resize', syncBounds);
-    window.addEventListener('scroll', syncBounds, { passive: true });
-    const observer = new ResizeObserver(() => syncBounds());
-    observer.observe(anchorElement);
+    window.AdnotaUI.bindAnchorSync(wrapper, anchorElement, syncBounds);
   }
 };
 
@@ -934,7 +1161,7 @@ function clearSelection() {
 // returned in screen (viewport) coordinates.
 function getShapeBBox(wrapper) {
   // Text wrappers have no SVG — use the text content element directly
-  const textContent = wrapper.querySelector('.vellum-text-content');
+  const textContent = wrapper.querySelector('.adnota-text-content');
   if (textContent) {
     const r = textContent.getBoundingClientRect();
     const pad = 4;
@@ -992,14 +1219,22 @@ function isPointNearShape(wrapper, screenX, screenY) {
 // and the toast Undo button safely idempotent (matches highlighter.deleteHighlight).
 async function deleteSelectedMarker(wrapper) {
   const uuid = wrapper.dataset.uuid;
-  const payload = wrapper._vellumPayload;
+  const payload = wrapper._adnotaPayload;
+  const anchorElement = wrapper._adnotaAnchorElement;
+  window.AdnotaLog?.event('marker', 'delete', {
+    id: uuid, shapeType: payload?.shapeType, color: payload?.color,
+  });
 
-  wrapper.style.display = 'none';
+  // Hard remove (was display:none) so the wrapper's listener bag — window
+  // scroll/resize + ResizeObserver — actually tears down. Hidden wrappers kept
+  // those alive across the session and accumulated on long-lived tabs.
+  wrapper._adnotaCleanup?.();
+  wrapper.remove();
   clearSelection();
   hideHoverDeleteBtn();
 
-  if (window.VellumStorage) {
-    await window.VellumStorage.deleteItem(location.hostname, 'uuid', uuid);
+  if (window.AdnotaStorage) {
+    await window.AdnotaStorage.deleteItem(location.hostname, 'uuid', uuid);
   }
 
   let consumed = false;
@@ -1007,17 +1242,19 @@ async function deleteSelectedMarker(wrapper) {
     undo: async () => {
       if (consumed) return;
       consumed = true;
-      wrapper.style.display = '';
-      if (window.VellumStorage && payload) {
-        await window.VellumStorage.saveItem(location.hostname, location.pathname, payload);
+      if (window.AdnotaStorage && payload) {
+        await window.AdnotaStorage.saveItem(location.hostname, location.pathname, payload);
       }
-      window.VellumUndo.remove(undoEntry);
+      if (anchorElement && payload) {
+        window.AdnotaMarker.renderMarker(anchorElement, payload);
+      }
+      window.AdnotaUndo.remove(undoEntry);
     }
   };
-  window.VellumUndo.push(undoEntry);
+  window.AdnotaUndo.push(undoEntry);
 
-  window.VellumUI?.showToast?.('Marker deleted', {
-    id: 'vellum-marker-toast',
+  window.AdnotaUI?.showToast?.('Marker deleted', {
+    id: 'adnota-marker-toast',
     onUndo: () => undoEntry.undo(),
   });
 }
@@ -1034,8 +1271,8 @@ let hoverDeleteWrapper = null;
 function ensureHoverDeleteBtn() {
   if (hoverDeleteBtnEl) return hoverDeleteBtnEl;
   hoverDeleteBtnEl = document.createElement('div');
-  hoverDeleteBtnEl.className = 'vellum-select-delete vellum-marker-hover-delete';
-  hoverDeleteBtnEl.setAttribute('data-vellum-ui', '1');
+  hoverDeleteBtnEl.className = 'adnota-select-delete adnota-marker-hover-delete';
+  hoverDeleteBtnEl.setAttribute('data-adnota-ui', '1');
   hoverDeleteBtnEl.setAttribute('title', 'Delete');
   hoverDeleteBtnEl.textContent = '✕';
   hoverDeleteBtnEl.style.position = 'fixed';
@@ -1059,7 +1296,7 @@ function hideHoverDeleteBtn() {
 function showHoverDeleteBtn(wrapper) {
   const el = ensureHoverDeleteBtn();
   const bbox = getShapeBBox(wrapper);
-  const SIZE = 20; // matches .vellum-select-delete width/height
+  const SIZE = 20; // matches .adnota-select-delete width/height
   let left = bbox.left + bbox.width - SIZE / 2;
   let top = bbox.top - SIZE / 2;
   left = Math.max(2, Math.min(window.innerWidth - SIZE - 2, left));
@@ -1081,7 +1318,7 @@ document.addEventListener('mousemove', (e) => {
     // Hidden mode (paint toggled off) is the only mode-level suppression — the
     // selected-wrapper carve-out below handles the overlap with the Select-tool's
     // own ✕ on whichever item is currently selected.
-    if (document.documentElement.classList.contains('vellum-hidden')) {
+    if (document.documentElement.classList.contains('adnota-hidden')) {
       hideHoverDeleteBtn();
       return;
     }
@@ -1092,15 +1329,15 @@ document.addEventListener('mousemove', (e) => {
     }
     // Cursor on the ✕ itself → keep it visible.
     if (hoverDeleteBtnEl && lastMarkerPointer.target === hoverDeleteBtnEl) return;
-    // Stand down on Vellum UI surfaces (dock, sticky, toolbar) — but allow
+    // Stand down on Adnota UI surfaces (dock, sticky, toolbar) — but allow
     // marker wrappers AND the captureSvg drawing overlay through, so hover-✕
     // works in pen / arrow / rect / ellipse modes too. In those modes wrappers
     // are pointer-events: none and the captureSvg owns the pointer, so without
     // these carve-outs the ✕ would never appear while a paint tool is active.
     const target = lastMarkerPointer.target;
-    const isMarkerWrapper = target?.closest?.('.vellum-marker-wrapper');
+    const isMarkerWrapper = target?.closest?.('.adnota-marker-wrapper');
     const isCaptureSvg = target === captureSvg;
-    if (window.VellumUI?.isVellumElement(target) && !isMarkerWrapper && !isCaptureSvg) {
+    if (window.AdnotaUI?.isAdnotaElement(target) && !isMarkerWrapper && !isCaptureSvg) {
       hideHoverDeleteBtn();
       return;
     }
@@ -1139,14 +1376,14 @@ function showSelectionUI(wrapper) {
   selectedWrapper = wrapper;
 
   selectBox = document.createElement('div');
-  selectBox.className = 'vellum-select-box';
-  selectBox.setAttribute('data-vellum-ui', '1');
+  selectBox.className = 'adnota-select-box';
+  selectBox.setAttribute('data-adnota-ui', '1');
 
   // Delete button
   const delBtn = document.createElement('div');
-  delBtn.className = 'vellum-select-delete';
+  delBtn.className = 'adnota-select-delete';
   delBtn.textContent = '\u2715';
-  delBtn.setAttribute('data-tooltip', 'Delete');
+  delBtn.setAttribute('data-adnota-tooltip', 'Delete');
   delBtn.onclick = async (e) => {
     e.stopPropagation();
     await deleteSelectedMarker(wrapper);
@@ -1155,7 +1392,7 @@ function showSelectionUI(wrapper) {
 
   document.documentElement.appendChild(selectBox);
 
-  function syncSelectBox() {
+  function syncSelectBoxNow() {
     if (!selectBox || !selectedWrapper || !selectedWrapper.parentNode) {
       clearSelection();
       return;
@@ -1170,12 +1407,38 @@ function showSelectionUI(wrapper) {
     });
   }
 
-  syncSelectBox();
-  window.addEventListener('scroll', syncSelectBox, { passive: true });
+  // rAF-throttled wrapper. Has to match the cadence of bindAnchorSync (which
+  // uses the same pattern in lib/adnotaUI.js:183) — running synchronously
+  // here would read the marker wrapper's getBoundingClientRect *before*
+  // bindAnchorSync's rAF callback repositioned it, so the box would freeze
+  // at the wrapper's stale pre-scroll position and only catch up on the
+  // next wheel. Native browser scroll usually fires many tiny scroll events
+  // per gesture so this race was invisible — but our wheel-passthrough
+  // forwarder in DRAW mode emits one big scrollBy per wheel, exposing it.
+  // Both rAF callbacks register during the same scroll event and run in
+  // registration order next frame; bindAnchorSync was registered first
+  // (when the wrapper was rendered) so its wrapper update lands before
+  // syncSelectBox reads.
+  let _selectBoxRaf = 0;
+  function syncSelectBox() {
+    if (_selectBoxRaf) return;
+    _selectBoxRaf = requestAnimationFrame(() => {
+      _selectBoxRaf = 0;
+      syncSelectBoxNow();
+    });
+  }
+
+  syncSelectBoxNow();
+  // Capture-phase so we catch scrolls on internal scroll containers (app
+  // shells like claude.ai / chatgpt.com put overflow:hidden on <body> and
+  // scroll an inner div — scroll doesn't bubble, so a bubble-phase listener
+  // would miss those events).
+  window.addEventListener('scroll', syncSelectBox, { capture: true, passive: true });
   window.addEventListener('resize', syncSelectBox);
 
   selectBox._cleanup = () => {
-    window.removeEventListener('scroll', syncSelectBox);
+    if (_selectBoxRaf) cancelAnimationFrame(_selectBoxRaf);
+    window.removeEventListener('scroll', syncSelectBox, { capture: true });
     window.removeEventListener('resize', syncSelectBox);
   };
 }
@@ -1183,11 +1446,11 @@ function showSelectionUI(wrapper) {
 // Hit-test helper shared by click-to-select and pointerdown-to-drag. Picks the
 // smallest visible wrapper whose shape is near the pointer.
 function hitTestMarker(clientX, clientY) {
-  const wrappers = document.querySelectorAll('.vellum-marker-wrapper');
+  const wrappers = document.querySelectorAll('.adnota-marker-wrapper');
   let bestWrapper = null;
   let bestArea = Infinity;
   for (const wrapper of wrappers) {
-    // Hidden wrappers (direct display:none or ancestor .vellum-hidden) are not targetable.
+    // Hidden wrappers (direct display:none or ancestor .adnota-hidden) are not targetable.
     if (window.getComputedStyle(wrapper).display === 'none') continue;
     if (!isPointNearShape(wrapper, clientX, clientY)) continue;
     const bbox = getShapeBBox(wrapper);
@@ -1208,13 +1471,13 @@ let moveDragState = null;
 let suppressNextClick = false;
 
 function handleSelectPointerDown(e) {
-  const inSelectMode = window.VellumState.mode === 'select';
+  const inSelectMode = window.AdnotaState.mode === 'select';
   const shiftShortcut = e.shiftKey;
   if (!inSelectMode && !shiftShortcut) return;
   if (isToolbarHit(e)) return;
   if (e.button !== 0) return; // left-click only
-  if (e.target.closest('.vellum-select-box')) return; // delete button handles itself
-  if (e.target.closest('.vellum-text-content[contenteditable="true"]')) return; // editing — don't drag
+  if (e.target.closest('.adnota-select-box')) return; // delete button handles itself
+  if (e.target.closest('.adnota-text-content[contenteditable="true"]')) return; // editing — don't drag
   // Shift-shortcut defers to interactive page targets (links, buttons, inputs)
   // when the geometric hit would overlap them — but only when there's no paint
   // item directly in the way. We check hit-test first below, then decide.
@@ -1249,9 +1512,9 @@ function handleSelectPointerMove(e) {
     if (Math.abs(dx) < DRAG_THRESHOLD_PX && Math.abs(dy) < DRAG_THRESHOLD_PX) return;
     moveDragState.moved = true;
     // Cursor swap; the cursor-lock stylesheet in highlighter.js has an
-    // `html.vellum-dragging` override that swaps every descendant to
+    // `html.adnota-dragging` override that swaps every descendant to
     // `grabbing !important`, beating the select-mode arrow.
-    document.documentElement.classList.add('vellum-dragging');
+    document.documentElement.classList.add('adnota-dragging');
     // Retarget the selection box onto the wrapper we're actually dragging,
     // otherwise a stale bbox from a prior selection follows the drag.
     if (selectedWrapper !== moveDragState.wrapper) {
@@ -1270,7 +1533,7 @@ async function handleSelectPointerUp(e) {
   const dy = e.clientY - startY;
   moveDragState = null;
 
-  document.documentElement.classList.remove('vellum-dragging');
+  document.documentElement.classList.remove('adnota-dragging');
 
   if (!moved) {
     // Fall through to the normal click-to-select flow.
@@ -1281,16 +1544,18 @@ async function handleSelectPointerUp(e) {
   // move shouldn't also register as a click on the (new) element beneath.
   suppressNextClick = true;
 
-  const payload = wrapper._vellumPayload;
-  const anchorElement = wrapper._vellumAnchorElement;
+  const payload = wrapper._adnotaPayload;
+  const anchorElement = wrapper._adnotaAnchorElement;
   if (!payload || !anchorElement) {
     wrapper.style.transform = '';
     return;
   }
 
   // Convert pixel delta to a percentage of the anchor rect, matching the
-  // anchor-relative coord system used everywhere else.
-  const rect = anchorElement.getBoundingClientRect();
+  // anchor-relative coord system used everywhere else. Route through
+  // resolveAnchorRect so fallback-rendered markers (anchor = scroll
+  // container, but coords are still original-block-relative) drag correctly.
+  const rect = resolveAnchorRect(anchorElement, payload);
   if (rect.width === 0 || rect.height === 0) {
     wrapper.style.transform = '';
     return;
@@ -1307,35 +1572,42 @@ async function handleSelectPointerUp(e) {
 
   shiftMarkerPayload(payload, dxPct, dyPct);
 
+  window.AdnotaLog?.event('marker', 'drag-commit', {
+    id: payload.uuid,
+    shapeType: payload.shapeType,
+    dxPct: Math.round(dxPct * 100) / 100,
+    dyPct: Math.round(dyPct * 100) / 100,
+  });
+
   // Re-render from the updated payload. renderMarker early-exits if the uuid
   // is already on the page, so we must remove the old wrapper first.
   wrapper.remove();
   if (selectBox) { selectBox.style.transform = ''; clearSelection(); }
-  window.VellumMarker.renderMarker(anchorElement, payload);
+  window.AdnotaMarker.renderMarker(anchorElement, payload);
 
   // Persist: delete old row, save updated payload.
-  if (window.VellumStorage) {
-    await window.VellumStorage.deleteItem(location.hostname, 'uuid', payload.uuid);
-    await window.VellumStorage.saveItem(location.hostname, location.pathname, payload);
+  if (window.AdnotaStorage) {
+    await window.AdnotaStorage.deleteItem(location.hostname, 'uuid', payload.uuid);
+    await window.AdnotaStorage.saveItem(location.hostname, location.pathname, payload);
   }
 
   // Re-select the moved marker so the user sees where it landed.
-  const fresh = document.querySelector(`.vellum-marker-wrapper[data-uuid="${payload.uuid}"]`);
+  const fresh = document.querySelector(`.adnota-marker-wrapper[data-uuid="${payload.uuid}"]`);
   if (fresh) showSelectionUI(fresh);
 
   // Undo: restore old coords + storage row.
-  window.VellumUndo.push({
+  window.AdnotaUndo.push({
     undo: async () => {
       if (oldSnapshot.shape) payload.shape = oldSnapshot.shape;
       if (oldSnapshot.textPos) payload.textPos = oldSnapshot.textPos;
       if (oldSnapshot.drawing) payload.drawing = oldSnapshot.drawing;
-      const current = document.querySelector(`.vellum-marker-wrapper[data-uuid="${payload.uuid}"]`);
+      const current = document.querySelector(`.adnota-marker-wrapper[data-uuid="${payload.uuid}"]`);
       if (current) current.remove();
       clearSelection();
-      window.VellumMarker.renderMarker(anchorElement, payload);
-      if (window.VellumStorage) {
-        await window.VellumStorage.deleteItem(location.hostname, 'uuid', payload.uuid);
-        await window.VellumStorage.saveItem(location.hostname, location.pathname, payload);
+      window.AdnotaMarker.renderMarker(anchorElement, payload);
+      if (window.AdnotaStorage) {
+        await window.AdnotaStorage.deleteItem(location.hostname, 'uuid', payload.uuid);
+        await window.AdnotaStorage.saveItem(location.hostname, location.pathname, payload);
       }
     },
   });
@@ -1358,7 +1630,7 @@ function shiftMarkerPayload(payload, dxPct, dyPct) {
 }
 
 function handleSelectClick(e) {
-  const inSelectMode = window.VellumState.mode === 'select';
+  const inSelectMode = window.AdnotaState.mode === 'select';
   const shiftShortcut = e.shiftKey;
   if (!inSelectMode && !shiftShortcut) return;
   if (isToolbarHit(e)) return;
@@ -1373,7 +1645,7 @@ function handleSelectClick(e) {
   }
 
   // Don't deselect when clicking the select box itself
-  if (e.target.closest('.vellum-select-box')) return;
+  if (e.target.closest('.adnota-select-box')) return;
 
   const bestWrapper = hitTestMarker(e.clientX, e.clientY);
   if (bestWrapper) {
@@ -1406,10 +1678,10 @@ document.addEventListener('keydown', (e) => {
 // handleSelectClick above so it doesn't need to run here.
 function handleShiftSelectionDismiss(e) {
   if (!selectedWrapper) return;
-  if (window.VellumState.mode === 'select') return;
+  if (window.AdnotaState.mode === 'select') return;
   if (e.shiftKey) return;                               // shift+click = re-select, handled by handleSelectClick
   if (e.button !== 0) return;
-  if (e.target.closest('.vellum-select-box')) return;   // ✕ button handles itself
+  if (e.target.closest('.adnota-select-box')) return;   // ✕ button handles itself
   if (hitTestMarker(e.clientX, e.clientY) === selectedWrapper) return; // clicking the same item is a no-op
   clearSelection();
 }
@@ -1423,15 +1695,15 @@ function handleShiftSelectionDismiss(e) {
 //     kills whole categories of jank.
 function syncOverlayForShift() {
   if (!captureSvg) return;
-  const overlayActive = window.VellumState.isVisible && _overlayModes.has(window.VellumState.mode);
+  const overlayActive = window.AdnotaState.isVisible && _overlayModes.has(window.AdnotaState.mode);
   if (!overlayActive) return;                             // nothing to suspend
-  const shiftHeld = document.documentElement.classList.contains('vellum-shift-mode');
+  const shiftHeld = document.documentElement.classList.contains('adnota-shift-mode');
   captureSvg.style.pointerEvents = shiftHeld ? 'none' : 'auto';
 }
 
 document.addEventListener('keydown', (e) => {
   if (e.key !== 'Shift') return;
-  document.documentElement.classList.add('vellum-shift-mode');
+  document.documentElement.classList.add('adnota-shift-mode');
   // Abort any in-progress drawing stroke — user changed intent mid-gesture.
   if (capturePath) { capturePath.remove(); capturePath = null; }
   if (captureShape) { captureShape.remove(); captureShape = null; }
@@ -1440,16 +1712,45 @@ document.addEventListener('keydown', (e) => {
 }, true);
 document.addEventListener('keyup', (e) => {
   if (e.key !== 'Shift') return;
-  document.documentElement.classList.remove('vellum-shift-mode');
+  document.documentElement.classList.remove('adnota-shift-mode');
   syncOverlayForShift();
 }, true);
 // Dropped focus (alt-tab, devtools) never fires a keyup for still-held Shift.
 // Clear the class so the page doesn't get stuck in shift-mode, and restore
 // the overlay.
 window.addEventListener('blur', () => {
-  document.documentElement.classList.remove('vellum-shift-mode');
+  document.documentElement.classList.remove('adnota-shift-mode');
   syncOverlayForShift();
 });
+
+// Self-correct stale shift-mode state. The blur backstop above catches
+// alt-tab and devtools, but macOS Shift+Cmd+4 (the screenshot crosshair)
+// intercepts the Shift keyup at the OS level *without* dropping browser
+// focus — so we receive the keydown but never the keyup, the blur listener
+// never fires, and the class stays stuck. Symptom: every .adnota-marker-
+// wrapper keeps pointer-events:auto via the html.adnota-shift-mode CSS rule
+// in marker.css, wheel events that land on a marker wrapper die in the
+// fixed-overlay's no-scrollable-ancestor chain, and the page appears to
+// have scroll-locked. Pressing Shift again produces a clean keydown→keyup
+// pair that finally clears the class — but users shouldn't have to know
+// that recovery dance.
+//
+// e.shiftKey is the browser's authoritative read of the modifier at event
+// time. If it says Shift isn't held, our class is stale by definition.
+// Capture-phase so we reconcile before any handler that branches on the
+// class. Wired to a few common events so any user activity recovers — the
+// early-out is a single ANDed boolean check, so this is essentially free
+// when state already matches.
+const reconcileShiftState = (e) => {
+  if (e.shiftKey) return;
+  if (!document.documentElement.classList.contains('adnota-shift-mode')) return;
+  document.documentElement.classList.remove('adnota-shift-mode');
+  syncOverlayForShift();
+};
+document.addEventListener('pointermove', reconcileShiftState, { capture: true, passive: true });
+document.addEventListener('wheel', reconcileShiftState, { capture: true, passive: true });
+document.addEventListener('keydown', reconcileShiftState, { capture: true });
+document.addEventListener('pointerdown', reconcileShiftState, { capture: true });
 
 // ═════════════════════════════════════════════════════════════════════════════
 // OVERLAY INIT + STATE SUBSCRIPTION
@@ -1457,27 +1758,46 @@ window.addEventListener('blur', () => {
 
 function initCaptureOverlay() {
   captureSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-  captureSvg.id = 'vellum-capture-canvas';
-  captureSvg.setAttribute('data-vellum-ui', '1');
+  captureSvg.id = 'adnota-capture-canvas';
+  captureSvg.setAttribute('data-adnota-ui', '1');
   captureSvg.style.display = 'none';
+  // Match the bicolor crosshair the rest of the app uses. The capture canvas
+  // sits on top of the page during draw modes and the cursor lock skips it
+  // (data-adnota-ui), so without this inline rule the cursor falls back to
+  // the OS native crosshair — visibly different from the lock's SVG.
+  captureSvg.style.cursor = window.AdnotaCursor?.cursors?.crosshair ?? 'crosshair';
 
   captureSvg.addEventListener('pointerdown', handlePointerDown);
   captureSvg.addEventListener('pointermove', handlePointerMove);
   captureSvg.addEventListener('pointerup', handlePointerUp);
+  // Browser-killed gestures (context menu, focus loss in some cases). Pair
+  // with the setPointerCapture call in handlePointerDown — pointercancel
+  // fires when the capture is broken without a normal pointerup.
+  captureSvg.addEventListener('pointercancel', abortInFlightDraw);
+
+  // Window blur abort. setPointerCapture covers releases that happen inside
+  // Chrome's reach (over the page, over Chrome chrome, and usually over the
+  // OS desktop) because the OS still delivers mouseup to the originating
+  // app. But if focus shifts to another app mid-drag — release-on-desktop
+  // that activates Finder/Explorer, alt-tab to another window, etc. — the
+  // OS may swallow the mouseup entirely and no pointer event will ever
+  // reach us. Window blur is the only reliable signal for that case;
+  // abort the in-flight draw so the next pointerdown starts fresh.
+  window.addEventListener('blur', abortInFlightDraw);
 
   document.documentElement.appendChild(captureSvg);
 }
 
 initCaptureOverlay();
 
-// Let other Vellum UI (sticky headers, HUDs, toolbars) pierce the capture
+// Let other Adnota UI (sticky headers, HUDs, toolbars) pierce the capture
 // overlay. Without this, the full-page SVG swallows pointerdown so you can't
 // drag a sticky note or click a HUD button while a shape tool is active.
 document.addEventListener('pointermove', (e) => {
-  if (!_overlayModes.has(window.VellumState.mode)) return;
+  if (!_overlayModes.has(window.AdnotaState.mode)) return;
   if (capturePath || captureShape) return; // mid-stroke — keep capturing
   const stack = document.elementsFromPoint(e.clientX, e.clientY);
-  const overUI = stack.some(el => el !== captureSvg && el.closest('[data-vellum-ui]'));
+  const overUI = stack.some(el => el !== captureSvg && el.closest('[data-adnota-ui]'));
   captureSvg.style.pointerEvents = overUI ? 'none' : 'auto';
 }, true);
 
@@ -1497,9 +1817,9 @@ document.addEventListener('click', handleTextClick, true);
 // Double-click to edit text (works in select and text modes)
 document.addEventListener('dblclick', handleTextDblClick, true);
 
-// VellumState Subscription
-let _prevVellumMode = window.VellumState.mode;
-window.VellumState.subscribe(state => {
+// AdnotaState Subscription
+let _prevAdnotaMode = window.AdnotaState.mode;
+window.AdnotaState.subscribe(state => {
   // Commit any in-progress text when switching modes
   if (activeTextEditor) commitActiveText();
 
@@ -1510,7 +1830,7 @@ window.VellumState.subscribe(state => {
     // Shift held: suspend the overlay's pointer capture so holding Shift
     // temporarily turns off any drawing tool in favor of the select shortcut.
     // Restored when Shift is released via the keyup listener.
-    captureSvg.style.pointerEvents = document.documentElement.classList.contains('vellum-shift-mode') ? 'none' : 'auto';
+    captureSvg.style.pointerEvents = document.documentElement.classList.contains('adnota-shift-mode') ? 'none' : 'auto';
   } else {
     captureSvg.style.display = 'none';
     captureSvg.style.pointerEvents = 'none';
@@ -1522,22 +1842,93 @@ window.VellumState.subscribe(state => {
 
   // Select mode: all wrappers interactive (click-to-select needs hit testing).
   // Text mode: only TEXT wrappers interactive (so dblclick-to-edit still fires
-  // on `.vellum-text-content`). Shape wrappers stay non-interactive because
+  // on `.adnota-text-content`). Shape wrappers stay non-interactive because
   // they're sized to their anchor block's bbox — making them clickable would
   // swallow click-to-place-text across the entire surrounding paragraph.
   const inSelect = state.mode === 'select';
   const inText = state.mode === 'text';
-  document.querySelectorAll('.vellum-marker-wrapper').forEach(el => {
-    const isText = el.classList.contains('vellum-text-wrapper');
+  document.querySelectorAll('.adnota-marker-wrapper').forEach(el => {
+    const isText = el.classList.contains('adnota-text-wrapper');
     el.style.pointerEvents = (inSelect || (inText && isText)) ? 'auto' : 'none';
   });
 
   // Clear selection on a real mode transition — not on HUD color/strokeWidth
   // emits (those keep the mode but would otherwise clobber a live Shift+click
   // selection).
-  if (state.mode !== _prevVellumMode) {
+  if (state.mode !== _prevAdnotaMode) {
     clearSelection();
-    _prevVellumMode = state.mode;
+    _prevAdnotaMode = state.mode;
   }
 });
+
+// ─── Scroll passthrough while DRAW mode is idle ─────────────────────────────
+// Entering a tool shouldn't lock the user out of scrolling the page they're
+// reading — the extension should feel invisible. The capture canvas is
+// position:fixed full-viewport with pointer-events:auto, which is fine on
+// normal scrolling documents (browser's native scroll-chain finds <html>
+// and scrolls), but app shells like claude.ai / chatgpt.com put
+// overflow:hidden on <body> and scroll an internal container. The wheel
+// event hits the canvas, the browser walks up the canvas's ancestor chain
+// looking for a scrollable element, finds none, and the scroll dies.
+//
+// Forward the wheel to the topmost non-Adnota scrollable ancestor under
+// the cursor instead. Mid-stroke (capturePath / captureShape / drag-to-move)
+// we deliberately block scroll — letting it through would create cross-
+// viewport shapes and disconnected pen lines as the page slides under the
+// gesture's coords.
+document.addEventListener('wheel', (e) => {
+  // Gate on "marker.js is intercepting wheel right now." Two cases:
+  // (1) The capture canvas is visible (pen/arrow/rect/ellipse modes) — it
+  //     covers the full viewport and blocks the wheel from reaching the
+  //     page underneath.
+  // (2) Select mode is active — the AdnotaState subscriber flips every
+  //     marker wrapper to pointer-events:auto so click-to-select works,
+  //     and wheel events that hit a wrapper die because the wrapper sits
+  //     in the fixed-position #adnota-marker-overlay with no scrollable
+  //     ancestor. Without this case the user can't scroll over any marker
+  //     while the Select tool is on.
+  // Text and highlight modes aren't included: highlight uses native
+  // selection (no wheel intercept), and text wrappers are tiny so it's
+  // rare for the wheel to land on one — the native chain handles it.
+  const canvasActive = captureSvg && captureSvg.style.display === 'block';
+  const inSelectMode = window.AdnotaState?.mode === 'select';
+  if (!canvasActive && !inSelectMode) return;
+
+  // Mid-action: block scroll so the in-progress gesture doesn't end up
+  // spanning a viewport's worth of scroll delta.
+  if (capturePath || captureShape || moveDragState) {
+    e.preventDefault();
+    return;
+  }
+
+  // Idle: find the page element under the cursor (skipping our own chrome —
+  // toolbars, sticky notes, dock — so a wheel over a sticky note doesn't
+  // try to scroll it as a page). Then walk up to its nearest scrollable
+  // ancestor and dispatch the scroll there. Mirrors the browser's own
+  // scroll-chain logic: overflow auto/scroll AND content overflows the box.
+  const stack = document.elementsFromPoint(e.clientX, e.clientY);
+  const target = stack.find(el => !el.closest('[data-adnota-ui]'));
+  if (!target) return;
+
+  let node = target;
+  while (node && node !== document.documentElement) {
+    const cs = getComputedStyle(node);
+    const scrollsY = (cs.overflowY === 'auto' || cs.overflowY === 'scroll') &&
+                     node.scrollHeight > node.clientHeight;
+    const scrollsX = (cs.overflowX === 'auto' || cs.overflowX === 'scroll') &&
+                     node.scrollWidth > node.clientWidth;
+    if (scrollsY || scrollsX) {
+      e.preventDefault();
+      node.scrollBy(e.deltaX, e.deltaY);
+      return;
+    }
+    node = node.parentElement;
+  }
+
+  // No scrollable ancestor found in the page subtree. On a normally-
+  // scrolling document the browser's native chain reaches <html> and
+  // scrolls it for free (touch-action: pan-x pan-y on the canvas allows
+  // this). On overflow:hidden app shells with no internal scroll container
+  // under the cursor, there's genuinely nothing to scroll — bail.
+}, { passive: false, capture: true });
 

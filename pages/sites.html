@@ -3,23 +3,23 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Vellum — My Edited Sites</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="../lib/vellumUI.css">
+  <title>Adnota — My Edited Sites</title>
+  <link rel="icon" type="image/svg+xml" href="../icons/favicon.svg">
+  <link rel="stylesheet" href="../lib/fonts.css">
+  <link rel="stylesheet" href="../lib/adnotaTokens.css">
+  <link rel="stylesheet" href="../lib/adnotaUI.css">
   <link rel="stylesheet" href="sites.css">
 </head>
-<body>
+<body data-adnota-ui="1">
 
   <!-- ─── Header ─── -->
   <header class="header">
     <div class="header-inner">
       <div class="brand">
-        <div class="brand-monogram">V</div>
+        <img class="brand-monogram" src="../icons/favicon.svg" alt="Adnota">
         <div class="brand-text">
-          <div class="brand-name">Vellum</div>
-          <div class="brand-sub">The Persistent Canvas</div>
+          <div class="brand-name">Adnota</div>
+          <div class="brand-sub">Make Any Webpage Yours</div>
         </div>
       </div>
 
@@ -170,7 +170,30 @@
   <!-- ─── Toast ─── -->
   <div id="toast" class="toast" aria-live="polite"></div>
 
-  <script src="../lib/vellumUI.js"></script>
+  <!-- ─── Bug report (floating, bottom-right) ───
+       Pre-release feedback path. Footer is dead real-estate on long feeds,
+       so a small floating button is the only place users will actually see
+       this prompt. Popover is opt-in (click to open) so the page stays calm
+       at rest. -->
+  <div id="bug-report" class="bug-report">
+    <button id="bug-report-btn" class="bug-report-btn" type="button"
+            aria-label="Report a bug" aria-expanded="false"
+            aria-controls="bug-report-popover">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+           stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <rect x="3" y="5" width="18" height="14" rx="2"/>
+        <path d="m3 7 9 6 9-6"/>
+      </svg>
+    </button>
+    <div id="bug-report-popover" class="bug-report-popover" role="dialog"
+         aria-label="Report a bug" hidden>
+      <h3 class="bug-report-title">Spot a bug?</h3>
+      <p class="bug-report-body">Email us with a quick description and we'll look into it right away.</p>
+      <a class="bug-report-email" href="mailto:support@adnota.app?subject=Adnota%20bug">support@adnota.app</a>
+    </div>
+  </div>
+
+  <script src="../lib/adnotaUI.js"></script>
   <script src="../lib/tagIndex.js"></script>
   <script src="sites.js"></script>
 </body>

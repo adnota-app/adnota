@@ -1,13 +1,13 @@
 {
   "manifest_version": 3,
-  "name": "Vellum",
-  "version": "0.1.0",
-  "description": "The Persistent Canvas. Erase distracting elements from the web permanently.",
+  "name": "Adnota",
+  "short_name": "Adnota",
+  "version": "1.0.0",
+  "description": "Annotate the web. Erase, highlight, draw, and annotate any page — persistent across sessions, stored privately on your machine.",
+  "author": "Adnota",
+  "homepage_url": "https://adnota.app",
   "permissions": [
-    "storage",
-    "activeTab",
-    "scripting",
-    "tabs"
+    "storage"
   ],
   "host_permissions": [
     "*://*/*"
@@ -25,38 +25,36 @@
   "background": {
     "service_worker": "background.js"
   },
+  "icons": {
+    "16": "icons/icon-16.png",
+    "32": "icons/icon-32.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
+  },
   "action": {
     "default_popup": "popup/index.html",
-    "default_title": "Vellum"
+    "default_title": "Adnota",
+    "default_icon": {
+      "16": "icons/icon-16.png",
+      "32": "icons/icon-32.png",
+      "48": "icons/icon-48.png",
+      "128": "icons/icon-128.png"
+    }
   },
   "commands": {
-    "toggle-eraser": {
+    "toggle-dock": {
       "suggested_key": {
-        "default": "Alt+E",
-        "mac": "Alt+E"
+        "default": "Alt+A",
+        "mac": "Alt+A"
       },
-      "description": "Toggle Eraser Mode"
+      "description": "Toggle Adnota dock"
     },
-    "toggle-sticky": {
+    "toggle-view": {
       "suggested_key": {
         "default": "Alt+S",
         "mac": "Alt+S"
       },
-      "description": "Toggle Sticky Notes Mode"
-    },
-    "toggle-highlighter": {
-      "suggested_key": {
-        "default": "Alt+H",
-        "mac": "Alt+H"
-      },
-      "description": "Toggle Highlighter Mode"
-    },
-    "toggle-view": {
-      "suggested_key": {
-        "default": "Alt+V",
-        "mac": "Alt+V"
-      },
-      "description": "Toggle Annotations Visibility"
+      "description": "Show / hide all annotations"
     }
   },
   "content_scripts": [
@@ -65,10 +63,12 @@
         "*://*/*"
       ],
       "js": [
+        "lib/log.js",
         "lib/storage.js",
         "lib/annotationState.js",
-        "lib/vellumUI.js",
+        "lib/adnotaUI.js",
         "lib/tagIndex.js",
+        "content/scratchPad.js",
         "content/dock.js",
         "content/fuzzyAnchor.js",
         "content/eraser.js",
@@ -80,7 +80,9 @@
         "content/quickHighlight.js"
       ],
       "css": [
-        "lib/vellumUI.css",
+        "lib/adnotaTokens.css",
+        "lib/adnotaUI.css",
+        "content/scratchPad.css",
         "content/dock.css",
         "content/sticky.css",
         "content/marker.css",

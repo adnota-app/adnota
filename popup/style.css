@@ -1,5 +1,3 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
-
 *,
 *::before,
 *::after {
@@ -31,9 +29,15 @@ body {
 }
 
 /* ─── Header ─── */
+/* Dark base + purple-tinted gradient overlay — same pattern as the adnota
+   dashboard header. The overlay (not the base) carries the brand warmth, so
+   the surface reads as dark purple end-to-end rather than black-fading-to-purple. */
 .header {
-  background: linear-gradient(135deg, #151515 0%, #2a1658 100%);
-  padding: 18px;
+  background:
+    linear-gradient(135deg, rgba(124, 58, 237, 0.22), rgba(147, 51, 234, 0.06)),
+    #0f0f1a;
+  border-bottom: 1px solid rgba(124, 58, 237, 0.18);
+  padding: 16px 18px;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -46,33 +50,29 @@ body {
   position: absolute;
   top: -40px;
   right: -20px;
-  width: 120px;
-  height: 120px;
+  width: 140px;
+  height: 140px;
   border-radius: 50%;
-  background: radial-gradient(circle, rgba(124, 58, 237, 0.4) 0%, transparent 70%);
+  background: radial-gradient(circle, rgba(124, 58, 237, 0.35) 0%, transparent 70%);
   pointer-events: none;
+  opacity: 0.6;
 }
 
 .brand {
   display: flex;
   align-items: center;
   gap: 11px;
+  cursor: pointer;
+  user-select: none;
+  transition: opacity 0.12s;
 }
+.brand:hover { opacity: 0.85; }
 
 .brand-monogram {
   width: 38px;
   height: 38px;
-  border-radius: 10px;
-  background: linear-gradient(135deg, #7c3aed 0%, #4f46e5 100%);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: 700;
-  font-size: 17px;
-  color: #fff;
-  letter-spacing: -0.5px;
   flex-shrink: 0;
-  box-shadow: 0 2px 8px rgba(124, 58, 237, 0.4);
+  filter: drop-shadow(0 2px 8px rgba(124, 58, 237, 0.4));
 }
 
 .brand-name {
@@ -434,7 +434,7 @@ kbd.shortcut {
 
 /* ─── Footer ─── */
 .footer {
-  padding: 12px 14px 14px;
+  padding: 10px 14px 8px;
   border-top: 1px solid rgba(0, 0, 0, 0.06);
   display: flex;
   flex-direction: column;
@@ -486,6 +486,35 @@ kbd.shortcut {
   gap: 6px;
   transition: all 0.15s ease;
   letter-spacing: 0.01em;
+}
+
+/* Tiny muted footnote — prose stays plain text, only `support` is the click
+   target. No underline at rest; hover reveals it so the affordance shows up
+   only when the user reaches for it. Spacing comes from the parent footer's
+   flex `gap` so this row doesn't add height. */
+.bug-link {
+  margin: 0;
+  padding: 0;
+  font-size: 10.5px;
+  line-height: 1.4;
+  color: rgba(0, 0, 0, 0.4);
+  text-align: center;
+  font-family: 'Inter', sans-serif;
+  letter-spacing: 0.01em;
+}
+
+.bug-link a {
+  color: inherit;
+  text-decoration: none;
+  cursor: pointer;
+  transition: color 0.15s ease;
+}
+
+.bug-link a:hover {
+  color: rgba(0, 0, 0, 0.75);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 2px;
 }
 
 .danger-btn:hover {

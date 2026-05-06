@@ -4,12 +4,65 @@ document.addEventListener('DOMContentLoaded', async () => {
   const btnClear      = document.getElementById('btn-clear');
   const btnVisibility = document.getElementById('btn-visibility');
   const btnMySites    = document.getElementById('btn-my-sites');
+  const brand         = document.querySelector('.brand');
 
   // ─── Open the Sites history page ──────────────────────────────────────────
-  btnMySites.addEventListener('click', () => {
+  function openSites() {
     chrome.tabs.create({ url: chrome.runtime.getURL('pages/sites.html') });
     window.close();
-  });
+  }
+  btnMySites.addEventListener('click', openSites);
+  brand.addEventListener('click', openSites);
+
+  // ─── Bug-report mailto with diagnostic prefill ────────────────────────────
+  // Triage email with extension version + UA + active page URL pre-attached.
+  // User reviews the body in their mail client before sending and can edit
+  // or strip anything they don't want to share — opt-in by definition, since
+  // nothing leaves the machine without their explicit send.
+  //
+  // Routed through chrome.tabs.create instead of the `<a href>`'s default
+  // navigation: an extension popup closes the moment focus shifts to launch
+  // the mail handler, and Chrome can't always reconcile the resulting
+  // navigation as a user-gesture-bound action — surfacing as the "user
+  // gesture is required" warning. chrome.tabs.create is a privileged
+  // extension API that hands the URL to the OS handler cleanly.
+  (() => {
+    const link = document.getElementById('bug-link');
+    if (!link) return;
+
+    let mailtoHref = link.getAttribute('href');
+
+    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+      let activeUrl = 'n/a';
+      let activeHost = 'n/a';
+      try {
+        if (tabs[0]?.url) {
+          activeUrl = tabs[0].url;
+          activeHost = new URL(tabs[0].url).hostname || 'n/a';
+        }
+      } catch {}
+      const version = chrome.runtime.getManifest().version;
+      const body = [
+        'Describe what went wrong:',
+        '',
+        '',
+        '---',
+        `Extension: ${version}`,
+        `Browser: ${navigator.userAgent}`,
+        `URL: ${activeUrl}`,
+        `Host: ${activeHost}`,
+      ].join('\n');
+      const subject = encodeURIComponent('Adnota bug');
+      mailtoHref = `mailto:support@adnota.app?subject=${subject}&body=${encodeURIComponent(body)}`;
+      link.setAttribute('href', mailtoHref);
+    });
+
+    link.addEventListener('click', (e) => {
+      e.preventDefault();
+      chrome.tabs.create({ url: mailtoHref, active: false });
+      window.close();
+    });
+  })();
 
   // ─── Utility: mark the active tool card by mode string ───────────────────
   function setActiveCard(mode) {
@@ -24,24 +77,54 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   // ─── Tool card clicks — activate the tool and close the popup ─────────────
-  document.querySelectorAll('.tool-card[data-action]').forEach(card => {
-    card.addEventListener('click', () => {
-      chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-        if (!tabs.length) return;
-        chrome.tabs.sendMessage(tabs[0].id, { action: card.dataset.action }, () => {
-          void chrome.runtime.lastError;
-          window.close();
-        });
+  function activateTool(action) {
+    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+      if (!tabs.length) return;
+      chrome.tabs.sendMessage(tabs[0].id, { action }, () => {
+        void chrome.runtime.lastError;
+        window.close();
       });
     });
+  }
+
+  document.querySelectorAll('.tool-card[data-action]').forEach(card => {
+    card.addEventListener('click', () => activateTool(card.dataset.action));
   });
+
+  // ─── Bare-key shortcuts (mirror content/dock.js) ──────────────────────────
+  // The dock-visible gate doesn't apply here — popup being open IS the modal
+  // indicator, and tool activation auto-restores the dock anyway. Lets a
+  // user who opens the popup with the dock dismissed press the badge keys
+  // they see and have it just work.
+  const POPUP_BARE_KEYS = {
+    e: 'toggle-eraser',
+    r: 'toggle-resizer',
+    s: 'toggle-sticky',
+    d: 'toggle-highlighter',
+  };
+
+  function isEditableNode(node) {
+    if (!node) return false;
+    const el = node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement;
+    return !!el?.closest('input, textarea, [contenteditable=""], [contenteditable="true"]');
+  }
+
+  window.addEventListener('keydown', (e) => {
+    if (e.repeat) return;
+    if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
+    if (isEditableNode(document.activeElement)) return;
+    const action = POPUP_BARE_KEYS[e.key?.toLowerCase()];
+    if (!action) return;
+    e.preventDefault();
+    activateTool(action);
+  }, true);
 
   // ─── Visibility toggle ────────────────────────────────────────────────────
   function setVisibilityBtn(isHidden) {
     btnVisibility.classList.toggle('hidden', isHidden);
     btnVisibility.title = isHidden
-      ? 'Show changes (Alt+V)'
-      : 'Hide changes (Alt+V)';
+      ? 'Show changes (Alt+S)'
+      : 'Hide changes (Alt+S)';
   }
 
   // Seed from content script on open. Visibility is ephemeral and per-tab,
@@ -76,17 +159,29 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
   });
 
+  // ─── Auto-restore the dock if it was dismissed on this domain ─────────────
+  // Opening the popup is itself the "I'm engaging with Adnota here" gesture,
+  // and it's the universal recovery path advertised in the first-time dismiss
+  // toast. The content script's restore-dock handler removes the hostname
+  // from adnotaHiddenDomains and unhides — symmetric to the X button.
+  chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+    if (!tabs.length) return;
+    chrome.tabs.sendMessage(tabs[0].id, { action: 'restore-dock' }, () => {
+      void chrome.runtime.lastError;
+    });
+  });
+
   // ─── Live updates — react to keyboard shortcuts while popup is open ────────
   chrome.storage.onChanged.addListener((changes, area) => {
     if (area !== 'local') return;
-    if ('vellumActiveMode' in changes) {
-      setActiveCard(changes.vellumActiveMode.newValue);
+    if ('adnotaActiveMode' in changes) {
+      setActiveCard(changes.adnotaActiveMode.newValue);
     }
   });
 
   // Visibility is ephemeral (not persisted). Content scripts broadcast
   // 'visibility-changed' via chrome.runtime on every toggle/show; catch it
-  // here so the popup icon stays in sync with Alt+V and the dock's eye button.
+  // here so the popup icon stays in sync with Alt+S and the dock's eye button.
   chrome.runtime.onMessage.addListener((msg) => {
     if (msg?.action === 'visibility-changed') {
       setVisibilityBtn(!!msg.hidden);
@@ -140,7 +235,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     };
 
     function sendSoftDelete(payload) {
-      chrome.tabs.sendMessage(tabs[0].id, { action: 'vellum-soft-delete', ...payload }, () => {
+      chrome.tabs.sendMessage(tabs[0].id, { action: 'adnota-soft-delete', ...payload }, () => {
         void chrome.runtime.lastError;
         window.close();
       });
@@ -154,10 +249,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         const count = info.count() ?? 0;
         if (count === 0) return;
 
-        const noun = window.VellumUI.pluralize(count, info.singular, info.plural);
-        const ok = await window.VellumUI.confirmDialog({
+        const noun = window.AdnotaUI.pluralize(count, info.singular, info.plural);
+        const ok = await window.AdnotaUI.confirmDialog({
           message: `Delete ${count} ${noun} from this page?`,
-          subtext: 'You\u2019ll have 5 seconds to undo.',
+          subtext: '',
         });
         if (!ok) return;
 
@@ -175,10 +270,10 @@ document.addEventListener('DOMContentLoaded', async () => {
       const total = erasures + notes + highlights + strokes + resizes;
       if (total === 0) return;
 
-      const noun = window.VellumUI.pluralize(total, 'edit', 'edits');
-      const ok = await window.VellumUI.confirmDialog({
+      const noun = window.AdnotaUI.pluralize(total, 'edit', 'edits');
+      const ok = await window.AdnotaUI.confirmDialog({
         message: `Delete ${total} ${noun} from this page?`,
-        subtext: 'You\u2019ll have 5 seconds to undo.',
+        subtext: '',
       });
       if (!ok) return;
 

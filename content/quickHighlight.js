@@ -1,10 +1,10 @@
 // content/quickHighlight.js
 //
 // Contextual highlight popup — appears above any non-empty text selection after
-// a brief dwell. Offers the 5-color Vellum palette + a "drop a sticky note"
+// a brief dwell. Offers the 5-color Adnota palette + a "drop a sticky note"
 // shortcut. Designed to never interfere with a plain Ctrl/Cmd+C copy.
 //
-// Settings: chrome.storage.local.vellumQuickHighlightEnabled (default true).
+// Settings: chrome.storage.local.adnotaQuickHighlightEnabled (default true).
 //   false → feature is silent. Anticipates a future popup/radial toggle UI;
 //   no content-script change needed when that lands.
 
@@ -25,52 +25,52 @@
   // the popup doesn't reappear from the still-live selection post-copy).
   let suppressUntilSelectionChange = false;
 
-  chrome.storage.local.get(['vellumQuickHighlightEnabled'], (result) => {
-    if (result.vellumQuickHighlightEnabled === false) enabled = false;
+  chrome.storage.local.get(['adnotaQuickHighlightEnabled'], (result) => {
+    if (result.adnotaQuickHighlightEnabled === false) enabled = false;
   });
 
   chrome.storage.onChanged.addListener((changes, area) => {
-    if (area !== 'local' || !changes.vellumQuickHighlightEnabled) return;
-    enabled = changes.vellumQuickHighlightEnabled.newValue !== false;
+    if (area !== 'local' || !changes.adnotaQuickHighlightEnabled) return;
+    enabled = changes.adnotaQuickHighlightEnabled.newValue !== false;
     if (!enabled) hidePopup();
   });
 
   const THEMES = [
-    { key: 'vellum-theme-yellow', color: 'rgb(255, 235, 59)', label: 'Yellow' },
-    { key: 'vellum-theme-green',  color: 'rgb(76, 175, 80)',  label: 'Green' },
-    { key: 'vellum-theme-blue',   color: 'rgb(33, 150, 243)', label: 'Blue' },
-    { key: 'vellum-theme-pink',   color: 'rgb(233, 30, 99)',  label: 'Pink' },
-    { key: 'vellum-theme-black',  color: '#111',              label: 'Redact' },
+    { key: 'adnota-theme-yellow', color: 'rgb(255, 235, 59)', label: 'Yellow' },
+    { key: 'adnota-theme-green',  color: 'rgb(76, 175, 80)',  label: 'Green' },
+    { key: 'adnota-theme-blue',   color: 'rgb(33, 150, 243)', label: 'Blue' },
+    { key: 'adnota-theme-pink',   color: 'rgb(233, 30, 99)',  label: 'Pink' },
+    { key: 'adnota-theme-black',  color: '#111',              label: 'Redact' },
   ];
 
   // ── Popup construction ────────────────────────────────────────────────────
 
   function buildPopup() {
     const el = document.createElement('div');
-    el.id = 'vellum-quick-highlight';
-    el.setAttribute('data-vellum-ui', '1');
+    el.id = 'adnota-quick-highlight';
+    el.setAttribute('data-adnota-ui', '1');
     // Prevent the selection from collapsing the moment the user presses down
     // on the popup frame or a swatch. The tag input needs real focus to accept
     // typing, so we re-allow mousedown to propagate normally inside the tag
     // row below.
     el.addEventListener('mousedown', (e) => {
-      if (e.target.closest('.vellum-qh-tag-row')) return;
+      if (e.target.closest('.adnota-qh-tag-row')) return;
       e.preventDefault();
     });
 
     // Row 1: [logo][swatches][dismiss] — unchanged one-tap highlight path.
     const row = document.createElement('div');
-    row.className = 'vellum-qh-row';
+    row.className = 'adnota-qh-row';
 
     const logo = document.createElement('span');
-    logo.className = 'vellum-qh-logo';
-    logo.textContent = 'V';
-    logo.setAttribute('title', 'Vellum');
+    logo.className = 'adnota-qh-logo';
+    logo.textContent = 'A';
+    logo.setAttribute('title', 'Adnota');
     row.appendChild(logo);
 
     for (const theme of THEMES) {
       const dot = document.createElement('div');
-      dot.className = 'vellum-qh-swatch';
+      dot.className = 'adnota-qh-swatch';
       dot.setAttribute('title', theme.label);
       dot.style.backgroundColor = theme.color;
       dot.addEventListener('click', (e) => {
@@ -81,7 +81,7 @@
     }
 
     const dismiss = document.createElement('div');
-    dismiss.className = 'vellum-select-delete vellum-qh-dismiss';
+    dismiss.className = 'adnota-select-delete adnota-qh-dismiss';
     dismiss.textContent = '✕';
     dismiss.setAttribute('title', 'Dismiss');
     dismiss.addEventListener('click', (e) => {
@@ -96,15 +96,15 @@
     // one-tap flow (select → click swatch). Typing attaches the tag to the
     // created highlight; autocomplete pulls from every prior tag in storage.
     const tagRow = document.createElement('div');
-    tagRow.className = 'vellum-qh-tag-row';
+    tagRow.className = 'adnota-qh-tag-row';
 
     const tagIcon = document.createElement('span');
-    tagIcon.className = 'vellum-qh-tag-icon';
+    tagIcon.className = 'adnota-qh-tag-icon';
     tagIcon.textContent = '#';
     tagRow.appendChild(tagIcon);
 
     tagInput = document.createElement('input');
-    tagInput.className = 'vellum-qh-tag-input';
+    tagInput.className = 'adnota-qh-tag-input';
     tagInput.type = 'text';
     tagInput.placeholder = 'tag (optional)';
     tagInput.maxLength = 40;
@@ -114,8 +114,8 @@
 
     el.appendChild(tagRow);
 
-    if (window.VellumTags) {
-      window.VellumTags.buildAutocompleteDropdown(tagInput);
+    if (window.AdnotaTags) {
+      window.AdnotaTags.buildAutocompleteDropdown(tagInput);
     }
 
     return el;
@@ -182,7 +182,7 @@
 
     const anchorNode = selection.anchorNode;
     const anchorEl = anchorNode?.nodeType === Node.ELEMENT_NODE ? anchorNode : anchorNode?.parentElement;
-    if (anchorEl?.closest('[data-vellum-ui]')) return null;
+    if (anchorEl?.closest('[data-adnota-ui]')) return null;
     if (isEditableNode(anchorNode) || isEditableNode(selection.focusNode)) return null;
 
     return { selection, range };
@@ -195,7 +195,7 @@
     if (suppressUntilSelectionChange) return;
     // When classic highlight mode is on, its mouseup handler auto-applies the
     // active color. Showing the popup on top would be redundant.
-    if (window.VellumState?.mode === 'highlight') return;
+    if (window.AdnotaState?.mode === 'highlight') return;
     if (popup && popup.contains(e.target)) return;
 
     clearTimeout(showTimer);
@@ -205,12 +205,16 @@
       const rect = cur.range.getBoundingClientRect();
       if (!rect || (rect.width === 0 && rect.height === 0)) return;
       cachedRange = cur.range.cloneRange();
+      window.AdnotaLog?.event('quickhighlight', 'popup-show', {
+        rect: { x: Math.round(rect.left), y: Math.round(rect.top), w: Math.round(rect.width), h: Math.round(rect.height) },
+        text: cur.range.toString(),
+      });
       positionPopup(rect);
       // If the selection overlaps a tagged highlight, pre-fill the tag input
       // so the user can re-apply or edit the same tag without retyping it.
       const cx = rect.left + rect.width / 2;
       const cy = rect.top + rect.height / 2;
-      const existingTag = window.VellumHighlighter?.tagAtPoint?.(cx, cy) || '';
+      const existingTag = window.AdnotaHighlighter?.tagAtPoint?.(cx, cy) || '';
       if (tagInput) tagInput.value = existingTag;
     }, SHOW_DELAY_MS);
   }, true);
@@ -252,7 +256,7 @@
     if (popup && popup.contains(e.target)) return;
     // Tag autocomplete dropdown lives outside the popup (appended to <body>
     // with position:fixed). Don't hide when the user is picking a suggestion.
-    if (e.target.closest && e.target.closest('.vellum-tag-suggest')) return;
+    if (e.target.closest && e.target.closest('.adnota-tag-suggest')) return;
     hidePopup();
   }, true);
 
@@ -265,13 +269,13 @@
     const range = cur ? cur.range.cloneRange()
                       : (cachedRange ? cachedRange.cloneRange() : null);
     if (!range) { hidePopup(); return; }
-    window.VellumVisibility?.show?.();
+    window.AdnotaVisibility?.show?.();
     // Snapshot the tag *before* hidePopup clears the input.
-    const tag = window.VellumTags
-      ? window.VellumTags.normalize(tagInput?.value || '')
+    const tag = window.AdnotaTags
+      ? window.AdnotaTags.normalize(tagInput?.value || '')
       : (tagInput?.value || '').trim();
     hidePopup();
     try { cur?.selection?.removeAllRanges(); } catch (err) {}
-    await window.VellumHighlighter?.createHighlightFromRange?.(range, colorKey, tag);
+    await window.AdnotaHighlighter?.createHighlightFromRange?.(range, colorKey, tag);
   }
 })();

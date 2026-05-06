@@ -1,7 +1,7 @@
 // content/eraser.js
 
 // ─── Hover overlay ────────────────────────────────────────────────────────────
-const highlightOverlay = window.VellumUI.createHoverOverlay('vellum-highlight-overlay', '#ef4444', 'rgba(239, 68, 68, 0.15)');
+const highlightOverlay = window.AdnotaUI.createHoverOverlay('adnota-highlight-overlay', '#ef4444', 'rgba(239, 68, 68, 0.15)');
 
 // ─── Top-right badge cluster on the hover outline ───────────────────────────
 // Lives where the user's eye already is — the element they're hovering — so
@@ -10,24 +10,24 @@ const highlightOverlay = window.VellumUI.createHoverOverlay('vellum-highlight-ov
 // outline's top-right; badges sit side by side with consistent height and
 // disappear when not relevant.
 const overlayBadgeRow = document.createElement('div');
-overlayBadgeRow.setAttribute('data-vellum-ui', '1');
+overlayBadgeRow.setAttribute('data-adnota-ui', '1');
 Object.assign(overlayBadgeRow.style, {
   position: 'absolute',
-  top: '-1px',
-  right: '-1px',
-  transform: 'translateY(-100%)',
+  top: '-2px',
+  right: '-3px',
+  transform: 'translateY(-50%)',
   display: 'inline-flex',
-  alignItems: 'flex-end',
-  gap: '3px',
+  alignItems: 'center',
+  gap: '4px',
 });
 highlightOverlay.appendChild(overlayBadgeRow);
 
 // "likely ad" pill — only shown when getEffectiveAdSignals() returns non-empty
 // (same detection that drives the silent domain-wide promotion on click).
-// Soft red with an opaque background so it reads against any element underneath.
+// Sits to the left of the dimension chip; small text pill, no border.
 const adBadge = document.createElement('div');
-adBadge.id = 'vellum-ad-badge';
-adBadge.setAttribute('data-vellum-ui', '1');
+adBadge.id = 'adnota-ad-badge';
+adBadge.setAttribute('data-adnota-ui', '1');
 adBadge.textContent = 'likely ad';
 Object.assign(adBadge.style, {
   background: 'rgba(220, 38, 38, 0.92)',
@@ -37,28 +37,30 @@ Object.assign(adBadge.style, {
   fontWeight: '600',
   lineHeight: '1',
   padding: '3px 6px',
-  borderRadius: '3px 0 0 3px',
+  borderRadius: '4px',
   whiteSpace: 'nowrap',
   display: 'none',
 });
 overlayBadgeRow.appendChild(adBadge);
 
+// Dimension chip — mirrors the resizer's blue chip in red so the two tools
+// share a consistent W×H readout style.
 const dimensionBadge = document.createElement('div');
-dimensionBadge.id = 'vellum-dimension-badge';
-dimensionBadge.setAttribute('data-vellum-ui', '1');
+dimensionBadge.id = 'adnota-dimension-badge';
+dimensionBadge.setAttribute('data-adnota-ui', '1');
 Object.assign(dimensionBadge.style, {
-  background: 'rgba(15, 15, 15, 0.85)',
-  color: '#e4e4e7',
-  fontSize: '10px',
-  fontFamily: 'ui-monospace, "SF Mono", Menlo, Consolas, monospace',
-  lineHeight: '1',
-  padding: '3px 6px',
-  borderRadius: '3px 3px 0 3px',
+  background: '#ef4444',
+  color: '#fff',
+  font: '600 11px/1 ui-monospace, "SF Mono", Menlo, Consolas, monospace',
+  padding: '3px 8px 2px',
+  borderRadius: '4px',
+  border: '2px solid #fff',
+  boxShadow: '0 1px 4px rgba(0, 0, 0, 0.3)',
   whiteSpace: 'nowrap',
 });
 overlayBadgeRow.appendChild(dimensionBadge);
 
-// ─── HUD body (mounts into the unified VellumDock on activation) ───────────
+// ─── HUD body (mounts into the unified AdnotaDock on activation) ───────────
 // The dock owns the chrome (drag handle, V logo, tool row, position).
 // The eraser owns its controls — info strip + trash + undo — built once
 // and mounted into the dock body slot when the tool is active.
@@ -68,7 +70,7 @@ eraserBody.style.alignItems = 'center';
 
 // Info section (dynamic — updated on hover)
 const eraserHudInfo = document.createElement('span');
-eraserHudInfo.id = 'vellum-eraser-hud-info';
+eraserHudInfo.id = 'adnota-eraser-hud-info';
 eraserHudInfo.style.display = 'inline-flex';
 eraserHudInfo.style.alignItems = 'center';
 eraserHudInfo.style.minWidth = '220px';
@@ -77,36 +79,36 @@ eraserBody.appendChild(eraserHudInfo);
 // Help (?) button — opens a tail-anchored popover with the full tip list.
 // Replaces the old rotating tip; always reachable, no waiting for the right
 // tip to cycle around.
-const eraserHelpBtn = window.VellumUI.createHelpButton({
+const eraserHelpBtn = window.AdnotaUI.createHelpButton({
   accent: 'red',
   tips: [
     '<span style="color:#94a3b8">Click to erase on <span style="color:#e4e4e7;font-weight:600">this page</span></span>',
     '<span style="color:#94a3b8"><span style="background:rgba(239,68,68,0.25);color:#fca5a5;padding:1px 4px;border-radius:3px;font-size:11px;font-weight:600;margin-right:4px">⇧+Click</span>erase across <span style="color:#e4e4e7;font-weight:600">entire domain</span></span>',
+    '<span style="color:#94a3b8"><span style="background:rgba(239,68,68,0.25);color:#fca5a5;padding:1px 4px;border-radius:3px;font-size:11px;font-weight:600;margin-right:4px">⇧+Scroll ↑↓</span>to <span style="color:#e4e4e7;font-weight:600">traverse DOM</span> (select parents/children)</span>',
     '<span style="color:#94a3b8">When you see <span style="background:rgba(220,38,38,0.92);color:#fff;padding:1px 5px;border-radius:3px;font-size:11px;font-weight:600">likely ad</span>, erasing it also blocks it across the domain</span>',
-    '<span style="color:#94a3b8">Scroll ↑↓ to <span style="color:#e4e4e7;font-weight:600">traverse DOM</span> (select parents/children)</span>',
     '<span style="color:#94a3b8">Press <span style="background:rgba(239,68,68,0.25);color:#fca5a5;padding:1px 4px;border-radius:3px;font-size:11px;font-weight:600;margin-right:2px">Esc</span> to exit any tool</span>',
   ],
 });
-eraserHelpBtn.classList.add('vellum-undo-btn-red');
+eraserHelpBtn.classList.add('adnota-undo-btn-red');
 eraserBody.appendChild(eraserHelpBtn);
 
 // Divider
 eraserBody.appendChild(Object.assign(document.createElement('div'), {
-  className: 'vellum-toolbar-divider vellum-toolbar-divider-red',
+  className: 'adnota-toolbar-divider adnota-toolbar-divider-red',
 }));
 
 // Trash — clears all erasures on this page
-const eraserTrashBtn = window.VellumUI.createTrashButton({
+const eraserTrashBtn = window.AdnotaUI.createTrashButton({
   singular: 'erasure',
   plural: 'erasures',
   actionTypes: ['ERASE'],
 });
-eraserTrashBtn.classList.add('vellum-undo-btn-red');
+eraserTrashBtn.classList.add('adnota-undo-btn-red');
 eraserBody.appendChild(eraserTrashBtn);
 
 // Undo
-const eraserUndoBtn = window.VellumUI.createUndoButton();
-eraserUndoBtn.classList.add('vellum-undo-btn-red');
+const eraserUndoBtn = window.AdnotaUI.createUndoButton();
+eraserUndoBtn.classList.add('adnota-undo-btn-red');
 eraserBody.appendChild(eraserUndoBtn);
 
 // ─── Idle-state info label ──────────────────────────────────────────────────
@@ -122,16 +124,28 @@ function escapeHtml(str) {
 // Lightweight heuristics to flag elements that look like ad infrastructure.
 // Not blocking anything — just informing the user's scroll-wheel decision.
 const _adKeywordPattern = /\bad[s]?\b|ad[-_]|[-_]ad\b|advert|banner|sponsor|promo|dfp|prebid|adsense|doubleclick|freestar|taboola|outbrain|criteo|pubmatic/i;
-const _adNetworkAttrs = ['data-freestar-ad', 'data-google-query-id', 'data-ad-slot',
-  'data-ad-client', 'data-adunit', 'data-ad', 'data-dfp', 'data-zone'];
+// Hyphen-segmented identifier match for tag names and attribute names. Lives
+// on AdnotaUI so the restorer's ad-slot fallback uses the same definition.
+const _adIdentifierPattern = window.AdnotaUI.adIdentifierPattern;
+// Network-specific attribute names that don't fit the hyphen-segmented pattern.
+const _adNetworkAttrSet = new Set(['data-google-query-id', 'data-dfp', 'data-zone',
+  'data-adunit', 'data-prebid']);
+
+function _hasAdAttribute(el) {
+  if (!el.attributes) return false;
+  for (const attr of el.attributes) {
+    if (_adNetworkAttrSet.has(attr.name)) return true;
+    if (_adIdentifierPattern.test(attr.name)) return true;
+  }
+  return false;
+}
 
 /** Quick check: does a single element (not its subtree) have ad fingerprints? */
 function hasAdFingerprint(el) {
   const idAndClass = (el.id || '') + ' ' + (el.className || '');
   if (_adKeywordPattern.test(idAndClass)) return true;
-  for (const a of _adNetworkAttrs) {
-    if (el.hasAttribute(a)) return true;
-  }
+  if (_adIdentifierPattern.test(el.tagName || '')) return true;
+  if (_hasAdAttribute(el)) return true;
   if (el.tagName === 'IFRAME') return true;
   return false;
 }
@@ -144,23 +158,40 @@ function detectAdSignals(el) {
   const idAndClass = (el.id || '') + ' ' + (el.className || '');
   if (_adKeywordPattern.test(idAndClass)) signals.push('ad-keyword');
 
-  // Check attributes for ad network fingerprints
-  for (const a of _adNetworkAttrs) {
-    if (el.hasAttribute(a)) { signals.push('ad-network'); break; }
+  // Custom-element tag names (e.g. <shreddit-comments-page-ad>)
+  if (_adIdentifierPattern.test(el.tagName || '')) signals.push('ad-tag');
+
+  // Attribute-name scan — replaces the old fixed list, catches the whole
+  // ad-type / is-ad / is-promoted / post-promoted / data-ad-* family
+  if (_hasAdAttribute(el)) signals.push('ad-network');
+
+  // aria-label like "Advertisement: ..." — strong textual signal sites use
+  // for accessibility on ad slots even when class/id are neutral
+  const ariaLabel = (el.getAttribute && el.getAttribute('aria-label')) || '';
+  if (ariaLabel && _adKeywordPattern.test(ariaLabel.slice(0, 200))) {
+    signals.push('ad-label');
   }
 
-  // Contains iframe (common ad delivery mechanism)
-  if (el.querySelector('iframe')) signals.push('iframe');
-
-  // Contains iframe pointing to ad domain or about:blank
-  const iframes = el.querySelectorAll('iframe');
-  for (const iframe of iframes) {
-    const src = iframe.getAttribute('src') || '';
-    if (!src || src === 'about:blank' || _adKeywordPattern.test(src)) {
-      signals.push('ad-iframe');
-      break;
+  // Single subtree pass: iframe descendants and rel="sponsored" links — the
+  // canonical W3C signal for paid links. One walk instead of two.
+  const adChildren = el.querySelectorAll('iframe, a[rel~="sponsored"]');
+  let hasIframe = false;
+  let hasSponsoredLink = false;
+  let hasAdIframe = false;
+  for (const child of adChildren) {
+    if (child.tagName === 'IFRAME') {
+      hasIframe = true;
+      const src = child.getAttribute('src') || '';
+      if (!hasAdIframe && (!src || src === 'about:blank' || _adKeywordPattern.test(src))) {
+        hasAdIframe = true;
+      }
+    } else {
+      hasSponsoredLink = true;
     }
   }
+  if (hasIframe) signals.push('iframe');
+  if (hasSponsoredLink) signals.push('sponsored-link');
+  if (hasAdIframe) signals.push('ad-iframe');
 
   // Fixed/sticky positioning + high z-index (popup/overlay pattern)
   const style = getComputedStyle(el);
@@ -181,17 +212,19 @@ function detectAdSignals(el) {
 // Modern web pages stack visually-redundant wrapper divs. Bubbling past them to
 // the outermost same-sized parent picks a better anchor and spares users the
 // scroll-wheel walk. Manual scroll still walks further from this baseline.
-// Actual bubble/viewport logic lives in VellumUI — shared with the resizer.
-const dominatesViewport = window.VellumUI.dominatesViewport;
+// Actual bubble/viewport logic lives in AdnotaUI — shared with the resizer.
+const dominatesViewport = window.AdnotaUI.dominatesViewport;
 // Scroll-up nudge won't suggest a parent that's this many times larger than
 // the element the user is actually hovering — at that point we've walked past
 // the ad and into real content regardless of what the ad-density heuristic says.
-const BETTER_TARGET_MAX_AREA_RATIO = 2.0;
+// 1.4× area ≈ 1.18× linear, i.e. roughly "an 18% wider/taller wrapper" — small
+// enough that it's plausibly the ad slot wrapper, not the surrounding column.
+const BETTER_TARGET_MAX_AREA_RATIO = 1.4;
 // Per-hop growth cap — a single step-up that grows this much usually means
 // we've crossed a layout boundary (ad slot → sidebar column, card → grid row).
 // The visual-root auto-bubble already nails the starting element most of the
 // time, so big jumps between recommended levels are almost always wrong.
-const BETTER_TARGET_MAX_HOP_RATIO = 1.5;
+const BETTER_TARGET_MAX_HOP_RATIO = 1.25;
 
 // Ad signals used for both HUD display and click-scope decisions. Page-level
 // containers are exempt — their subtrees always happen to contain an iframe
@@ -265,7 +298,7 @@ function getAnchorStrength(el) {
 
   // Stable class combination
   const stableClasses = Array.from(el.classList)
-    .filter(c => !c.startsWith('vellum-') && /^[a-zA-Z][\w-]*$/.test(c) && !window.FuzzyAnchor._autoClassPattern.test(c));
+    .filter(c => !c.startsWith('adnota-') && /^[a-zA-Z][\w-]*$/.test(c) && !window.FuzzyAnchor._autoClassPattern.test(c));
   if (stableClasses.length > 0) {
     const sel = el.tagName.toLowerCase() + '.' + stableClasses.map(c => CSS.escape(c)).join('.');
     try {
@@ -332,7 +365,7 @@ function findBetterTarget(el) {
 
   while (cur && cur !== document.body && cur !== document.documentElement && stepsUp < 6) {
     stepsUp++;
-    if (isVellumElement(cur)) { cur = cur.parentElement; continue; }
+    if (isAdnotaElement(cur)) { cur = cur.parentElement; continue; }
 
     const curRect = cur.getBoundingClientRect();
     const curArea = curRect.width * curRect.height;
@@ -410,22 +443,30 @@ function updateHUD(target) {
 
   let html = '';
 
-  // Confidence score
-  html += `<span style="color:${confColor};font-weight:600">${anchor.score}/100</span>`;
-  html += `<span style="color:${confColor};margin-left:4px">${confLabel}</span>`;
+  // Confidence score — UI commented out for now; the raw 0–100 number isn't
+  // meaningful to most users. Replaced with a Shift+Scroll usage hint that
+  // mirrors the resizer HUD's pattern. Score is still computed above because
+  // findBetterTarget() and getEffectiveAdSignals() consume `anchor`. Revisit
+  // with a friendlier confidence surface (icon? word?) when ready.
+  // html += `<span style="color:${confColor};font-weight:600">${anchor.score}/100</span>`;
+  // html += `<span style="color:${confColor};margin-left:4px">${confLabel}</span>`;
 
-  // Ad signal badges (only when present)
+  // Pills first — descriptive status about the hovered element.
   if (adSignals.length > 0) {
     for (const s of adSignals) {
       html += `<span style="background:rgba(239,68,68,0.18);color:#fca5a5;padding:1px 6px;border-radius:4px;margin-left:6px;font-size:11px">${escapeHtml(s)}</span>`;
     }
   }
 
-  // Scroll nudge — contextual hint when a higher parent has a stronger anchor.
-  if (betterTarget) {
-    html += dot;
-    html += `<span style="color:#6ee7b7">\u25b2 Scroll up ${betterTarget.stepsUp}\u00d7 for better target</span>`;
-  }
+  // Scroll info trails the pills — imperative ("here's what to do").
+  // Better-target nudge wins when present (more actionable, more attention-
+  // grabbing); otherwise the static usage hint anchors the strip so it
+  // never reads empty during a hover.
+  const scrollInfo = betterTarget
+    ? `<span style="color:#6ee7b7">▲ ⇧+Scroll up ${betterTarget.stepsUp}× for better target</span>`
+    : `<span style="color:#94a3b8"><span style="background:rgba(239,68,68,0.18);color:#fca5a5;padding:1px 4px;border-radius:3px;font-size:11px;font-weight:600;margin-right:4px">⇧+Scroll ↑↓</span>to walk the DOM</span>`;
+  if (html) html += dot;
+  html += scrollInfo;
 
   eraserHudInfo.innerHTML = html;
 }
@@ -435,9 +476,9 @@ function updateHUD(target) {
 // the trash/undo buttons stay reachable even when no element is hovered.
 function setHudVisible(visible) {
   if (visible) {
-    window.VellumDock.mount('eraser', () => eraserBody);
+    window.AdnotaDock.mount('eraser', () => eraserBody);
   } else {
-    window.VellumDock.unmount('eraser');
+    window.AdnotaDock.unmount('eraser');
   }
 }
 
@@ -446,20 +487,20 @@ let rawHoveredEl = null;     // actual element under cursor (before traversal)
 let traverseDepth = 0;       // 0 = raw element, >0 = walked up N parents
 
 // Shared set of erased elements — restorer.js also adds to this.
-// VellumVisibility iterates this set to toggle show/hide on each erased node.
-window.VellumErasedElements = new Set();
+// AdnotaVisibility iterates this set to toggle show/hide on each erased node.
+window.AdnotaErasedElements = new Set();
 
 // ─── CSS rule injection for persistent erasure ──────────────────────────────
 // Erased elements get a CSS rule so that if the element is destroyed and re-created
 // (e.g. ad rotation timers), the browser automatically hides the new instance.
-window.VellumEraseRules = new Map(); // id → cssSelector
+window.AdnotaEraseRules = new Map(); // id → cssSelector
 
 function getOrCreateEraseStyleTag() {
-  let tag = document.getElementById('vellum-erase-overrides');
+  let tag = document.getElementById('adnota-erase-overrides');
   if (!tag) {
     tag = document.createElement('style');
-    tag.id = 'vellum-erase-overrides';
-    tag.setAttribute('data-vellum-ui', '1');
+    tag.id = 'adnota-erase-overrides';
+    tag.setAttribute('data-adnota-ui', '1');
     document.head.appendChild(tag);
   }
   return tag;
@@ -468,7 +509,7 @@ function getOrCreateEraseStyleTag() {
 function rebuildEraseStyleTag() {
   const tag = getOrCreateEraseStyleTag();
   const rules = [];
-  for (const [, selector] of window.VellumEraseRules) {
+  for (const [, selector] of window.AdnotaEraseRules) {
     rules.push(`${selector} { display: none !important; }`);
   }
   tag.textContent = rules.join('\n');
@@ -485,8 +526,8 @@ let iframeShieldStyleTag = null;
 function setIframeShield(active) {
   if (active && !iframeShieldStyleTag) {
     iframeShieldStyleTag = document.createElement('style');
-    iframeShieldStyleTag.id = 'vellum-iframe-shield';
-    iframeShieldStyleTag.setAttribute('data-vellum-ui', '1');
+    iframeShieldStyleTag.id = 'adnota-iframe-shield';
+    iframeShieldStyleTag.setAttribute('data-adnota-ui', '1');
     iframeShieldStyleTag.textContent = 'iframe { pointer-events: none !important; }';
     document.head.appendChild(iframeShieldStyleTag);
   } else if (!active && iframeShieldStyleTag) {
@@ -495,23 +536,23 @@ function setIframeShield(active) {
   }
 }
 
-// ─── Guard: Vellum-owned elements are invisible to the eraser ─────────────────
-const isVellumElement = window.VellumUI.isVellumElement;
+// ─── Guard: Adnota-owned elements are invisible to the eraser ─────────────────
+const isAdnotaElement = window.AdnotaUI.isAdnotaElement;
 
-// ─── DOM traversal: walk up N parents, skip Vellum elements ─────────────────
+// ─── DOM traversal: walk up N parents, skip Adnota elements ─────────────────
 // At depth=0, bubble past visually-identical parent wrappers so clicking the
 // inner element hits the outer container users almost always actually want.
 // Scroll-wheel traversal walks further up from that bubbled baseline.
 function getEraserTarget(raw, depth) {
-  if (!raw || isVellumElement(raw)) return null;
-  let current = window.VellumUI.bubbleToVisualRoot(raw);
-  if (isVellumElement(current)) return null;
+  if (!raw || isAdnotaElement(raw)) return null;
+  let current = window.AdnotaUI.bubbleToVisualRoot(raw);
+  if (isAdnotaElement(current)) return null;
   let walked = 0;
   while (walked < depth && current.parentElement &&
     current.parentElement !== document.body &&
     current.parentElement !== document.documentElement) {
     current = current.parentElement;
-    if (isVellumElement(current)) return null;
+    if (isAdnotaElement(current)) return null;
     walked++;
   }
   return current;
@@ -546,7 +587,7 @@ function updateEraserOverlay() {
  */
 function spawnFlash(rect) {
   const flash = document.createElement('div');
-  flash.setAttribute('data-vellum-ui', '1');
+  flash.setAttribute('data-adnota-ui', '1');
   Object.assign(flash.style, {
     position: 'fixed',
     left: rect.left + 'px',
@@ -588,13 +629,18 @@ function dissolveTarget(target) {
 // ─── Message routing ──────────────────────────────────────────────────────────
 chrome.runtime.onMessage.addListener((request) => {
   if (request.action === 'toggle-eraser') {
-    window.VellumState.set({ mode: window.VellumState.mode === 'eraser' ? null : 'eraser' });
+    window.AdnotaState.set({ mode: window.AdnotaState.mode === 'eraser' ? null : 'eraser' });
   }
 });
 
 // ─── React to mode changes ────────────────────────────────────────────────────
-window.VellumState.subscribe(state => {
+let _eraserActive = false;
+window.AdnotaState.subscribe(state => {
   const isEraser = state.mode === 'eraser';
+  if (isEraser !== _eraserActive) {
+    _eraserActive = isEraser;
+    window.AdnotaLog?.event('eraser', isEraser ? 'mode-enter' : 'mode-exit');
+  }
   setIframeShield(isEraser);
   if (isEraser) {
     // Show HUD as soon as the tool is active — trash/undo are always reachable.
@@ -614,17 +660,17 @@ window.VellumState.subscribe(state => {
 // Ads commonly open new tabs from mousedown/pointerdown (before `click` fires),
 // which both bypasses our click-capture handler and steals keyboard focus so
 // Escape stops working. Intercept the earliest pointer events on window-capture
-// and kill them for non-Vellum targets. Right-click is left alone so users can
-// still Inspect. Vellum UI (HUD, drag handle, buttons) passes through normally.
+// and kill them for non-Adnota targets. Right-click is left alone so users can
+// still Inspect. Adnota UI (HUD, drag handle, buttons) passes through normally.
 function blockPageInteraction(e) {
-  if (window.VellumState.mode !== 'eraser') return;
-  if (isVellumElement(e.target)) return;
+  if (window.AdnotaState.mode !== 'eraser') return;
+  if (isAdnotaElement(e.target)) return;
   if (e.button === 2) return;
   e.preventDefault();
   e.stopPropagation();
   // preventDefault blocks the implicit focus transfer, so nothing would bring
   // focus back into our document — pull it home via the shared anchor.
-  window.VellumState.anchorFocus?.();
+  window.AdnotaState.anchorFocus?.();
 }
 window.addEventListener('mousedown', blockPageInteraction, true);
 window.addEventListener('pointerdown', blockPageInteraction, true);
@@ -632,7 +678,7 @@ window.addEventListener('auxclick', blockPageInteraction, true);
 
 // ─── Hover: track raw element and update overlay ─────────────────────────────
 document.addEventListener('mousemove', (e) => {
-  if (window.VellumState.mode !== 'eraser') return;
+  if (window.AdnotaState.mode !== 'eraser') return;
   const raw = document.elementFromPoint(e.clientX, e.clientY);
 
   if (!raw) {
@@ -643,9 +689,9 @@ document.addEventListener('mousemove', (e) => {
     return;
   }
 
-  // When cursor is over Vellum UI (dock, HUD, etc.), hide the hover
+  // When cursor is over Adnota UI (dock, HUD, etc.), hide the hover
   // overlay so our own controls aren't visually framed as erase targets.
-  if (isVellumElement(raw)) {
+  if (isAdnotaElement(raw)) {
     hoveredElement = null;
     rawHoveredEl = null;
     traverseDepth = 0;
@@ -664,13 +710,20 @@ document.addEventListener('mousemove', (e) => {
 }, { passive: true });
 
 // ─── Scroll wheel: walk up/down the DOM tree while hovering ─────────────────
+// Gated on Shift so plain scroll passes through to the page — otherwise the
+// user can't scroll-explore for ads two screens away without exiting the tool.
 document.addEventListener('wheel', (e) => {
-  if (window.VellumState.mode !== 'eraser') return;
+  if (window.AdnotaState.mode !== 'eraser') return;
   if (!rawHoveredEl) return;
+  if (!e.shiftKey) return;
 
   e.preventDefault();
 
-  if (e.deltaY < 0) {
+  // Browsers convert vertical wheel input into horizontal scroll while Shift
+  // is held — deltaY drops to 0 and the value moves to deltaX. Read whichever
+  // axis carries signal so the user's "up = parent" expectation holds.
+  const delta = e.deltaY || e.deltaX;
+  if (delta < 0) {
     // Scroll up → walk to parent
     traverseDepth++;
   } else {
@@ -683,8 +736,8 @@ document.addEventListener('wheel', (e) => {
 
 // ─── Click: erase with animation ─────────────────────────────────────────────
 document.addEventListener('click', async (e) => {
-  if (window.VellumState.mode !== 'eraser') return;
-  if (isVellumElement(e.target)) return;
+  if (window.AdnotaState.mode !== 'eraser') return;
+  if (isAdnotaElement(e.target)) return;
 
   // Always suppress the page's click — no erase target is better than letting
   // an ad navigate. A click without a hovered target (e.g. raced the mousemove)
@@ -710,8 +763,32 @@ document.addEventListener('click', async (e) => {
   const domain = location.hostname;
   const id = Date.now() + Math.random().toString();
 
-  // Inject CSS rule so the element stays hidden even if re-created (ad rotation, etc.)
-  window.VellumEraseRules.set(id, cssSelector);
+  // Inject CSS rule so the element stays hidden even if re-created. For ad-shaped
+  // custom elements (Reddit's <shreddit-comments-page-ad> with rotating post-ids)
+  // we widen the rule to also match the bare tag, so the next impression in the
+  // same slot is hidden too without a second click. No-op for generic tags.
+  const ruleSelector = window.AdnotaUI.maybeGeneralizeAdSelector(cssSelector, target.tagName);
+  const adSignals = getEffectiveAdSignals(target);
+  // Snapshot the element's inline style and a short outerHTML at click time —
+  // when an erased ad reappears, the diagnostic question is almost always
+  // "did the page have inline display:block !important that beats our rule?"
+  // and "did we save what we think we saved?". Both answers live here.
+  window.AdnotaLog?.event('eraser', 'click', {
+    el: window.AdnotaLog.el(target),
+    scope: useDomain ? 'domain' : 'page',
+    promotedSilent: !e.shiftKey && adSignals.length > 0,
+    shiftClick: !!e.shiftKey,
+    adSignals,
+    ruleSelector,
+    savedSelector: cssSelector,
+    anchorTag: anchor?.tagName || null,
+    anchorAttrs: anchor?.attributes ? Object.keys(anchor.attributes) : [],
+    inlineStyle: target.style.cssText || null,
+    parentInlineStyle: target.parentElement?.style.cssText || null,
+    outerHTML: (target.outerHTML || '').slice(0, 240),
+    id,
+  });
+  window.AdnotaEraseRules.set(id, ruleSelector);
   rebuildEraseStyleTag();
 
   highlightOverlay.style.display = 'none';
@@ -727,17 +804,57 @@ document.addEventListener('click', async (e) => {
   activeAnimation.finished.then(() => {
     if (!consumed) {
       target.style.setProperty('display', 'none', 'important');
-      window.VellumErasedElements.add(target);
+      window.AdnotaErasedElements.add(target);
+      window.AdnotaUI.attachEraseStyleGuard(target, {
+        id, ruleSelector, reason: 'click',
+      });
       try { activeAnimation.cancel(); } catch { }
       activeAnimation = null;
+      // One-shot "did our erase actually take?" probe. Two rAFs to give the
+      // browser a paint cycle for any ad-system MutationObserver to react and
+      // re-assert inline display:block !important. If the element is still
+      // visible, log it loudly — that's the Freestar-style override pattern.
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        try {
+          if (!target.isConnected) return;
+          const cs = getComputedStyle(target);
+          if (cs.display !== 'none') {
+            window.AdnotaLog?.event('eraser', 'erase-defeated', {
+              id,
+              ruleSelector,
+              computedDisplay: cs.display,
+              targetInlineStyle: target.style.cssText || null,
+              parentInlineStyle: target.parentElement?.style.cssText || null,
+              parentComputedDisplay: target.parentElement
+                ? getComputedStyle(target.parentElement).display : null,
+            });
+          }
+        } catch { }
+      }));
     }
   }).catch(() => {
     // Animation was cancelled by undo — do nothing.
   });
 
   // Save to storage immediately (don't block the animation on I/O).
-  if (window.VellumStorage) {
-    window.VellumStorage.saveItem(domain, pathScope, { action: 'ERASE', anchor, selector: cssSelector, _id: id }).catch(() => { });
+  if (window.AdnotaStorage) {
+    window.AdnotaStorage.saveItem(domain, pathScope, { action: 'ERASE', anchor, selector: cssSelector, _id: id }).catch(() => { });
+  }
+
+  // First-time domain-scope tutorial. Only fires on a plain click against a
+  // non-ad target — Shift+Click means the user already knows the keystroke,
+  // and ads are silently auto-promoted to domain scope so the lesson would
+  // be redundant. If a user only ever erases ads, they never see this toast.
+  if (!e.shiftKey && adSignals.length === 0) {
+    const TUTORIAL_KEY = 'adnotaEraserDomainTutorialShown';
+    chrome.storage.local.get(TUTORIAL_KEY).then((data) => {
+      if (data[TUTORIAL_KEY]) return;
+      chrome.storage.local.set({ [TUTORIAL_KEY]: true });
+      window.AdnotaUI?.showToast(
+        'Tip: hold Shift while clicking to erase across the entire domain.',
+        { id: 'adnota-eraser-domain-tutorial', timeout: 7000 }
+      );
+    }).catch(() => { /* context invalidated after extension reload */ });
   }
 
   // ── Shared undo closure — used by both toast button and Ctrl+Z ──
@@ -745,6 +862,7 @@ document.addEventListener('click', async (e) => {
     undo: async () => {
       if (consumed) return;
       consumed = true;
+      window.AdnotaLog?.event('eraser', 'undo', { id, sel: cssSelector });
 
       // Kill the dissolve if it's still mid-flight.
       if (activeAnimation) {
@@ -752,16 +870,18 @@ document.addEventListener('click', async (e) => {
         activeAnimation = null;
       }
 
-      // Restore element to exactly where it was.
+      // Restore element to exactly where it was. Detach the style guard
+      // FIRST so the cssText reset isn't immediately fought back to none.
+      window.AdnotaUI.detachEraseStyleGuard(target);
       target.style.cssText = savedCssText;
-      window.VellumErasedElements.delete(target);
+      window.AdnotaErasedElements.delete(target);
 
       // Remove the CSS rule that prevents re-creation.
-      window.VellumEraseRules.delete(id);
+      window.AdnotaEraseRules.delete(id);
       rebuildEraseStyleTag();
 
       // Delete the erasure record from storage.
-      if (window.VellumStorage) {
+      if (window.AdnotaStorage) {
         const data = await chrome.storage.local.get(domain);
         if (data[domain]) {
           data[domain].items = data[domain].items.filter(i => i._id !== id);
@@ -769,14 +889,14 @@ document.addEventListener('click', async (e) => {
         }
       }
 
-      window.VellumUndo.remove(undoEntry);
+      window.AdnotaUndo.remove(undoEntry);
     }
   };
-  window.VellumUndo.push(undoEntry);
+  window.AdnotaUndo.push(undoEntry);
 
   // ── Toast ──
-  window.VellumUI.showToast('Element erased', {
-    id: 'vellum-eraser-toast',
+  window.AdnotaUI.showToast('Element erased', {
+    id: 'adnota-eraser-toast',
     onUndo: () => undoEntry.undo(),
   });
 
