@@ -53,7 +53,7 @@ window.FuzzyAnchor = {
     // 2. Unique class combination (filter auto-generated classes)
     if (el.classList.length > 0) {
       const classes = Array.from(el.classList)
-        .filter(c => !c.startsWith('vellum-') && /^[a-zA-Z][\w-]*$/.test(c) && !this._autoClassPattern.test(c));
+        .filter(c => !c.startsWith('adnota-') && /^[a-zA-Z][\w-]*$/.test(c) && !this._autoClassPattern.test(c));
       if (classes.length > 0) {
         const selector = el.tagName.toLowerCase() + '.' + classes.map(c => CSS.escape(c)).join('.');
         try {
@@ -97,7 +97,15 @@ window.FuzzyAnchor = {
   //  FIND MATCH — candidate tournament
   // ═══════════════════════════════════════════════════════════════════════════
 
-  findMatch(anchor) {
+  // opts.containsText: optional string the matched element's textContent
+  // must contain (compared whitespace+punctuation-normalized so it tolerates
+  // bullets, line breaks, and rangeText's layout-aware extraction). When
+  // provided, candidates that score above threshold but don't contain the
+  // text are skipped and the next-best is tried. Used by the HIGHLIGHT
+  // restoration path on heavy SPAs (claude.ai) where a chrome <div> can
+  // share enough distinctive words to clear the 40-point threshold even
+  // though the actual content sits in a slightly lower-scoring sibling.
+  findMatch(anchor, opts) {
     if (!anchor) return { element: null, confidence: 0 };
 
     // ── Phase A: Collect candidates ─────────────────────────────────────────
@@ -126,46 +134,178 @@ window.FuzzyAnchor = {
       }
     }
 
-    // A3. Tag scan with quick text filter
+    // A2.5. Class-based fast-path.
+    //
+    // The A3 scan walks getElementsByTagName(tag) in document order, capped
+    // at 200. On Gemini, the chat chrome (sidebar, header, message rail) is
+    // full of divs before the response body — a saved anchor inside a table
+    // can sit at div index 288 of 699, never reached by the cap.
+    //
+    // Seed the candidate pool with anything matching `.{firstParentClass} >
+    // {tagName}`. parentClasses is captured at save time and is far more
+    // selective than the tag scan (e.g. `.table-block > div` returns one
+    // element instead of 699). Pure addition: only seeds, doesn't filter.
+    if (anchor.structure?.parentClasses?.length && anchor.tagName) {
+      const klass = anchor.structure.parentClasses[0];
+      if (/^[a-zA-Z][\w-]*$/.test(klass)) {
+        try {
+          const els = document.querySelectorAll(
+            '.' + CSS.escape(klass) + ' > ' + anchor.tagName
+          );
+          for (const el of els) candidateSet.add(el);
+          if (window.AdnotaLog && opts?.containsText) {
+            window.AdnotaLog.event('fuzzy', 'a2.5-seed', {
+              klass, tag: anchor.tagName, count: els.length
+            });
+          }
+        } catch { }
+      }
+    }
+
+    // A3. Tag scan with quick text filter.
+    //
+    // Capped at 200 elements as a perf bound: getElementsByTagName('div')
+    // on heavy SPAs (Claude.ai, ChatGPT, Notion) returns 5–15k elements,
+    // and computing el.textContent on each is the dominant main-thread
+    // cost in this loop. The cap was REMOVED briefly during a debugging
+    // pass — turned out unnecessary once the size-ratio guard, smallest-
+    // containing, prefix/suffix anchors, and Tier 2/3 marker stripping
+    // were all in. Restored here. If the cap turns out to bite a real
+    // restoration case, raise it before removing it again — but first
+    // check whether parentClasses A2.5 fast-path can handle it instead.
+    //
+    // Size guard inside the loop: an element whose text is >50× the saved
+    // anchor's text is structurally a wrapper (body, main, chat-shell) and
+    // skipping it avoids the expensive .includes() against near-document-
+    // sized strings.
+    //
+    // Quick filter uses textContent (not innerText) so we don't trigger a
+    // layout per element. The accurate layout-aware Jaccard happens later
+    // in _textScore on the trimmed candidate set.
+    //
+    // Prefix/suffix substring is a stronger signal than single-word
+    // overlap, so anchored matches enter the pool first; word-overlap is
+    // the loose fallback. Either way, scoring weighs them.
     if (anchor.tagName) {
       const elements = document.getElementsByTagName(anchor.tagName);
-      const limit = Math.min(elements.length, 200);
-      for (let i = 0; i < limit; i++) {
-        const el = elements[i];
-        // Quick check: skip hidden elements and Vellum UI
+      const fingerprint = anchor.textFingerprint;
+      const hasFingerprint = fingerprint && fingerprint.words.length > 0;
+      const prefix = fingerprint?.prefix?.toLowerCase() || '';
+      const suffix = fingerprint?.suffix?.toLowerCase() || '';
+      const maxLen = fingerprint?.length ? fingerprint.length * 50 : Infinity;
+      const SCAN_CAP = 200;
+      let scanned = 0;
+      for (const el of elements) {
+        if (scanned >= SCAN_CAP) break;
         if (el.offsetHeight === 0 && el.offsetWidth === 0) continue;
-        if (el.closest('[data-vellum-ui]')) continue;
-        // Add if any text word overlap, or if element has no text (images, etc.)
-        if (anchor.textFingerprint && anchor.textFingerprint.words.length > 0) {
-          if (this._quickTextOverlap(el, anchor.textFingerprint)) {
-            candidateSet.add(el);
-          }
-        } else {
-          // For elements with no text fingerprint (images, iframes), add all of same tag
+        if (el.closest('[data-adnota-ui]')) continue;
+        scanned++;
+        if (!hasFingerprint) {
+          // No fingerprint (images, iframes, legacy items) — accept all of same tag.
           candidateSet.add(el);
+          continue;
+        }
+        const text = (el.textContent || '').toLowerCase();
+        if (!text) continue;
+        if (text.length > maxLen) continue;
+        if ((prefix && text.includes(prefix)) || (suffix && text.includes(suffix))) {
+          candidateSet.add(el);
+          continue;
+        }
+        for (const word of fingerprint.words) {
+          if (text.includes(word)) {
+            candidateSet.add(el);
+            break;
+          }
         }
       }
     }
 
     // ── Phase B: Score every candidate ──────────────────────────────────────
-    let bestElement = null;
-    let bestScore = 0;
-
+    // Build a sorted list of all candidates so Phase C can walk down it
+    // and skip elements that fail the optional text-containment check.
+    // The previous implementation returned only the top scorer, which on
+    // heavy SPAs locked in a false-positive forever (apply-fail loop).
+    //
+    // Short-circuit when no containsText is requested: a confident CSS
+    // selector match (>85) is already the right answer for ERASE/MARKER/
+    // NOTE/sticky callers, and the sort + Phase C walk add no value for
+    // them. Only HIGHLIGHT restoration needs the smallest-containing logic.
+    const scored = [];
+    const noContainmentCheck = !opts?.containsText;
     for (const el of candidateSet) {
       const score = this._scoreCandidate(el, anchor);
-
-      // Short-circuit: high-confidence CSS selector match
-      if (score > 85) return { element: el, confidence: score };
-
-      if (score > bestScore) {
-        bestScore = score;
-        bestElement = el;
+      if (score > 0) scored.push({ el, score });
+      if (noContainmentCheck && score > 85) {
+        return { element: el, confidence: score };
       }
     }
+    scored.sort((a, b) => b.score - a.score);
 
-    // ── Phase C: Return best above threshold ────────────────────────────────
-    if (bestScore >= 40 && bestElement) {
-      return { element: bestElement, confidence: bestScore };
+    // Whitespace+punctuation normalizer for the containment check.
+    // STRIPS rather than collapses-to-space: live element.textContent
+    // concatenates cell/child text with no separator (a <td>A</td><td>B</td>
+    // gives "AB"), but rangeText saves with \t / \n between layout-children.
+    // If we collapse-to-space, the two sides disagree on word boundaries
+    // (saved "lore check extension" vs live "lore checkextension") and the
+    // includes check fails. Stripping erases those boundary disagreements.
+    // \p{P} is Unicode-aware so bullet glyphs (U+2022) and en-dashes are
+    // stripped along with regular punctuation. Tier 3 in highlighter.js
+    // uses the same strip-all approach for the same reason.
+    const norm = (s) => (s || '').replace(/[\s\p{P}]+/gu, '').toLowerCase();
+    const needle = opts?.containsText ? norm(opts.containsText) : null;
+    // Compare by prefix only — long highlights may span text-node
+    // boundaries that look slightly different between save and restore,
+    // but the first ~80 normalized chars should always be intact.
+    const needlePrefix = needle ? needle.slice(0, 80) : null;
+
+    // ── Phase C: Walk scored candidates above threshold ────────────────────
+    // When containsText is set we don't just pick the highest scorer — on
+    // heavy SPAs the giant message-container <div> outscores the actual
+    // anchor element on word-overlap simply by being huge. Instead, gather
+    // ALL candidates that contain the saved text and pick the SMALLEST by
+    // textContent length. The smallest element fully containing the saved
+    // text is structurally the closest to the original anchor (the
+    // commonAncestorContainer of the original Range), and applyStoredHighlight
+    // can then walk its textNodes cleanly without picking up unrelated
+    // surrounding content with mismatched punctuation/whitespace.
+    //
+    // Confirmed load-bearing on ChatGPT pages with multiple code blocks —
+    // sibling <code> elements share enough tokens (tag, div, size, etc.) to
+    // both clear the 40 threshold, and without containment filtering the
+    // wrong one wins on raw score and apply fails forever. The size-ratio
+    // guard in Phase A3 doesn't catch this because both candidates are
+    // similar size to the saved fingerprint.
+    // For non-containsText callers the 40 threshold gates noise — they have
+    // no second filter, so the score IS the trust signal. For containsText
+    // callers the text-prefix match is itself a strong-enough filter, so
+    // walk the full scored list. Dropping the threshold here is what fixes
+    // Gemini tables: the saved nth-child(18) drifts after Gemini reflows
+    // the response, so the cssSelector signal is 0 and the target's total
+    // score lands in the 10–30 range — below the old 40 cutoff but clearly
+    // the right element by containsText.
+    const containing = [];
+    for (const { el, score } of scored) {
+      if (!needlePrefix) {
+        if (score < 40) break;
+        return { element: el, confidence: score };
+      }
+      if (norm(el.textContent).includes(needlePrefix)) {
+        containing.push({ el, score, len: el.textContent.length });
+      }
+    }
+    if (window.AdnotaLog && needlePrefix) {
+      window.AdnotaLog.event('fuzzy', 'phase-c', {
+        scored: scored.length,
+        topScores: scored.slice(0, 5).map(s => s.score),
+        containing: containing.length,
+        needlePrefix: needlePrefix.slice(0, 50),
+      });
+    }
+    if (containing.length) {
+      containing.sort((a, b) => a.len - b.len);
+      const best = containing[0];
+      return { element: best.el, confidence: best.score };
     }
 
     return { element: null, confidence: 0 };

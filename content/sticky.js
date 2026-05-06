@@ -25,22 +25,36 @@ const _inlineTags = new Set([
  * Walk from a click target up to find the nearest meaningful block element
  * that FuzzyAnchor can reliably re-identify on reload.
  * Stops at <body>/<html> — we never anchor to those.
+ *
+ * Rejects scroll containers as candidates (see AdnotaUI.isScrollContainer).
+ * The bug this prevents: a click in bare whitespace inside Gemini's
+ * <infinite-scroller> would walk up looking for a block ≥20px tall and
+ * accept the infinite-scroller itself. Tier 1 then resolved against it on
+ * every reload, but `top = scrollerRect.top + dy` pins the note to a fixed
+ * viewport position — the scroller's rect doesn't move when its content
+ * scrolls, only `scrollTop` does. Returning null here lets Tier 2 take over,
+ * which stores the same scroller correctly (with `scrollTop` math) so the
+ * note tracks content scroll. Same logic protects against any other
+ * scroller-as-anchor case (Notion main, ChatGPT message log, etc.).
  */
 function findAnchorTarget(el) {
   let current = el;
   while (current && current !== document.body && current !== document.documentElement) {
-    // Skip Vellum's own UI
-    if (current.closest('[data-vellum-ui]')) {
+    // Skip Adnota's own UI
+    if (current.closest('[data-adnota-ui]')) {
       current = current.parentElement;
       continue;
     }
-    // Accept block-level elements with some visual substance
-    if (!_inlineTags.has(current.tagName) && current.offsetHeight >= 20) {
+    // Accept block-level elements with some visual substance, but never an
+    // element that is itself a scroll container — those go to Tier 2.
+    if (!_inlineTags.has(current.tagName) &&
+        current.offsetHeight >= 20 &&
+        !window.AdnotaUI?.isScrollContainer?.(current)) {
       return current;
     }
     current = current.parentElement;
   }
-  return null; // Couldn't find a good target — fall back to percent-only
+  return null; // Couldn't find a good target — fall back to Tier 2/3
 }
 
 // ---------------------------------------------------------------------------
@@ -48,22 +62,22 @@ function findAnchorTarget(el) {
 // ---------------------------------------------------------------------------
 
 const STICKY_THEMES = {
-  'vellum-theme-yellow': { bg: '#FBE6A1', swatch: 'rgb(251, 230, 161)' },
-  'vellum-theme-green':  { bg: '#B8F5B8', swatch: 'rgb(184, 245, 184)' },
-  'vellum-theme-blue':   { bg: '#A3DDFB', swatch: 'rgb(163, 221, 251)' },
-  'vellum-theme-pink':   { bg: '#FFC0C8', swatch: 'rgb(255, 192, 200)' },
-  'vellum-theme-white':  { bg: '#F5F5F0', swatch: 'rgb(245, 245, 240)' },
+  'adnota-theme-yellow': { bg: '#FBE6A1', swatch: 'rgb(251, 230, 161)' },
+  'adnota-theme-green':  { bg: '#B8F5B8', swatch: 'rgb(184, 245, 184)' },
+  'adnota-theme-blue':   { bg: '#A3DDFB', swatch: 'rgb(163, 221, 251)' },
+  'adnota-theme-pink':   { bg: '#FFC0C8', swatch: 'rgb(255, 192, 200)' },
+  'adnota-theme-white':  { bg: '#F5F5F0', swatch: 'rgb(245, 245, 240)' },
 };
 
 // Track the active note color. Defaults to yellow, persisted to storage.
-let activeStickyColor = 'vellum-theme-yellow';
+let activeStickyColor = 'adnota-theme-yellow';
 
 // Restore persisted sticky color on load.
-chrome.storage.local.get(['vellumStickyColor'], (result) => {
-  if (result.vellumStickyColor && STICKY_THEMES[result.vellumStickyColor]) {
-    activeStickyColor = result.vellumStickyColor;
+chrome.storage.local.get(['adnotaStickyColor'], (result) => {
+  if (result.adnotaStickyColor && STICKY_THEMES[result.adnotaStickyColor]) {
+    activeStickyColor = result.adnotaStickyColor;
     updateStickySwatches();
-    if (window.VellumState.mode === 'sticky') applyStickyCursor();
+    if (window.AdnotaState.mode === 'sticky') applyStickyCursor();
   }
 });
 
@@ -85,16 +99,16 @@ function applyStickyCursor() {
   const svg = stickyNoteSVG(fill).replace(/\n/g, '').replace(/\s+/g, ' ');
   // Hotspot (1, 1) — top-left of the note aligns with the click point, since
   // that's the anchor for placement.
-  const cursor = window.VellumCursor.svgCursor(svg, 1, 1, 'crosshair');
-  window.VellumCursor.set(cursor);
+  const cursor = window.AdnotaCursor.svgCursor(svg, 1, 1, 'crosshair');
+  window.AdnotaCursor.set(cursor);
 }
-window.VellumSticky = { applyCursor: applyStickyCursor };
+window.AdnotaSticky = { applyCursor: applyStickyCursor };
 
 // ---------------------------------------------------------------------------
 // Sticky HUD Toolbar — frosted glass bar, matches marker/eraser aesthetic
 // ---------------------------------------------------------------------------
 
-// Dock body \u2014 mounts into VellumDock when sticky mode is active. The dock
+// Dock body \u2014 mounts into AdnotaDock when sticky mode is active. The dock
 // owns the drag handle + V logo + tool row; we own swatches + trash + undo.
 const stickyBody = document.createElement('div');
 stickyBody.style.display = 'inline-flex';
@@ -104,18 +118,18 @@ stickyBody.style.alignItems = 'center';
 const stickySwatches = {};
 for (const [themeClass, info] of Object.entries(STICKY_THEMES)) {
   const swatch = document.createElement('div');
-  swatch.className = 'vellum-sticky-swatch';
-  let tooltipName = themeClass.replace('vellum-theme-', '');
+  swatch.className = 'adnota-sticky-swatch';
+  let tooltipName = themeClass.replace('adnota-theme-', '');
   tooltipName = tooltipName.charAt(0).toUpperCase() + tooltipName.slice(1);
-  swatch.setAttribute('data-tooltip', tooltipName);
+  swatch.setAttribute('data-adnota-tooltip', tooltipName);
   swatch.innerHTML = stickyNoteSVG(info.swatch);
   swatch.dataset.theme = themeClass;
   swatch.onclick = (e) => {
     e.stopPropagation();
     activeStickyColor = themeClass;
-    chrome.storage.local.set({ vellumStickyColor: themeClass });
+    chrome.storage.local.set({ adnotaStickyColor: themeClass });
     updateStickySwatches();
-    if (window.VellumState.mode === 'sticky') applyStickyCursor();
+    if (window.AdnotaState.mode === 'sticky') applyStickyCursor();
   };
   stickySwatches[themeClass] = swatch;
   stickyBody.appendChild(swatch);
@@ -129,20 +143,20 @@ function updateStickySwatches() {
 updateStickySwatches();
 
 // Divider
-stickyBody.appendChild(Object.assign(document.createElement('div'), { className: 'vellum-toolbar-divider vellum-toolbar-divider-orange' }));
+stickyBody.appendChild(Object.assign(document.createElement('div'), { className: 'adnota-toolbar-divider adnota-toolbar-divider-orange' }));
 
 // Trash — clears all sticky notes on this page
-const stickyTrashBtn = window.VellumUI.createTrashButton({
+const stickyTrashBtn = window.AdnotaUI.createTrashButton({
   singular: 'sticky note',
   plural: 'sticky notes',
   actionTypes: ['NOTE'],
 });
-stickyTrashBtn.classList.add('vellum-undo-btn-orange');
+stickyTrashBtn.classList.add('adnota-undo-btn-orange');
 stickyBody.appendChild(stickyTrashBtn);
 
 // Undo
-const stickyUndoBtn = window.VellumUI.createUndoButton();
-stickyUndoBtn.classList.add('vellum-undo-btn-orange');
+const stickyUndoBtn = window.AdnotaUI.createUndoButton();
+stickyUndoBtn.classList.add('adnota-undo-btn-orange');
 stickyBody.appendChild(stickyUndoBtn);
 
 // ---------------------------------------------------------------------------
@@ -151,24 +165,106 @@ stickyBody.appendChild(stickyUndoBtn);
 
 chrome.runtime.onMessage.addListener((request) => {
   if (request.action === 'toggle-sticky') {
-    window.VellumState.set({ mode: window.VellumState.mode === 'sticky' ? null : 'sticky' });
+    window.AdnotaState.set({ mode: window.AdnotaState.mode === 'sticky' ? null : 'sticky' });
   }
 });
 
-// React to VellumState changes — mount/unmount dock body.
+// React to AdnotaState changes — mount/unmount dock body.
 let stickyDockMounted = false;
-window.VellumState.subscribe(state => {
-  document.body.classList.toggle('vellum-sticky-active', state.mode === 'sticky');
+let _stickyActive = false;
+window.AdnotaState.subscribe(state => {
+  document.body.classList.toggle('adnota-sticky-active', state.mode === 'sticky');
 
   const isSticky = state.mode === 'sticky';
+  if (isSticky !== _stickyActive) {
+    _stickyActive = isSticky;
+    window.AdnotaLog?.event('sticky', isSticky ? 'mode-enter' : 'mode-exit');
+  }
   if (isSticky && !stickyDockMounted) {
-    window.VellumDock.mount('sticky', () => stickyBody);
+    window.AdnotaDock.mount('sticky', () => stickyBody);
     stickyDockMounted = true;
   } else if (!isSticky && stickyDockMounted) {
-    window.VellumDock.unmount('sticky');
+    window.AdnotaDock.unmount('sticky');
     stickyDockMounted = false;
   }
 });
+
+// ---------------------------------------------------------------------------
+// Render-target overlay + per-note save payload
+// ---------------------------------------------------------------------------
+
+// Lazily-created fixed-position container that hosts every rendered sticky.
+// See #adnota-sticky-overlay in sticky.css for the architectural rationale —
+// short version: appending notes directly to <body> with `position: absolute`
+// and document-pixel `top` values inflated documentElement.scrollHeight on
+// app shells (chatgpt.com, claude.ai), creating swathes of empty whitespace.
+// Mirrors getMarkerOverlay() in marker.js.
+function getStickyOverlay() {
+  let overlay = document.getElementById('adnota-sticky-overlay');
+  if (!overlay) {
+    overlay = document.createElement('div');
+    overlay.id = 'adnota-sticky-overlay';
+    overlay.setAttribute('data-adnota-ui', '1');
+    document.documentElement.appendChild(overlay);
+  }
+  return overlay;
+}
+
+// Single source of truth for the saveNote payload. Six different code paths
+// (initial create, drag commit, resize commit, textarea autosave, tag commit,
+// SPA-teardown flush, delete-undo restore) used to inline this object literal
+// — every new field had to be added in seven places and we already shipped at
+// least one bug from missing one (AdnotaUI._restoreItems forgetting `tag`).
+// `dimensions` is the only field that varies per call site (resize commit
+// passes freshly-measured values; everything else inherits whatever's already
+// in storage via the shallow merge in saveNote).
+function buildSavePayload(noteState, dimensions) {
+  const out = {
+    placement:    noteState.placement,
+    comments:     noteState.comments,
+    theme:        noteState.theme,
+    anchor:       noteState.anchor,
+    anchorOffset: noteState.anchorOffset,
+    fallback:     noteState.fallback,
+    tag:          noteState.tag,
+  };
+  if (dimensions) out.dimensions = dimensions;
+  return out;
+}
+
+// At save time, capture a Tier 2 fallback: the nearest scrolling ancestor of
+// the click point + the click point's offset within that ancestor's
+// scrollable content. On reload, if FuzzyAnchor can't re-resolve the original
+// block (Tier 1 miss), the restorer's updatePosition() can still place the
+// note at the right spot in the conversation by re-finding this scroll
+// container and applying the offset. Without this, Tier 1 misses fell all
+// the way to a percentage of `documentElement.scrollHeight` — which on
+// app shells (chatgpt.com, claude.ai) where the doc itself doesn't scroll is
+// a meaningless number, landing notes in dead whitespace at the page bottom.
+// Mirrors marker.js's `fallbackBox.containerAnchor` (Tier 2 of its 3-tier
+// cascade). Returns null when no inner scroller exists — the page itself is
+// the scroll context and the percentage tier handles that case correctly.
+//
+// `walkSeedEl` is whatever DOM element the caller has at the click point.
+// Prefer the Tier 1 anchor target when available (block-level, stable), but
+// any non-null page element works — findScrollContainer just needs *something*
+// to walk up from. Falling back to a less-stable seed is still strictly better
+// than no Tier 2 at all on app shells.
+function buildContainerFallback(clientX, clientY, walkSeedEl) {
+  if (!walkSeedEl || !window.AdnotaUI?.findScrollContainer || !window.FuzzyAnchor) return null;
+  // includeSelf because the walk seed may itself be the scroll container —
+  // happens whenever findAnchorTarget rejected the seed for being a scroller
+  // and returned null, leaving us to fall back to the raw click target. We
+  // still want that scroller as our Tier 2 anchor.
+  const sc = window.AdnotaUI.findScrollContainer(walkSeedEl, { includeSelf: true });
+  if (!sc) return null;
+  const scRect = sc.getBoundingClientRect();
+  return {
+    containerAnchor: window.FuzzyAnchor.generate(sc),
+    containerOffsetX: Math.round(clientX - scRect.left + sc.scrollLeft),
+    containerOffsetY: Math.round(clientY - scRect.top  + sc.scrollTop),
+  };
+}
 
 // ---------------------------------------------------------------------------
 // Click to drop a note — hybrid anchor + percentage fallback
@@ -178,7 +274,7 @@ window.VellumState.subscribe(state => {
 // highlight popup's "add sticky" shortcut. Builds anchor + placement, renders,
 // saves, and pushes an undo entry. Returns the new note's uuid.
 async function createStickyAt(clientX, clientY, { targetEl = null, theme = null } = {}) {
-  window.VellumVisibility.show();
+  window.AdnotaVisibility.show();
 
   const placement = clientToPlacement(clientX, clientY);
 
@@ -191,58 +287,71 @@ async function createStickyAt(clientX, clientY, { targetEl = null, theme = null 
   if (anchorTarget && window.FuzzyAnchor) {
     anchor = window.FuzzyAnchor.generate(anchorTarget);
     const rect = anchorTarget.getBoundingClientRect();
-    const scrollTop  = window.pageYOffset || document.documentElement.scrollTop;
-    const scrollLeft = window.pageXOffset || document.documentElement.scrollLeft;
-    const noteAbsX = clientX + scrollLeft;
-    const noteAbsY = clientY + scrollTop;
-    const elAbsX   = rect.left + scrollLeft;
-    const elAbsY   = rect.top  + scrollTop;
     anchorOffset = {
-      dx: Math.round(noteAbsX - elAbsX),
-      dy: Math.round(noteAbsY - elAbsY),
+      dx: Math.round(clientX - rect.left),
+      dy: Math.round(clientY - rect.top),
     };
   }
+
+  const fallback = buildContainerFallback(clientX, clientY, anchorTarget || target);
 
   const uuid     = Date.now() + Math.random().toString();
   const comments = [{ text: '', author: 'Me', createdAt: Date.now() }];
   const resolvedTheme = theme || activeStickyColor;
 
-  window.StickyEngine.renderNote(placement, comments, uuid, true, null, resolvedTheme, anchor, anchorOffset, '');
+  window.AdnotaLog?.event('sticky', 'create', {
+    id: uuid,
+    color: resolvedTheme,
+    anchor: anchor ? { sel: anchor.cssSelector, tag: anchor.tagName } : null,
+    anchorOffset,
+    fallback: fallback ? { containerSel: fallback.containerAnchor?.cssSelector } : null,
+    placement,
+  });
 
-  if (window.VellumStorage) {
-    await window.VellumStorage.saveNote(
+  window.StickyEngine.renderNote(placement, comments, uuid, true, null, resolvedTheme, anchor, anchorOffset, '', fallback);
+
+  if (window.AdnotaStorage) {
+    await window.AdnotaStorage.saveNote(
       location.hostname, location.pathname, uuid,
-      { placement, comments, theme: resolvedTheme, anchor, anchorOffset, tag: '' }
+      { placement, comments, theme: resolvedTheme, anchor, anchorOffset, fallback, tag: '' }
     );
   }
 
   const domain = location.hostname;
   const undoEntry = {
     undo: async () => {
-      const container = document.querySelector(`.vellum-sticky-container[data-uuid="${uuid}"]`);
+      window.AdnotaLog?.event('sticky', 'undo', { id: uuid });
+      const container = document.querySelector(`.adnota-sticky-container[data-uuid="${uuid}"]`);
       if (container) container.remove();
       activeNotes.delete(uuid);
-      if (window.VellumStorage) {
-        await window.VellumStorage.deleteItem(domain, 'uuid', uuid);
+      if (window.AdnotaStorage) {
+        await window.AdnotaStorage.deleteItem(domain, 'uuid', uuid);
       }
-      window.VellumUndo.remove(undoEntry);
+      window.AdnotaUndo.remove(undoEntry);
     }
   };
-  window.VellumUndo.push(undoEntry);
+  window.AdnotaUndo.push(undoEntry);
 
   return uuid;
 }
 
 document.addEventListener('click', async (e) => {
-  if (window.VellumState.mode !== 'sticky') return;
+  if (window.AdnotaState.mode !== 'sticky') return;
 
-  // Don't fire through any Vellum UI (dock, existing notes, toasts, etc.)
-  if (window.VellumUI.isVellumElement(e.target)) return;
+  // Don't fire through any Adnota UI (dock, existing notes, toasts, etc.)
+  if (window.AdnotaUI.isAdnotaElement(e.target)) return;
 
   e.preventDefault();
   e.stopPropagation();
 
   await createStickyAt(e.clientX, e.clientY, { targetEl: e.target });
+  // Exit sticky mode after placement. Sticky is punctuated (place → type →
+  // done), unlike pen/eraser/highlight which are continuous. The placed
+  // note's textarea takes focus, so staying in mode would mean any click
+  // outside it (scroll, copy text, click a link) drops a phantom sticky.
+  // Re-entry via bare-key `s` or the dock button is one tap away if the
+  // user wants to drop another.
+  window.AdnotaState.set({ mode: null });
 }, true);
 
 // ---------------------------------------------------------------------------
@@ -281,25 +390,69 @@ function clientToPlacement(clientX, clientY) {
   };
 }
 
-/**
- * Convert a stored percentage placement back into absolute pixel coordinates,
- * resolved against the current page dimensions at call time.
- */
-function placementToPixels(placement) {
-  const totalWidth  = Math.max(document.documentElement.scrollWidth,  1);
-  const totalHeight = Math.max(document.documentElement.scrollHeight, 1);
-  return {
-    left: placement.xPct       * totalWidth,
-    top:  placement.yScrollPct * totalHeight,
-  };
-}
-
 // ---------------------------------------------------------------------------
 // StickyEngine — render, position, drag, save
 // ---------------------------------------------------------------------------
 
 window.StickyEngine = {
   createAt: createStickyAt,
+
+  // Smooth-scrolls the rendered sticky note for the given UUID into view,
+  // then paints a brief purple pulse over its container so the user sees
+  // where they landed. Returns true on success, false if the note isn't
+  // currently rendered (waiting on a restoration pass, or torn down by an
+  // SPA URL change). The scratch pad's GOTO button uses the return value to
+  // surface a "couldn't locate" toast.
+  scrollTo(uuid) {
+    if (!uuid) return false;
+    const container = document.querySelector(
+      `.adnota-sticky-container[data-uuid="${uuid}"]`
+    );
+    if (!container) return false;
+    try { container.scrollIntoView({ block: 'center', behavior: 'smooth' }); }
+    catch (_) { container.scrollIntoView(); }
+    return true;
+  },
+
+  // Flush pending edits and drop every rendered note from the DOM. Called on
+  // SPA URL change so notes from the previous path don't bleed into the next.
+  // The flush reads each note's current textarea + tag value and saves
+  // against the path the note belongs to (captured at render time) — without
+  // it, the autosave debounce (1.5s) firing after navigation would write to
+  // location.pathname of the *new* URL and corrupt the wrong path's items.
+  // Storage is left untouched beyond the flush; restoration repaints whatever
+  // belongs to the new URL.
+  tearDownAll: async function () {
+    if (!window.AdnotaStorage || activeNotes.size === 0) {
+      activeNotes.forEach(s => s.container.remove());
+      activeNotes.clear();
+      return;
+    }
+    // Flush sequentially: every saveNote here targets the same domain key, so
+    // running them in parallel races on the read-modify-write inside saveNote
+    // and the last write wins, clobbering earlier flushes.
+    for (const [uuid, state] of activeNotes) {
+      const textarea = state.container.querySelector('textarea');
+      const tagInput = state.container.querySelector('.adnota-sticky-tag-input');
+      if (textarea && state.comments && state.comments[0]) {
+        state.comments[0].text = textarea.value;
+      }
+      if (tagInput && window.AdnotaTags) {
+        state.tag = window.AdnotaTags.normalize(tagInput.value);
+      }
+      const card = state.container.querySelector('.adnota-sticky-card');
+      const dimensions = card
+        ? { width: Math.round(card.offsetWidth), height: Math.round(card.offsetHeight) }
+        : null;
+      await window.AdnotaStorage.saveNote(
+        state.originalHostname, state.originalPath, uuid,
+        buildSavePayload(state, dimensions)
+      );
+    }
+
+    activeNotes.forEach(s => s.container.remove());
+    activeNotes.clear();
+  },
 
   /**
    * Render a sticky note from a placement object.
@@ -310,19 +463,35 @@ window.StickyEngine = {
    * @param {string}  uuid
    * @param {boolean} isNew         Focus textarea when true.
    * @param {object}  dimensions    { width, height } or null
-   * @param {string}  theme         CSS class name, e.g. 'vellum-theme-yellow'
+   * @param {string}  theme         CSS class name, e.g. 'adnota-theme-yellow'
    * @param {object}  anchor        FuzzyAnchor data or null
    * @param {object}  anchorOffset  { dx, dy } pixel offset from anchor element
+   * @param {string}  tag           Optional user-supplied tag (≤40 chars)
+   * @param {object}  fallback      Tier 2 container-anchor fallback or null
+   *                                { containerAnchor, containerOffsetX, containerOffsetY }
    */
-  renderNote(placement, comments, uuid, isNew = false, dimensions = null, theme = 'vellum-theme-yellow', anchor = null, anchorOffset = null, tag = '') {
-    // Guard duplicate renders.
-    if (document.querySelector(`.vellum-sticky-container[data-uuid="${uuid}"]`)) return;
+  renderNote(placement, comments, uuid, isNew = false, dimensions = null, theme = 'adnota-theme-yellow', anchor = null, anchorOffset = null, tag = '', fallback = null) {
+    // Guard duplicate renders. Restorer retry passes route through
+    // updatePosition() directly, so a hit here means an unexpected duplicate
+    // render attempt — return false so the caller doesn't treat it as a
+    // successful anchor resolution.
+    if (document.querySelector(`.adnota-sticky-container[data-uuid="${uuid}"]`)) return false;
 
     const container = document.createElement('div');
-    container.className = 'vellum-sticky-container ' + (theme || 'vellum-theme-yellow');
-    container.setAttribute('data-vellum-ui', '1');
+    container.className = 'adnota-sticky-container ' + (theme || 'adnota-theme-yellow');
+    container.setAttribute('data-adnota-ui', '1');
     container.dataset.uuid = uuid;
     container.style.position = 'absolute';
+
+    // Hide until anchor resolves so we don't flash at percentage fallback
+    // before snapping to the right spot. Only restoration calls with anchor
+    // data get this treatment — fresh placements (isNew) are positioned by
+    // the user's just-now click, so they reveal immediately. Legacy notes
+    // without anchor data also reveal immediately since the percentage
+    // fallback is their final position. Reveal happens in updatePosition()
+    // on first anchor success or via the backstop timer below.
+    const pendingAnchor = !isNew && !!(anchor && anchorOffset);
+    if (pendingAnchor) container.style.opacity = '0';
 
     const initialText = comments && comments.length > 0 ? comments[0].text : '';
     const createdAt   = comments && comments[0]?.createdAt ? new Date(comments[0].createdAt) : new Date();
@@ -330,51 +499,76 @@ window.StickyEngine = {
     const ts  = `${pad(createdAt.getMonth() + 1)}/${pad(createdAt.getDate())}/${String(createdAt.getFullYear()).slice(-2)} ${pad(createdAt.getHours())}:${pad(createdAt.getMinutes())}`;
 
     container.innerHTML = `
-      <div class="vellum-sticky-card">
-        <div class="vellum-sticky-header">
-          <span class="vellum-timestamp">${ts}</span>
-          <button class="vellum-trash-btn" data-tooltip="Delete note" aria-label="Delete note">
+      <div class="adnota-sticky-card">
+        <div class="adnota-sticky-header">
+          <span class="adnota-timestamp">${ts}</span>
+          <button class="adnota-trash-btn" data-adnota-tooltip="Delete note" aria-label="Delete note">
             <svg width="9" height="9" viewBox="0 0 9 9" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
               <line x1="1" y1="1" x2="8" y2="8"/><line x1="8" y1="1" x2="1" y2="8"/>
             </svg>
           </button>
         </div>
-        <textarea class="vellum-sticky-textarea" placeholder="Take a note...">${initialText}</textarea>
-        <div class="vellum-sticky-tag-row" data-vellum-ui="1">
-          <span class="vellum-sticky-tag-icon">#</span>
-          <input class="vellum-sticky-tag-input" type="text" placeholder="tag" maxlength="40" />
+        <textarea class="adnota-sticky-textarea" placeholder="Take a note...">${initialText}</textarea>
+        <div class="adnota-sticky-tag-row" data-adnota-ui="1">
+          <span class="adnota-sticky-tag-icon">#</span>
+          <input class="adnota-sticky-tag-input" type="text" placeholder="tag" maxlength="40" />
         </div>
       </div>
     `;
 
-    document.body.appendChild(container);
+    getStickyOverlay().appendChild(container);
 
     // Apply stored dimensions before first paint so the restored size matches
     // exactly what the user left the note at.
-    const card = container.querySelector('.vellum-sticky-card');
+    const card = container.querySelector('.adnota-sticky-card');
     if (dimensions && dimensions.width && dimensions.height) {
       card.style.width  = `${dimensions.width}px`;
       card.style.height = `${dimensions.height}px`;
     }
 
     // In-memory record holds a *mutable* copy of placement so drag updates
-    // propagate to updatePosition without re-rendering.
+    // propagate to updatePosition without re-rendering. originalPath/Hostname
+    // are pinned at render time so the SPA URL-change teardown can flush
+    // pending edits to the path the note actually belongs to, even if
+    // location has already changed by the time teardown runs.
     const noteState = {
       container,
       placement: { ...placement },
       anchor: anchor || null,
       anchorOffset: anchorOffset || null,
-      theme: theme || 'vellum-theme-yellow',
-      tag: window.VellumTags ? window.VellumTags.normalize(tag) : (tag || ''),
+      fallback: fallback || null,
+      theme: theme || 'adnota-theme-yellow',
+      tag: window.AdnotaTags ? window.AdnotaTags.normalize(tag) : (tag || ''),
+      comments,
+      originalHostname: location.hostname,
+      originalPath: location.pathname,
+      pendingAnchor,
+      revealTimer: null,
+      deleted: false,
     };
     activeNotes.set(uuid, noteState);
 
     // Preload tag into the input — using .value rather than template
     // interpolation so we don't have to escape HTML into an attribute.
-    const tagInput = container.querySelector('.vellum-sticky-tag-input');
+    const tagInput = container.querySelector('.adnota-sticky-tag-input');
     if (tagInput) tagInput.value = noteState.tag;
 
-    this.updatePosition(uuid);
+    const anchorResolved = this.updatePosition(uuid);
+
+    // If we hid the container waiting for anchor resolution and the first
+    // pass didn't resolve, set a backstop so a permanently-broken anchor
+    // still surfaces the note at percentage fallback. ~1.8s gives the
+    // restorer's mutation observer (1s debounce + 2.5s clamp) one full
+    // retry cycle on app shells before we give up and reveal.
+    if (pendingAnchor && !anchorResolved) {
+      noteState.revealTimer = setTimeout(() => {
+        noteState.revealTimer = null;
+        if (noteState.pendingAnchor) {
+          noteState.pendingAnchor = false;
+          container.style.opacity = '1';
+        }
+      }, 1800);
+    }
 
     // ── Persist resize dimensions ────────────────────────────────────────────
     // ResizeObserver fires whenever the user drags the card's resize handle.
@@ -386,11 +580,11 @@ window.StickyEngine = {
         const { inlineSize: width, blockSize: height } = entry.borderBoxSize[0];
         clearTimeout(resizeTimeout);
         resizeTimeout = setTimeout(async () => {
-          if (!window.VellumStorage) return;
+          if (noteState.deleted || !window.AdnotaStorage) return;
           const savedDimensions = { width: Math.round(width), height: Math.round(height) };
-          await window.VellumStorage.saveNote(
+          await window.AdnotaStorage.saveNote(
             location.hostname, location.pathname, uuid,
-            { placement: noteState.placement, comments, theme: noteState.theme, anchor: noteState.anchor, anchorOffset: noteState.anchorOffset, dimensions: savedDimensions, tag: noteState.tag }
+            buildSavePayload(noteState, savedDimensions)
           );
         }, DEBOUNCE_MS);
       }
@@ -412,20 +606,22 @@ window.StickyEngine = {
     });
 
     // ── Drag on header ───────────────────────────────────────────────────────
-    const header    = container.querySelector('.vellum-sticky-header');
+    const header    = container.querySelector('.adnota-sticky-header');
     let isDragging  = false;
     let dragOffsetX = 0;
     let dragOffsetY = 0;
 
     header.addEventListener('pointerdown', (e) => {
-      if (e.target.closest('.vellum-trash-btn')) return;
+      if (e.target.closest('.adnota-trash-btn')) return;
       isDragging = true;
       header.setPointerCapture(e.pointerId);
 
-      const scrollTop  = window.pageYOffset || document.documentElement.scrollTop;
-      const scrollLeft = window.pageXOffset || document.documentElement.scrollLeft;
-      dragOffsetX = e.clientX + scrollLeft - parseFloat(container.style.left || 0);
-      dragOffsetY = e.clientY + scrollTop  - parseFloat(container.style.top  || 0);
+      // Container coords are now viewport-relative (note lives inside the
+      // fixed #adnota-sticky-overlay), so the drag math drops the page-scroll
+      // term entirely — clientX/Y *is* the same coordinate system as
+      // container.style.left/top.
+      dragOffsetX = e.clientX - parseFloat(container.style.left || 0);
+      dragOffsetY = e.clientY - parseFloat(container.style.top  || 0);
 
       container.style.transition = 'none';
       e.preventDefault();
@@ -433,10 +629,8 @@ window.StickyEngine = {
 
     header.addEventListener('pointermove', (e) => {
       if (!isDragging) return;
-      const scrollTop  = window.pageYOffset || document.documentElement.scrollTop;
-      const scrollLeft = window.pageXOffset || document.documentElement.scrollLeft;
-      container.style.left = `${e.clientX + scrollLeft - dragOffsetX}px`;
-      container.style.top  = `${Math.max(0, e.clientY + scrollTop - dragOffsetY)}px`;
+      container.style.left = `${e.clientX - dragOffsetX}px`;
+      container.style.top  = `${Math.max(0, e.clientY - dragOffsetY)}px`;
     });
 
     header.addEventListener('pointerup', async (e) => {
@@ -445,47 +639,78 @@ window.StickyEngine = {
       header.releasePointerCapture(e.pointerId);
       container.style.transition = '';
 
-      // Convert new pixel position back to percentages for durable storage.
+      // newLeft/newTop are viewport-px (fixed-overlay coord system). Storage
+      // percentages are document-relative — convert via current scroll.
       const newLeft = parseFloat(container.style.left);
       const newTop  = parseFloat(container.style.top);
+      const scrollTop  = window.pageYOffset || document.documentElement.scrollTop;
+      const scrollLeft = window.pageXOffset || document.documentElement.scrollLeft;
 
       const totalWidth  = Math.max(document.documentElement.scrollWidth,  1);
       const totalHeight = Math.max(document.documentElement.scrollHeight, 1);
 
       const updatedPlacement = {
         position:   'percent',
-        xPct:       r4(newLeft / totalWidth),
-        yScrollPct: r4(newTop  / totalHeight),
+        xPct:       r4((newLeft + scrollLeft) / totalWidth),
+        yScrollPct: r4((newTop  + scrollTop)  / totalHeight),
       };
 
       noteState.placement = updatedPlacement;
 
-      // Re-anchor to whatever element is now underneath the note's position
-      const centerX = newLeft + 130; // half of card width
-      const centerY = newTop + 70;   // half of card height
-      const scrollTop  = window.pageYOffset || document.documentElement.scrollTop;
-      const scrollLeft = window.pageXOffset || document.documentElement.scrollLeft;
-      const elAtPoint = document.elementFromPoint(centerX - scrollLeft, centerY - scrollTop);
+      // Re-anchor to whatever element is now underneath the note's center.
+      // We must query the visual stack (elementsFromPoint, plural) and skip
+      // every Adnota UI layer at the drop point, because the sticky note we
+      // just dropped is sitting *exactly* on top of the page at this point.
+      // document.elementFromPoint (singular) would return the sticky's own
+      // card/textarea, findAnchorTarget would bubble up through
+      // [data-adnota-ui] all the way to <body> and return null, and the note
+      // would persist with anchor=null — making it scroll-broken (no anchor
+      // to track on app shells) and "remember" the broken position across
+      // reloads. The plural variant returns the full top-down stack so we
+      // can ignore our own chrome and the page content underneath.
+      // Card center uses measured offsetWidth/Height so a resized note
+      // probes its actual visual center (was hardcoded 130/70 = the default
+      // 260×140 card, off-by-the-resize-amount on any non-default size).
+      const centerXViewport = newLeft + card.offsetWidth  / 2;
+      const centerYViewport = newTop  + card.offsetHeight / 2;
+      const stack = document.elementsFromPoint(centerXViewport, centerYViewport);
+      const elAtPoint = stack.find(el => !el.closest('[data-adnota-ui]')) || null;
 
+      let newAnchorTarget = null;
       if (elAtPoint) {
-        const newAnchorTarget = findAnchorTarget(elAtPoint);
+        newAnchorTarget = findAnchorTarget(elAtPoint);
         if (newAnchorTarget && window.FuzzyAnchor) {
           noteState.anchor = window.FuzzyAnchor.generate(newAnchorTarget);
           const rect = newAnchorTarget.getBoundingClientRect();
           noteState.anchorOffset = {
-            dx: Math.round(newLeft - (rect.left + scrollLeft)),
-            dy: Math.round(newTop  - (rect.top  + scrollTop)),
+            dx: Math.round(newLeft - rect.left),
+            dy: Math.round(newTop  - rect.top),
           };
         } else {
           noteState.anchor = null;
           noteState.anchorOffset = null;
         }
+      } else {
+        noteState.anchor = null;
+        noteState.anchorOffset = null;
       }
 
-      if (window.VellumStorage) {
-        await window.VellumStorage.saveNote(
+      // Refresh Tier 2 fallback against the new drop position. Even when the
+      // Tier 1 anchor goes null (drop landed on bare overlay area) the
+      // container fallback still gives us scroll-tracking on app shells.
+      noteState.fallback = buildContainerFallback(newLeft, newTop, newAnchorTarget || elAtPoint);
+
+      window.AdnotaLog?.event('sticky', 'drag-commit', {
+        id: uuid,
+        placement: updatedPlacement,
+        anchor: noteState.anchor ? { sel: noteState.anchor.cssSelector, tag: noteState.anchor.tagName } : null,
+        anchorOffset: noteState.anchorOffset,
+        fallback: noteState.fallback ? { containerSel: noteState.fallback.containerAnchor?.cssSelector } : null,
+      });
+      if (window.AdnotaStorage) {
+        await window.AdnotaStorage.saveNote(
           location.hostname, location.pathname, uuid,
-          { placement: updatedPlacement, comments, theme: noteState.theme, anchor: noteState.anchor, anchorOffset: noteState.anchorOffset, tag: noteState.tag }
+          buildSavePayload(noteState)
         );
       }
     });
@@ -498,11 +723,14 @@ window.StickyEngine = {
     textarea.addEventListener('input', () => {
       clearTimeout(saveTimeout);
       saveTimeout = setTimeout(async () => {
-        if (!window.VellumStorage) return;
+        if (noteState.deleted || !window.AdnotaStorage) return;
         comments[0].text = textarea.value;
-        await window.VellumStorage.saveNote(
+        window.AdnotaLog?.event('sticky', 'autosave', {
+          id: uuid, text: textarea.value, tag: noteState.tag,
+        });
+        await window.AdnotaStorage.saveNote(
           location.hostname, location.pathname, uuid,
-          { placement: noteState.placement, comments, theme: noteState.theme, anchor: noteState.anchor, anchorOffset: noteState.anchorOffset, tag: noteState.tag }
+          buildSavePayload(noteState)
         );
       }, DEBOUNCE_MS);
     });
@@ -511,123 +739,249 @@ window.StickyEngine = {
     // Tags ride through the same saveNote merge path as every other field; we
     // keep a separate debounce timer so typing into the tag input doesn't
     // interfere with (and isn't interfered by) the textarea autosave.
-    if (tagInput && window.VellumTags) {
-      window.VellumTags.buildAutocompleteDropdown(tagInput);
+    // tagSaveTimeout is hoisted to renderNote scope so the trash handler
+    // below can clear it alongside saveTimeout / resizeTimeout.
+    let tagSaveTimeout;
+    if (tagInput && window.AdnotaTags) {
+      window.AdnotaTags.buildAutocompleteDropdown(tagInput);
 
       const commitTag = async () => {
-        if (!window.VellumStorage) return;
-        await window.VellumStorage.saveNote(
+        if (noteState.deleted || !window.AdnotaStorage) return;
+        await window.AdnotaStorage.saveNote(
           location.hostname, location.pathname, uuid,
-          { placement: noteState.placement, comments, theme: noteState.theme, anchor: noteState.anchor, anchorOffset: noteState.anchorOffset, tag: noteState.tag }
+          buildSavePayload(noteState)
         );
       };
 
-      let tagSaveTimeout;
       tagInput.addEventListener('input', () => {
-        noteState.tag = window.VellumTags.normalize(tagInput.value);
+        noteState.tag = window.AdnotaTags.normalize(tagInput.value);
         clearTimeout(tagSaveTimeout);
         tagSaveTimeout = setTimeout(commitTag, DEBOUNCE_MS);
       });
       tagInput.addEventListener('blur', () => {
         // Snap the displayed value to the normalized form (trim, collapse
         // internal whitespace) so what the user sees matches what we stored.
-        const normalized = window.VellumTags.normalize(tagInput.value);
+        const normalized = window.AdnotaTags.normalize(tagInput.value);
         if (tagInput.value !== normalized) tagInput.value = normalized;
         noteState.tag = normalized;
         clearTimeout(tagSaveTimeout);
+        window.AdnotaLog?.event('sticky', 'tag-commit', { id: uuid, tag: normalized });
         commitTag();
       });
     }
 
     // ── Delete with undo ─────────────────────────────────────────────────────
-    const trashBtn = container.querySelector('.vellum-trash-btn');
-    trashBtn.addEventListener('click', () => {
-      container.style.display = 'none';
+    // Mirrors marker/highlighter delete: snapshot full payload, hard-tear-down
+    // visual + drop activeNotes registration, *synchronously* delete from
+    // storage, push an undo entry that re-saves and re-renders. The previous
+    // pattern (display:none + 5s setTimeout to call deleteItem) lost the
+    // delete entirely if the user refreshed within the undo window — the
+    // timer died with the page and the storage row stayed intact, so the
+    // restorer happily resurrected the note on the next load. Storage delete
+    // is now committed before the user can refresh.
+    const trashBtn = container.querySelector('.adnota-trash-btn');
+    trashBtn.addEventListener('click', async () => {
+      window.AdnotaLog?.event('sticky', 'delete', { id: uuid });
 
-      let committed = false;
-      let deleteTimeout;
+      // Block every save path that could resurrect this note. Without this,
+      // a pending textarea/tag/resize debounce fires after deleteItem and
+      // saveNote upserts the row back — restorer's next MutationObserver
+      // pass then re-renders. Set the flag *before* anything async so the
+      // blur->commitTag race triggered by clicking from a focused tag input
+      // also gets blocked.
+      noteState.deleted = true;
+      clearTimeout(saveTimeout);
+      clearTimeout(tagSaveTimeout);
+      clearTimeout(resizeTimeout);
 
-      const performUndo = () => {
-        if (committed) return;
-        committed = true;
-        clearTimeout(deleteTimeout);
-        container.style.display = 'block';
-        window.VellumUI.dismissToast(toast);
-        window.VellumUndo.remove(undoEntry);
-      };
+      // Flush latest text/tag/dimensions from DOM in case the autosave
+      // debounce (textarea: 1.5s, ResizeObserver: same) hasn't fired yet.
+      // Same trick tearDownAll uses on SPA route change.
+      const textarea = container.querySelector('.adnota-sticky-textarea');
+      const tagInput = container.querySelector('.adnota-sticky-tag-input');
+      const card = container.querySelector('.adnota-sticky-card');
+      if (textarea && noteState.comments && noteState.comments[0]) {
+        noteState.comments[0].text = textarea.value;
+      }
+      if (tagInput && window.AdnotaTags) {
+        noteState.tag = window.AdnotaTags.normalize(tagInput.value);
+      }
+      const savedDimensions = card
+        ? { width: Math.round(card.offsetWidth), height: Math.round(card.offsetHeight) }
+        : null;
+      const snapshot = buildSavePayload(noteState, savedDimensions);
 
-      const toast = window.VellumUI.showToast('Note deleted', {
-        onUndo: performUndo,
-        timeout: 0, // managed by deleteTimeout below
-      });
+      // Hard teardown — clear the pending-anchor reveal timer (if any),
+      // drop from activeNotes, remove from DOM. Storage delete next.
+      if (noteState.revealTimer) clearTimeout(noteState.revealTimer);
+      activeNotes.delete(uuid);
+      container.remove();
 
-      deleteTimeout = setTimeout(async () => {
-        if (committed) return;
-        committed = true;
-        window.VellumUndo.remove(undoEntry);
-        window.VellumUI.dismissToast(toast);
-        activeNotes.delete(uuid);
-        container.remove();
-        if (window.VellumStorage) {
-          await window.VellumStorage.deleteItem(location.hostname, 'uuid', uuid);
+      if (window.AdnotaStorage) {
+        await window.AdnotaStorage.deleteItem(location.hostname, 'uuid', uuid);
+      }
+
+      let consumed = false;
+      const undoEntry = {
+        undo: async () => {
+          if (consumed) return;
+          consumed = true;
+          if (window.AdnotaStorage) {
+            await window.AdnotaStorage.saveNote(
+              location.hostname, location.pathname, uuid, snapshot
+            );
+          }
+          window.StickyEngine.renderNote(
+            snapshot.placement, snapshot.comments, uuid, false,
+            snapshot.dimensions, snapshot.theme,
+            snapshot.anchor, snapshot.anchorOffset, snapshot.tag,
+            snapshot.fallback
+          );
+          window.AdnotaUndo.remove(undoEntry);
         }
-      }, 5000);
+      };
+      window.AdnotaUndo.push(undoEntry);
 
-      const undoEntry = { undo: performUndo };
-      window.VellumUndo.push(undoEntry);
+      window.AdnotaUI?.showToast?.('Note deleted', {
+        id: 'adnota-sticky-toast',
+        onUndo: () => undoEntry.undo(),
+      });
     });
+
+    return anchorResolved;
   },
 
   /**
    * Reposition a note based on its anchor (preferred) or placement (fallback).
-   * Called after initial render and on window resize.
+   * Called after initial render and on window resize. Also serves as the
+   * restorer's retry path — returns true when FuzzyAnchor (Tier 1) resolved
+   * the note's saved element so the restorer can decide whether the note is
+   * still eligible for re-attempt on the next MutationObserver pass.
+   *
+   * Three-tier fallback cascade — mirrors marker.js's resolveAnchorRect:
+   *   1. FuzzyAnchor on the original block (`anchor` + `anchorOffset`)
+   *   2. FuzzyAnchor on the nearest scrolling ancestor (`fallback.containerAnchor`
+   *      + `containerOffsetX/Y`) — tracks inner-container scroll on app shells
+   *      where the document itself doesn't move
+   *   3. Percentage of `documentElement.scrollWidth/Height` — last-resort
+   *      "never lose the work" fallback that lands somewhere reasonable on
+   *      normal scrolling pages and somewhere arbitrary on app shells
+   *
+   * All tier outputs are written to container.style.left/top as VIEWPORT
+   * coordinates because the container lives inside the fixed-position
+   * #adnota-sticky-overlay. The capture-phase scroll listener
+   * (_resyncAllNotes) re-runs this on every scroll so the values stay live
+   * without a per-tier scroll listener.
+   *
+   * Returns true only on Tier 1 success. Tier 2/3 and "no note" early-outs
+   * return false so the restorer keeps the item retryable until Tier 1
+   * actually resolves; the resize/scroll handler ignores the value.
    */
   updatePosition(uuid) {
     const noteState = activeNotes.get(uuid);
-    if (!noteState) return;
+    if (!noteState) return false;
 
-    const { container, placement, anchor, anchorOffset } = noteState;
+    const { container, placement, anchor, anchorOffset, fallback } = noteState;
     let left, top;
     let anchorResolved = false;
+    const scrollTop  = window.pageYOffset || document.documentElement.scrollTop;
+    const scrollLeft = window.pageXOffset || document.documentElement.scrollLeft;
 
-    // ── Primary: try FuzzyAnchor resolution ─────────────────────────────────
+    // ── Tier 1: FuzzyAnchor on the original block (viewport coords) ─────────
     if (anchor && anchorOffset && window.FuzzyAnchor) {
       const match = window.FuzzyAnchor.findMatch(anchor);
       if (match.confidence >= 40 && match.element) {
         const rect = match.element.getBoundingClientRect();
-        const scrollTop  = window.pageYOffset || document.documentElement.scrollTop;
-        const scrollLeft = window.pageXOffset || document.documentElement.scrollLeft;
-
-        left = rect.left + scrollLeft + anchorOffset.dx;
-        top  = rect.top  + scrollTop  + anchorOffset.dy;
+        left = rect.left + anchorOffset.dx;
+        top  = rect.top  + anchorOffset.dy;
         anchorResolved = true;
       }
     }
 
-    // ── Fallback: percentage placement (never lose your work) ───────────────
-    if (!anchorResolved) {
+    // ── Tier 2: container-scroll-anchor fallback ────────────────────────────
+    // The fix for chatgpt.com / claude.ai: when Tier 1 misses (the specific
+    // chat turn / paragraph / message wrapper has been re-rendered with a
+    // different selector), re-resolve the surrounding scroll container and
+    // place the note at its saved offset within that container's scrollable
+    // content. The note now tracks the conversation's internal scroll instead
+    // of falling all the way through to the meaningless `scrollHeight` tier.
+    if (!anchorResolved && fallback && fallback.containerAnchor && window.FuzzyAnchor) {
+      const cMatch = window.FuzzyAnchor.findMatch(fallback.containerAnchor);
+      if (cMatch.confidence >= 40 && cMatch.element) {
+        const scRect = cMatch.element.getBoundingClientRect();
+        left = scRect.left + fallback.containerOffsetX - cMatch.element.scrollLeft;
+        top  = scRect.top  + fallback.containerOffsetY - cMatch.element.scrollTop;
+      }
+    }
+
+    // ── Tier 3: percentage placement (never lose your work) ─────────────────
+    if (left === undefined) {
       if (placement.position === 'percent') {
-        ({ left, top } = placementToPixels(placement));
+        const docLeft = placement.xPct       * Math.max(document.documentElement.scrollWidth,  1);
+        const docTop  = placement.yScrollPct * Math.max(document.documentElement.scrollHeight, 1);
+        // Convert document px → viewport px since the container lives in the
+        // fixed overlay. The capture-phase scroll listener fires on every
+        // scroll to re-run this so the value tracks naturally.
+        left = docLeft - scrollLeft;
+        top  = docTop  - scrollTop;
       } else if (placement.position === 'manual') {
-        // Legacy format from before this refactor — treat stored px directly.
-        left = placement.left;
-        top  = placement.top;
+        // Legacy format from before this refactor — stored as document px.
+        left = placement.left - scrollLeft;
+        top  = placement.top  - scrollTop;
       } else {
-        return; // Unknown format — do nothing rather than misplace the note.
+        return false; // Unknown format — do nothing rather than misplace the note.
       }
     }
 
     container.style.left = `${left}px`;
-    container.style.top  = `${Math.max(0, top)}px`;
+    // No clamp on top: when an anchor element scrolls above the viewport, top
+    // goes negative and the note correctly scrolls off-screen above. Clamping
+    // pinned the note at viewport top forever, which is wrong on every scroll
+    // model.
+    container.style.top  = `${top}px`;
+
+    // First successful Tier 1 resolution reveals a pending-anchor note.
+    // Backstop timer is cleared because we beat it. Subsequent calls (resize,
+    // scroll, restorer retry) hit the early-out since pendingAnchor is now
+    // false. The 0.2s opacity transition on .adnota-sticky-container handles
+    // the fade for free.
+    if (anchorResolved && noteState.pendingAnchor) {
+      noteState.pendingAnchor = false;
+      if (noteState.revealTimer) {
+        clearTimeout(noteState.revealTimer);
+        noteState.revealTimer = null;
+      }
+      container.style.opacity = '1';
+    }
+    return anchorResolved;
   },
 };
 
 // ---------------------------------------------------------------------------
-// Resize: recompute all note positions (page dimensions may have changed)
+// Resize + scroll: recompute all note positions
 // ---------------------------------------------------------------------------
+// On a normal scrolling document, position: absolute on <body> is document-
+// anchored, so notes scroll with content for free. App-shell pages
+// (chatgpt.com, claude.ai, Notion) lock body at overflow: hidden and scroll
+// an internal container — body never moves, so the note appears glued to
+// the screen while the anchor element slides away underneath it. Capture-
+// phase scroll catches scrolls on any element (scroll doesn't bubble but
+// does go through capture), so a single window-level listener covers every
+// scroll container without per-note registration. rAF-throttled because
+// internal scroll containers can fire ~60 events per scroll. Mirrors the
+// marker tool's bindAnchorSync triad — sticky just never got the scroll
+// half until now.
 
-window.addEventListener('resize', () => {
-  for (const uuid of activeNotes.keys()) {
-    window.StickyEngine.updatePosition(uuid);
-  }
-});
+let _stickyResyncRaf = 0;
+function _resyncAllNotes() {
+  if (_stickyResyncRaf) return;
+  _stickyResyncRaf = requestAnimationFrame(() => {
+    _stickyResyncRaf = 0;
+    for (const uuid of activeNotes.keys()) {
+      window.StickyEngine.updatePosition(uuid);
+    }
+  });
+}
+
+window.addEventListener('resize', _resyncAllNotes);
+window.addEventListener('scroll', _resyncAllNotes, { capture: true, passive: true });

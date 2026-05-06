@@ -1,0 +1,427 @@
+/* lib/adnotaUI.css — shared Adnota UI styles loaded in both content scripts
+   (via manifest content_scripts.css) and the extension popup (via <link>). */
+
+/* ─── Confirmation modal ─────────────────────────────────────────────────── */
+
+.adnota-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483647;
+  background: rgba(8, 4, 18, 0.55);
+  -webkit-backdrop-filter: blur(3px);
+  backdrop-filter: blur(3px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: adnota-modal-fade-in 0.15s ease-out;
+  /* !important on font-family — hosts like Reddit ship high-specificity
+     body-text rules that otherwise win over inherit chains and bleed their
+     brand font (Reddit-Sans, IBM Plex, etc.) into our dialog body. */
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif !important;
+}
+
+@keyframes adnota-modal-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.adnota-modal {
+  min-width: 280px;
+  max-width: 380px;
+  background: linear-gradient(135deg, #12082b 0%, #0c0519 100%);
+  border: 1px solid rgba(124, 58, 237, 0.35);
+  border-radius: 14px;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(124, 58, 237, 0.1);
+  padding: 18px 20px 16px;
+  animation: adnota-modal-pop 0.18s cubic-bezier(.2,.8,.3,1);
+}
+
+@keyframes adnota-modal-pop {
+  from { opacity: 0; transform: scale(0.94); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+.adnota-modal-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.adnota-modal-logo {
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+  background: var(--adnota-brand-gradient);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 14px;
+  color: #fff;
+  letter-spacing: -0.5px;
+  box-shadow: 0 2px 8px rgba(124, 58, 237, 0.45);
+  flex-shrink: 0;
+  user-select: none;
+}
+
+/* Modal text selectors prefix [data-adnota-ui] for the same reason as the
+   tooltip rule: hosts like Reddit ship body-text rules with selector chains
+   like `.shreddit-comment p` (0,2,1) that out-specify a single class, so we
+   need to chain attribute + class to reach (0,2,0)+ and let !important win. */
+[data-adnota-ui] .adnota-modal-title {
+  color: rgba(255, 255, 255, 0.95);
+  font-family: inherit !important;
+  font-size: 14px !important;
+  font-weight: 600 !important;
+  font-style: normal !important;
+  letter-spacing: 0.01em !important;
+  text-transform: none !important;
+}
+
+[data-adnota-ui] .adnota-modal-message {
+  color: rgba(255, 255, 255, 0.9);
+  font-family: inherit !important;
+  font-size: 13.5px !important;
+  font-weight: 400 !important;
+  font-style: normal !important;
+  letter-spacing: normal !important;
+  line-height: 1.5 !important;
+  text-transform: none !important;
+  margin: 4px 0 2px;
+}
+
+[data-adnota-ui] .adnota-modal-subtext {
+  color: rgba(255, 255, 255, 0.55);
+  font-family: inherit !important;
+  font-size: 12px !important;
+  font-weight: 400 !important;
+  font-style: normal !important;
+  letter-spacing: normal !important;
+  line-height: 1.45 !important;
+  text-transform: none !important;
+  margin-bottom: 16px;
+}
+
+.adnota-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+/* Same hardening pattern as the modal text rules: [data-adnota-ui] prefix
+   bumps specificity to (0,2,0) and !important on every visual property
+   stops Reddit-style host button rules from leaking through. */
+[data-adnota-ui] .adnota-modal-btn {
+  font-family: inherit !important;
+  font-size: 12.5px !important;
+  font-weight: 600 !important;
+  font-style: normal !important;
+  letter-spacing: 0.02em !important;
+  text-transform: none !important;
+  text-decoration: none !important;
+  text-shadow: none !important;
+  line-height: 1.2 !important;
+  padding: 7px 14px !important;
+  border-radius: 7px !important;
+  cursor: pointer !important;
+  border: 1px solid transparent !important;
+  min-height: 0 !important;
+  height: auto !important;
+  width: auto !important;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+[data-adnota-ui] .adnota-modal-btn:focus {
+  outline: none !important;
+  box-shadow: 0 0 0 2px rgba(124, 58, 237, 0.55) !important;
+}
+
+[data-adnota-ui] .adnota-modal-cancel {
+  background: transparent !important;
+  border-color: rgba(255, 255, 255, 0.18) !important;
+  color: rgba(255, 255, 255, 0.8) !important;
+}
+[data-adnota-ui] .adnota-modal-cancel:hover {
+  background: rgba(255, 255, 255, 0.06) !important;
+  border-color: rgba(255, 255, 255, 0.3) !important;
+  color: #fff !important;
+}
+
+[data-adnota-ui] .adnota-modal-danger {
+  background: linear-gradient(135deg, rgba(239, 68, 68, 0.85) 0%, rgba(220, 38, 38, 0.85) 100%) !important;
+  border-color: rgba(239, 68, 68, 0.55) !important;
+  color: #fff !important;
+}
+[data-adnota-ui] .adnota-modal-danger:hover {
+  background: linear-gradient(135deg, rgba(239, 68, 68, 1) 0%, rgba(220, 38, 38, 1) 100%) !important;
+  border-color: rgba(239, 68, 68, 0.9) !important;
+}
+
+/* ─── HUD Global Styles & Custom Tooltips ────────────────────────────────── */
+
+/* Position rule keeps :where() — needs to LOSE specificity wars against
+   per-element positioning (e.g., .adnota-select-delete is position:absolute,
+   raising this rule above (0,1,0) would knock the X into normal flow). */
+:where([data-adnota-ui])[data-adnota-tooltip],
+:where([data-adnota-ui]) [data-adnota-tooltip] {
+  position: relative;
+}
+
+/* Tooltip pseudo-element rule deliberately drops :where() — host sites
+   (Reddit especially) ship `button::after` rules for icon-fonts/spinners
+   with selector chains that out-specify a 0-specificity wrapper. We need
+   [data-adnota-ui] to actually count, putting our descendant form at (0,3,1). */
+[data-adnota-ui][data-adnota-tooltip]:hover::after,
+[data-adnota-ui] [data-adnota-tooltip]:hover::after {
+  /* `content` and visual properties use !important because hosts (Reddit,
+     Tailwind-heavy CMS sites) ship blanket pseudo-element resets like
+     `*::after { content: none }` or text transforms on `*` that otherwise
+     suppress or mangle the tooltip. The :where() wrapper has 0 specificity
+     so any host rule wins without these. */
+  content: attr(data-adnota-tooltip) !important;
+  display: block !important;
+  position: absolute !important;
+  bottom: calc(100% + 8px) !important;
+  left: 50% !important;
+  right: auto !important;
+  top: auto !important;
+  transform: translateX(-50%) !important;
+  clip: auto !important;
+  clip-path: none !important;
+  width: auto !important;
+  height: auto !important;
+  max-width: none !important;
+  max-height: none !important;
+  background: rgba(15, 15, 15, 0.95) !important;
+  color: var(--adnota-hud-text) !important;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
+  font-size: 11px !important;
+  font-weight: 500 !important;
+  font-style: normal !important;
+  letter-spacing: normal !important;
+  line-height: 1.2 !important;
+  text-transform: none !important;
+  text-decoration: none !important;
+  text-shadow: none !important;
+  text-indent: 0 !important;
+  padding: 3px 8px !important;
+  border-radius: 4px !important;
+  white-space: nowrap !important;
+  pointer-events: none;
+  border: 1px solid var(--adnota-tooltip-border, rgba(124, 58, 237, 0.3)) !important;
+  opacity: 1 !important;
+  visibility: visible !important;
+  z-index: 2147483647;
+}
+
+/* Dock picks up the active tool's tooltip accent via data-accent. */
+#adnota-dock[data-accent="eraser"]    { --adnota-tooltip-border: rgba(239, 68, 68, 0.35); }
+#adnota-dock[data-accent="sticky"]    { --adnota-tooltip-border: rgba(245, 158, 11, 0.35); }
+#adnota-dock[data-accent="highlight"] { --adnota-tooltip-border: rgba(124, 58, 237, 0.35); }
+#adnota-dock[data-accent="resizer"]   { --adnota-tooltip-border: rgba(59, 130, 246, 0.3); }
+
+/* Base drag handle */
+.adnota-toolbar-drag {
+  color: #525264;
+  font-size: 18px;
+  letter-spacing: -1.5px;
+  font-weight: bold;
+  cursor: grab;
+  margin-right: 8px;
+  margin-bottom: 5px;
+  user-select: none;
+  padding: 0 4px;
+}
+
+.adnota-toolbar-drag:active {
+  cursor: grabbing;
+}
+
+/* HUD Eraser (Red variants) */
+.adnota-toolbar-divider.adnota-toolbar-divider-red { background: rgba(239, 68, 68, 0.25); }
+.adnota-undo-btn.adnota-undo-btn-red:hover { background: rgba(239, 68, 68, 0.15); }
+.adnota-undo-btn.adnota-undo-btn-red:hover svg { stroke: #fca5a5; }
+
+/* ─── Help button + popover ───────────────────────────────────────────────── */
+/* The ? button reuses .adnota-undo-btn sizing/hover so it slots into any HUD.
+   When open, the active class locks in the accent tint so it reads as toggled. */
+.adnota-help-btn.adnota-help-btn-active {
+  background: rgba(124, 58, 237, 0.18);
+}
+.adnota-help-btn.adnota-help-btn-active svg {
+  stroke: #c084fc;
+}
+.adnota-undo-btn-red.adnota-help-btn.adnota-help-btn-active { background: rgba(239, 68, 68, 0.18); }
+.adnota-undo-btn-red.adnota-help-btn.adnota-help-btn-active svg { stroke: #fca5a5; }
+
+/* Popover is appended to <body> and positioned from JS — fixed positioning
+   plus max z-index so it escapes any host-site stacking context. */
+.adnota-help-popover {
+  position: fixed;
+  z-index: 2147483647;
+  background: var(--adnota-hud-bg-strong);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+  border: 1px solid var(--adnota-hud-border);
+  border-radius: 10px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.55);
+  padding: 10px 12px;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--adnota-hud-text);
+  min-width: 220px;
+  max-width: 360px;
+  animation: adnota-help-pop 0.14s cubic-bezier(.2,.8,.3,1);
+}
+
+@keyframes adnota-help-pop {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.adnota-help-tip {
+  padding: 4px 2px;
+}
+.adnota-help-tip + .adnota-help-tip {
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+/* Triangle tail pointing down to the ? button. JS sets --adnota-help-tail-x
+   to the button's center relative to the popover's left edge so the tail
+   stays anchored even when the popover is clamped against a viewport edge. */
+.adnota-help-tail {
+  position: absolute;
+  left: var(--adnota-help-tail-x, 50%);
+  bottom: -7px;
+  transform: translateX(-50%);
+  width: 12px;
+  height: 7px;
+  pointer-events: none;
+}
+.adnota-help-tail::before,
+.adnota-help-tail::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 0;
+  height: 0;
+  border-left: 6px solid transparent;
+  border-right: 6px solid transparent;
+}
+/* Border layer (1px below the fill so the seam disappears). */
+.adnota-help-tail::before {
+  border-top: 7px solid var(--adnota-hud-border);
+  top: 1px;
+}
+.adnota-help-tail::after {
+  border-top: 7px solid var(--adnota-hud-bg-strong);
+}
+
+.adnota-help-popover-red    { border-color: rgba(239, 68, 68, 0.5); }
+.adnota-help-popover-red    .adnota-help-tail::before { border-top-color: rgba(239, 68, 68, 0.5); }
+.adnota-help-popover-blue   { border-color: rgba(59, 130, 246, 0.5); }
+.adnota-help-popover-blue   .adnota-help-tail::before { border-top-color: rgba(59, 130, 246, 0.5); }
+.adnota-help-popover-orange { border-color: rgba(245, 158, 11, 0.5); }
+.adnota-help-popover-orange .adnota-help-tail::before { border-top-color: rgba(245, 158, 11, 0.5); }
+
+/* HUD Sticky (Orange/Yellow variants) */
+.adnota-toolbar-divider.adnota-toolbar-divider-orange { background: rgba(245, 158, 11, 0.25); }
+.adnota-undo-btn.adnota-undo-btn-orange:hover { background: rgba(245, 158, 11, 0.15); }
+.adnota-undo-btn.adnota-undo-btn-orange:hover svg { stroke: #fcd34d; }
+
+/* Tag autocomplete dropdown — attached under tag inputs on sticky notes and
+   the quick-highlight popup. Positioned fixed so it escapes every parent
+   stacking context; !important protects against host-site CSS bleed on
+   arbitrary pages. Aesthetic matches the HUD family (eraser / sticky /
+   highlighter toolbars + quick-highlight popup): dark frosted glass with a
+   purple accent border. */
+.adnota-tag-suggest {
+  position: fixed !important;
+  z-index: 2147483647 !important;
+  display: none;
+  max-height: 240px;
+  overflow-y: auto;
+  background: var(--adnota-hud-bg) !important;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid var(--adnota-hud-border) !important;
+  border-radius: 10px !important;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.5);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-size: 12px;
+  color: var(--adnota-hud-text);
+  padding: 5px;
+  margin: 0 !important;
+  min-width: 160px;
+}
+
+.adnota-tag-suggest-item {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  line-height: 1.3;
+  white-space: nowrap;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+
+.adnota-tag-suggest-item:hover {
+  background: rgba(124, 58, 237, 0.14);
+}
+
+.adnota-tag-suggest-item.highlighted {
+  background: rgba(124, 58, 237, 0.22);
+  color: #ffffff;
+}
+
+.adnota-tag-suggest-item-hash {
+  color: #c084fc;
+  font-weight: 700;
+  font-size: 11px;
+  opacity: 0.85;
+  flex-shrink: 0;
+}
+
+.adnota-tag-suggest-item-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: 500;
+}
+
+.adnota-tag-suggest-item-count {
+  font-size: 10.5px;
+  font-weight: 600;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: rgba(124, 58, 237, 0.18);
+  color: #c084fc;
+  flex-shrink: 0;
+}
+
+.adnota-tag-suggest-item.highlighted .adnota-tag-suggest-item-count {
+  background: rgba(255, 255, 255, 0.22);
+  color: #ffffff;
+}
+
+/* ─── SPA route-change hide ──────────────────────────────────────────────────
+   Set by restorer.js's Navigation API listener the instant an SPA route
+   change starts, and cleared at the end of the next performRestoration pass.
+   Hides only the three annotation containers — the dock and other HUD chrome
+   under [data-adnota-ui] stay visible so the user's UI doesn't flicker on
+   every in-app nav. ERASE/RESIZE rules aren't covered here: their selectors
+   target page elements that React typically swaps out on route change, and
+   teardown clears the Maps within ~tens of ms. */
+html.adnota-route-changing #adnota-marker-overlay,
+html.adnota-route-changing .adnota-highlight-fallback,
+html.adnota-route-changing .adnota-sticky-container {
+  visibility: hidden;
+}
+

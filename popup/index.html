@@ -2,25 +2,25 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Vellum</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="../lib/vellumUI.css">
+  <title>Adnota</title>
+  <link rel="icon" type="image/svg+xml" href="../icons/favicon.svg">
+  <link rel="stylesheet" href="../lib/fonts.css">
+  <link rel="stylesheet" href="../lib/adnotaTokens.css">
+  <link rel="stylesheet" href="../lib/adnotaUI.css">
   <link rel="stylesheet" href="style.css">
 </head>
-<body>
+<body data-adnota-ui="1">
 
   <!-- ─── Header ─── -->
   <header class="header">
     <div class="brand">
-      <div class="brand-monogram">V</div>
+      <img class="brand-monogram" src="../icons/favicon.svg" alt="Adnota">
       <div class="brand-text">
-        <div class="brand-name">Vellum</div>
-        <div class="brand-sub">The Persistent Canvas</div>
+        <div class="brand-name">Adnota</div>
+        <div class="brand-sub">Make Any Webpage Yours</div>
       </div>
     </div>
-    <button id="btn-visibility" class="icon-btn" title="Toggle all annotation visibility (Alt+V)">
+    <button id="btn-visibility" class="icon-btn" title="Show / hide all annotations (Alt+S)">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
         <circle cx="12" cy="12" r="3"/>
@@ -48,7 +48,7 @@
             <div class="tool-name">Eraser</div>
             <div class="tool-desc">Permanently hide page elements</div>
           </div>
-          <kbd class="shortcut">Alt+E</kbd>
+          <kbd class="shortcut" title="Press while the Adnota dock is visible">e</kbd>
           <span class="active-badge"><span class="pulse-dot"></span>Active</span>
           <div class="tool-accent" style="--accent:#ef4444;"></div>
         </button>
@@ -66,7 +66,7 @@
             <div class="tool-name">Sticky Note</div>
             <div class="tool-desc">Drop anchored text annotations</div>
           </div>
-          <kbd class="shortcut">Alt+S</kbd>
+          <kbd class="shortcut" title="Press while the Adnota dock is visible">s</kbd>
           <span class="active-badge"><span class="pulse-dot"></span>Active</span>
           <div class="tool-accent" style="--accent:#f59e0b;"></div>
         </button>
@@ -80,10 +80,10 @@
             </svg>
           </div>
           <div class="tool-info">
-            <div class="tool-name">Highlight &amp; Pen</div>
-            <div class="tool-desc">Mark text or draw freehand strokes</div>
+            <div class="tool-name">Draw</div>
+            <div class="tool-desc">Pen, shapes, arrows, and text</div>
           </div>
-          <kbd class="shortcut">Alt+H</kbd>
+          <kbd class="shortcut" title="Press while the Adnota dock is visible">d</kbd>
           <span class="active-badge"><span class="pulse-dot"></span>Active</span>
           <div class="tool-accent" style="--accent:#7c3aed;"></div>
         </button>
@@ -100,6 +100,7 @@
             <div class="tool-name">Resizer</div>
             <div class="tool-desc">Drag to resize any page element</div>
           </div>
+          <kbd class="shortcut" title="Press while the Adnota dock is visible">r</kbd>
           <span class="active-badge"><span class="pulse-dot"></span>Active</span>
           <div class="tool-accent" style="--accent:#3b82f6;"></div>
         </button>
@@ -188,10 +189,13 @@
       </svg>
       Clear All Page Edits
     </button>
+    <p class="bug-link">
+      Spot a bug? Email <a id="bug-link" href="mailto:support@adnota.app?subject=Adnota%20bug">support</a>
+    </p>
   </footer>
 
   <script src="../lib/storage.js"></script>
-  <script src="../lib/vellumUI.js"></script>
+  <script src="../lib/adnotaUI.js"></script>
   <script src="popup.js"></script>
 </body>
 </html>

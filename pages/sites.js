@@ -1,5 +1,5 @@
 // pages/sites.js
-// Vellum — My Edited Sites
+// Adnota — My Edited Sites
 // Reads all chrome.storage.local data and renders a per-domain bookmark list.
 
 (async () => {
@@ -11,11 +11,11 @@
   // payloads, so any meta key we store has to be excluded explicitly or
   // it'd get (mis)treated as a domain.
   const RESERVED_KEYS = new Set([
-    'vellumActiveMode',
-    'vellumHomeTab',
-    'vellumHomeFeedType',
-    'vellumHomeSortSnippets',
-    'vellumHomeSortSites',
+    'adnotaActiveMode',
+    'adnotaHomeTab',
+    'adnotaHomeFeedType',
+    'adnotaHomeSortSnippets',
+    'adnotaHomeSortSites',
   ]);
 
   // ─── Elements ─────────────────────────────────────────────────────────────
@@ -48,17 +48,17 @@
   const feedStateNoResults = document.getElementById('feed-state-no-results');
 
   // ─── Theme / color mapping ───────────────────────────────────────────────
-  // Highlights store either a theme key (`vellum-theme-yellow`, etc.) or a
+  // Highlights store either a theme key (`adnota-theme-yellow`, etc.) or a
   // raw hex/rgb string picked with the eyedropper. Sticky notes only use
   // theme keys. The table below is the source of truth for both rails
   // (quote-block left border, thought-block theme strip).
   const THEME_HEX = {
-    'vellum-theme-yellow': '#FBE6A1',
-    'vellum-theme-green':  '#B8F5B8',
-    'vellum-theme-blue':   '#A3DDFB',
-    'vellum-theme-pink':   '#FFC0C8',
-    'vellum-theme-white':  '#E8E6DE',
-    'vellum-theme-black':  '#1a1a1a',
+    'adnota-theme-yellow': '#FBE6A1',
+    'adnota-theme-green':  '#B8F5B8',
+    'adnota-theme-blue':   '#A3DDFB',
+    'adnota-theme-pink':   '#FFC0C8',
+    'adnota-theme-white':  '#E8E6DE',
+    'adnota-theme-black':  '#1a1a1a',
   };
   function themeHex(key, fallback = '#cccccc') {
     if (!key) return fallback;
@@ -69,7 +69,7 @@
   // Black highlight = redaction. In the feed we render redactions as a
   // narrow black bar instead of reproducing the underlying text — the quote
   // has no meaningful prose to show, so we honor the user's intent to hide.
-  const REDACTION_THEME = 'vellum-theme-black';
+  const REDACTION_THEME = 'adnota-theme-black';
   function isRedaction(item) {
     return item.type === 'highlight' && item.color === REDACTION_THEME;
   }
@@ -93,10 +93,10 @@
     sites:    'Filter sites…',
   };
 
-  const TAB_KEY   = 'vellumHomeTab';
-  const TYPE_KEY  = 'vellumHomeFeedType';
-  const SORT_SNIPPETS_KEY = 'vellumHomeSortSnippets';
-  const SORT_SITES_KEY    = 'vellumHomeSortSites';
+  const TAB_KEY   = 'adnotaHomeTab';
+  const TYPE_KEY  = 'adnotaHomeFeedType';
+  const SORT_SNIPPETS_KEY = 'adnotaHomeSortSnippets';
+  const SORT_SITES_KEY    = 'adnotaHomeSortSites';
 
   // ─── Storage quota (MV3: 10MB; falls back to API value on older Chrome) ───
   const STORAGE_QUOTA = chrome.storage.local.QUOTA_BYTES || 10 * 1024 * 1024;
@@ -158,7 +158,7 @@
   // Normalize a tag string; mirrors lib/tagIndex.js. Defined inline so the
   // Sites page still works if tagIndex.js fails to load for any reason.
   function normalizeTag(raw) {
-    if (window.VellumTags) return window.VellumTags.normalize(raw);
+    if (window.AdnotaTags) return window.AdnotaTags.normalize(raw);
     if (typeof raw !== 'string') return '';
     return raw.trim().replace(/\s+/g, ' ').slice(0, 40);
   }
@@ -381,7 +381,10 @@
     if (activeTag && site.tagCounts?.[activeTag]) {
       const tagPill = document.createElement('span');
       tagPill.className = 'pill pill-tag';
-      tagPill.innerHTML = `<span class="pill-dot"></span>#${activeTag} · ${site.tagCounts[activeTag]}`;
+      const dot = document.createElement('span');
+      dot.className = 'pill-dot';
+      tagPill.appendChild(dot);
+      tagPill.appendChild(document.createTextNode(`#${activeTag} · ${site.tagCounts[activeTag]}`));
       pills.appendChild(tagPill);
     }
     body.appendChild(pills);
@@ -431,7 +434,7 @@
     btnDelete.addEventListener('click', async (e) => {
       e.stopPropagation();
       const pageCount = pathMap.size;
-      const ok = await window.VellumUI.confirmDialog({
+      const ok = await window.AdnotaUI.confirmDialog({
         title: 'Delete all edits?',
         message: `Delete all edits for ${hostname}?`,
         subtext: `This removes ${total} ${total === 1 ? 'edit' : 'edits'} across ${pageCount} ${pageCount === 1 ? 'page' : 'pages'}. This cannot be undone.`,
@@ -559,7 +562,10 @@
       if (activeTag && pageTagMatches > 0) {
         const tagPill = document.createElement('span');
         tagPill.className = 'pill pill-tag';
-        tagPill.innerHTML = `<span class="pill-dot"></span>#${activeTag} · ${pageTagMatches}`;
+        const dot = document.createElement('span');
+        dot.className = 'pill-dot';
+        tagPill.appendChild(dot);
+        tagPill.appendChild(document.createTextNode(`#${activeTag} · ${pageTagMatches}`));
         pagePillsEl.appendChild(tagPill);
       }
       row.appendChild(pagePillsEl);
@@ -734,7 +740,7 @@
   }
 
   // ─── Undo toast (Home-page specific) ─────────────────────────────────────
-  // The lib/vellumUI `softDeleteItems` helper is designed for in-page bulk
+  // The lib/adnotaUI `softDeleteItems` helper is designed for in-page bulk
   // deletion (resolves selectors against the live DOM, etc.) and doesn't
   // fit the Home page where we're operating on remote domains' items.
   // This is the minimal toast + undo flow we need instead.
@@ -760,7 +766,7 @@
         try {
           await onUndo();
         } catch (err) {
-          console.error('[Vellum Sites] Undo handler failed:', err);
+          console.error('[Adnota Sites] Undo handler failed:', err);
         }
         toast.classList.remove('visible');
         toast.classList.remove('has-undo');
@@ -809,7 +815,7 @@
       );
       await chrome.storage.local.set({ [domain]: record });
     } catch (err) {
-      console.error('[Vellum Sites] Delete failed:', err);
+      console.error('[Adnota Sites] Delete failed:', err);
       return;
     }
 
@@ -889,7 +895,7 @@
     <svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
       <polyline points="4 10 8 14 16 6"/>
     </svg>`;
-  // Trash path matches lib/vellumUI.js ICONS.trash so Home and HUD toolbars
+  // Trash path matches lib/adnotaUI.js ICONS.trash so Home and HUD toolbars
   // use visually identical trash icons. Straight-sided can + full-width
   // polyline top reads cleaner than the tapered variant it replaced.
   const ICON_TRASH = `
@@ -912,7 +918,7 @@
       try {
         await navigator.clipboard.writeText(item.text);
       } catch (err) {
-        console.error('[Vellum Sites] Copy failed:', err);
+        console.error('[Adnota Sites] Copy failed:', err);
         return;
       }
       btn.classList.add('copied');
@@ -1150,7 +1156,7 @@
     allSites = sites;
     allFeedItems = feedItems;
   } catch (err) {
-    console.error('[Vellum Sites] Failed to load storage:', err);
+    console.error('[Adnota Sites] Failed to load storage:', err);
     allSites = [];
     allFeedItems = [];
   }
@@ -1228,6 +1234,31 @@
     if (!chip) return;
     setFeedType(chip.dataset.type);
   });
+
+  // ─── Bug-report popover ──────────────────────────────────────────────────
+  // Floating button (bottom-right) → small note + clickable mailto link.
+  // Pre-release feedback path; opt-in click so the page stays calm at rest.
+  (() => {
+    const root = document.getElementById('bug-report');
+    if (!root) return;
+    const btn = document.getElementById('bug-report-btn');
+    const pop = document.getElementById('bug-report-popover');
+    const setOpen = (open) => {
+      pop.hidden = !open;
+      btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    };
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      setOpen(pop.hidden);
+    });
+    document.addEventListener('click', (e) => {
+      if (pop.hidden) return;
+      if (!root.contains(e.target)) setOpen(false);
+    });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && !pop.hidden) setOpen(false);
+    });
+  })();
 
   // ─── Live storage updates ─────────────────────────────────────────────────
   // Re-build data model whenever storage changes (e.g. user made an edit on

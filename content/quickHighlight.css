@@ -1,7 +1,7 @@
-/* Contextual highlight popup — frosted glass aesthetic matches the Vellum
+/* Contextual highlight popup — frosted glass aesthetic matches the Adnota
    HUD family (eraser / highlighter / sticky toolbars). */
 
-#vellum-quick-highlight {
+#adnota-quick-highlight {
   position: absolute;
   z-index: 2147483646;
   display: none;
@@ -9,13 +9,13 @@
   align-items: stretch;
   gap: 4px;
   padding: 6px 10px;
-  background: rgba(15, 15, 15, 0.92);
+  background: var(--adnota-hud-bg);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
   border-radius: 10px;
-  border: 1px solid rgba(124, 58, 237, 0.45);
+  border: 1px solid var(--adnota-hud-border);
   box-shadow: 0 4px 24px rgba(0, 0, 0, 0.5);
-  color: #e4e4e7;
+  color: var(--adnota-hud-text);
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   opacity: 0;
   transform: translateY(2px);
@@ -26,14 +26,14 @@
 }
 
 /* Row 1: logo + swatches + dismiss — the original one-tap row. */
-.vellum-qh-row {
+.adnota-qh-row {
   display: flex;
   align-items: center;
 }
 
 /* Row 2: optional tag input. Leaving this blank preserves the original
    one-tap flow; typing attaches the tag to the next highlight. */
-.vellum-qh-tag-row {
+.adnota-qh-tag-row {
   display: flex;
   align-items: center;
   gap: 6px;
@@ -41,7 +41,7 @@
   border-top: 1px solid rgba(124, 58, 237, 0.22);
 }
 
-.vellum-qh-tag-icon {
+.adnota-qh-tag-icon {
   font-size: 11px;
   font-weight: 700;
   color: #c084fc;
@@ -50,7 +50,7 @@
   user-select: none;
 }
 
-.vellum-qh-tag-input {
+.adnota-qh-tag-input {
   flex: 1;
   /* min-width: 0 lets the input shrink below its content size so the popup
      width is set by row 1 (V + swatches + dismiss), not by the input. The
@@ -63,7 +63,7 @@
   outline: none !important;
   padding: 3px 0 !important;
   margin: 0 !important;
-  color: #e4e4e7 !important;
+  color: var(--adnota-hud-text) !important;
   font-family: inherit !important;
   font-size: 11px !important;
   font-weight: 500 !important;
@@ -74,16 +74,16 @@
 }
 
 /* Host-site focus-ring bleed guard (same pattern as the sticky textarea). */
-.vellum-qh-tag-input:focus,
-.vellum-qh-tag-input:focus-visible,
-.vellum-qh-tag-input:active {
+.adnota-qh-tag-input:focus,
+.adnota-qh-tag-input:focus-visible,
+.adnota-qh-tag-input:active {
   outline: none !important;
   box-shadow: none !important;
   border: none !important;
   background: transparent !important;
 }
 
-.vellum-qh-tag-input::placeholder {
+.adnota-qh-tag-input::placeholder {
   color: #9ca3af;
   opacity: 0.7;
 }
@@ -91,18 +91,18 @@
 /* Idle (visible but not hovered) dims to 0.55 so the highlighted text
    behind/under the popup stays readable — matches the dock's idle
    transparency. Snap to full on hover. */
-#vellum-quick-highlight.visible {
+#adnota-quick-highlight.visible {
   opacity: 0.55;
   transform: translateY(0);
 }
 
-#vellum-quick-highlight.visible:hover {
+#adnota-quick-highlight.visible:hover {
   opacity: 1;
 }
 
-/* Vellum brand chip — same look as the HUD toolbar logos so users immediately
+/* Adnota brand chip — same look as the HUD toolbar logos so users immediately
    recognize the popup as part of the extension, not the host site. */
-.vellum-qh-logo {
+.adnota-qh-logo {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -117,7 +117,7 @@
   flex-shrink: 0;
 }
 
-.vellum-qh-swatch {
+.adnota-qh-swatch {
   position: relative;
   width: 18px;
   height: 18px;
@@ -129,20 +129,20 @@
   transition: transform 0.12s, box-shadow 0.12s, border-color 0.12s;
 }
 
-.vellum-qh-swatch:hover {
+.adnota-qh-swatch:hover {
   transform: scale(1.15);
   border-color: rgba(255, 255, 255, 0.7);
   box-shadow: 0 0 0 2px rgba(124, 58, 237, 0.6);
 }
 
-.vellum-qh-swatch[title]:hover::after {
+.adnota-qh-swatch[title]:hover::after {
   content: attr(title);
   position: absolute;
   bottom: calc(100% + 6px);
   left: 50%;
   transform: translateX(-50%);
   background: rgba(15, 15, 15, 0.95);
-  color: #e4e4e7;
+  color: var(--adnota-hud-text);
   font-size: 11px;
   font-weight: 500;
   padding: 3px 8px;
@@ -152,12 +152,12 @@
   border: 1px solid rgba(124, 58, 237, 0.3);
 }
 
-/* Dismiss X — reuses .vellum-select-delete from marker.css, shrunk to fit
+/* Dismiss X — reuses .adnota-select-delete from marker.css, shrunk to fit
    the popup's smaller chrome (18px swatches/logo). 14px keeps the X in the
    same proportional relationship to its container as the dock's 16px X has
-   to the dock's 26-28px elements. Scoped to #vellum-quick-highlight to
-   beat .vellum-select-delete's base 20px on specificity. */
-#vellum-quick-highlight .vellum-qh-dismiss {
+   to the dock's 26-28px elements. Scoped to #adnota-quick-highlight to
+   beat .adnota-select-delete's base 20px on specificity. */
+#adnota-quick-highlight .adnota-qh-dismiss {
   width: 14px;
   height: 14px;
   font-size: 8px;

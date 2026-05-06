@@ -1,6 +1,6 @@
 /* content/sticky.css */
 
-.vellum-theme-yellow {
+.adnota-theme-yellow {
   --bg: #FBE6A1;
   --text: #7A5B15;
   --line: rgba(122, 91, 21, 0.15);
@@ -8,7 +8,7 @@
   --btn-bg: rgba(122, 91, 21, 0.08);
 }
 
-.vellum-theme-green {
+.adnota-theme-green {
   --bg: #B8F5B8;
   --text: #2A6A2A;
   --line: rgba(42, 106, 42, 0.15);
@@ -16,7 +16,7 @@
   --btn-bg: rgba(42, 106, 42, 0.08);
 }
 
-.vellum-theme-blue {
+.adnota-theme-blue {
   --bg: #A3DDFB;
   --text: #1C5A85;
   --line: rgba(28, 90, 133, 0.15);
@@ -24,7 +24,7 @@
   --btn-bg: rgba(28, 90, 133, 0.08);
 }
 
-.vellum-theme-pink {
+.adnota-theme-pink {
   --bg: #FFC0C8;
   --text: #9E1F2F;
   --line: rgba(158, 31, 47, 0.15);
@@ -32,7 +32,7 @@
   --btn-bg: rgba(158, 31, 47, 0.08);
 }
 
-.vellum-theme-white {
+.adnota-theme-white {
   --bg: #F5F5F0;
   --text: #3A3A3A;
   --line: rgba(58, 58, 58, 0.12);
@@ -40,20 +40,52 @@
   --btn-bg: rgba(58, 58, 58, 0.06);
 }
 
-.vellum-sticky-container {
+/* Fixed-position container for every sticky note. Lazily created on first
+   render. Mirrors #adnota-marker-overlay — same problem, same fix:
+   sticky containers used to be appended directly to <body> with
+   `position: absolute; top: <document-px>`. On normal scrolling pages this
+   was harmless (body absolute = document-anchored, scrolls with content for
+   free). On app shells (chatgpt.com, claude.ai, Notion) where body is
+   `overflow: hidden` and the real scroll happens in an inner container, a
+   note dropped near the bottom of a long conversation persisted with a
+   document-px top in the thousands. On reload, that body-appended note
+   inflated documentElement.scrollHeight on every site that doesn't strictly
+   clip — pulling a body-level scrollbar into existence and creating swathes
+   of empty whitespace. The fixed overlay keeps wrapper bounds out of
+   scrollHeight entirely; container coords are viewport-relative as a result
+   and re-computed on every scroll/resize via _resyncAllNotes(). */
+#adnota-sticky-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  overflow: visible;
+  /* Sit above committed markers (#adnota-marker-overlay at 2147483640) so a
+     sticky dropped on top of a drawing visibly stays on top. Stays below
+     .adnota-select-box (2147483644) so an active marker selection still
+     visibly outlines its target through an overlapping sticky, and below
+     #adnota-capture-canvas (2147483645) so a live in-progress draw paints
+     on top of stickies as you create it. */
+  z-index: 2147483642;
+}
+
+.adnota-sticky-container {
   position: absolute;
-  z-index: 2147483640;
-  /* High enough to be on top */
+  /* pointer-events restored: parent overlay disables them so the bare page is
+     interactive everywhere outside a note. */
+  pointer-events: auto;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   transition: opacity 0.2s ease;
 }
 
-html.vellum-hidden .vellum-sticky-container {
+html.adnota-hidden .adnota-sticky-container {
   opacity: 0 !important;
   pointer-events: none !important;
 }
 
-.vellum-sticky-card {
+.adnota-sticky-card {
   width: 260px;
   height: 140px;
   min-width: 160px;
@@ -72,7 +104,7 @@ html.vellum-hidden .vellum-sticky-container {
 }
 
 /* Custom 3-line slice Resizer for sticky note bottom corner */
-.vellum-sticky-card::-webkit-resizer {
+.adnota-sticky-card::-webkit-resizer {
   background-color: transparent;
   background-image: repeating-linear-gradient(135deg,
       transparent,
@@ -84,7 +116,7 @@ html.vellum-hidden .vellum-sticky-container {
   background-repeat: no-repeat;
 }
 
-.vellum-sticky-header {
+.adnota-sticky-header {
   height: 28px;
   display: flex;
   justify-content: space-between;
@@ -95,11 +127,11 @@ html.vellum-hidden .vellum-sticky-container {
   flex-shrink: 0;
 }
 
-.vellum-sticky-header:active {
+.adnota-sticky-header:active {
   cursor: grabbing;
 }
 
-.vellum-timestamp {
+.adnota-timestamp {
   font-size: 10px;
   font-family: inherit;
   letter-spacing: 0.01em;
@@ -109,7 +141,7 @@ html.vellum-hidden .vellum-sticky-container {
   line-height: 1;
 }
 
-.vellum-trash-btn {
+.adnota-trash-btn {
   background: none;
   border: none;
   cursor: pointer;
@@ -126,7 +158,7 @@ html.vellum-hidden .vellum-sticky-container {
   transition: opacity 0.15s, background 0.15s;
 }
 
-.vellum-trash-btn:hover {
+.adnota-trash-btn:hover {
   background: var(--btn-hover);
   opacity: 0.9;
 }
@@ -136,7 +168,7 @@ html.vellum-hidden .vellum-sticky-container {
    that would otherwise punch through a transparent, borderless card look with
    white backgrounds and rounded borders. `input[type]`/`textarea` also out-
    specifies our class selector (11 vs 10), so we can't rely on source order. */
-.vellum-sticky-textarea {
+.adnota-sticky-textarea {
   flex: 1;
   width: 100% !important;
   box-sizing: border-box !important;
@@ -157,16 +189,16 @@ html.vellum-hidden .vellum-sticky-container {
   font-weight: 500 !important;
 }
 
-.vellum-sticky-textarea:focus,
-.vellum-sticky-textarea:focus-visible,
-.vellum-sticky-textarea:active {
+.adnota-sticky-textarea:focus,
+.adnota-sticky-textarea:focus-visible,
+.adnota-sticky-textarea:active {
   outline: none !important;
   box-shadow: none !important;
   border: none !important;
   background: transparent !important;
 }
 
-.vellum-sticky-textarea::placeholder {
+.adnota-sticky-textarea::placeholder {
   color: var(--text);
   opacity: 0.6;
 }
@@ -174,8 +206,8 @@ html.vellum-hidden .vellum-sticky-container {
 /* Tag row — one thin line at the bottom of each note. Matches the header's
    28px height for top/bottom symmetry around the textarea. Autocomplete
    dropdown is positioned by JS (lib/tagIndex.js) and styled by
-   lib/vellumUI.css. */
-.vellum-sticky-tag-row {
+   lib/adnotaUI.css. */
+.adnota-sticky-tag-row {
   display: flex;
   align-items: center;
   gap: 4px;
@@ -185,7 +217,7 @@ html.vellum-hidden .vellum-sticky-container {
   height: 28px;
 }
 
-.vellum-sticky-tag-icon {
+.adnota-sticky-tag-icon {
   font-size: 11px;
   font-weight: 700;
   color: var(--text);
@@ -194,7 +226,7 @@ html.vellum-hidden .vellum-sticky-container {
   line-height: 1;
 }
 
-.vellum-sticky-tag-input {
+.adnota-sticky-tag-input {
   flex: 1;
   min-width: 0;
   background: transparent !important;
@@ -215,22 +247,22 @@ html.vellum-hidden .vellum-sticky-container {
 /* Same host-site bleed guard the textarea carries: some sites apply a blue
    focus ring to every input in their stylesheet and it leaks through unless
    we pin these with !important. */
-.vellum-sticky-tag-input:focus,
-.vellum-sticky-tag-input:focus-visible,
-.vellum-sticky-tag-input:active {
+.adnota-sticky-tag-input:focus,
+.adnota-sticky-tag-input:focus-visible,
+.adnota-sticky-tag-input:active {
   outline: none !important;
   box-shadow: none !important;
   border: none !important;
   background: transparent !important;
 }
 
-.vellum-sticky-tag-input::placeholder {
+.adnota-sticky-tag-input::placeholder {
   color: var(--text);
   opacity: 0.4;
 }
 
 /* ─── Sticky note icon swatches ─── */
-.vellum-sticky-swatch {
+.adnota-sticky-swatch {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -243,23 +275,23 @@ html.vellum-hidden .vellum-sticky-container {
   flex-shrink: 0;
 }
 
-.vellum-sticky-swatch:hover {
+.adnota-sticky-swatch:hover {
   background: rgba(245, 158, 11, 0.15);
 }
 
-.vellum-sticky-swatch.active {
+.adnota-sticky-swatch.active {
   background: rgba(245, 158, 11, 0.25);
   box-shadow: 0 0 0 1px rgba(245, 158, 11, 0.5);
 }
 
-/* ─── Vellum Toast — brand-consistent across all tools ───
+/* ─── Adnota Toast — brand-consistent across all tools ───
    Animation matches the Home page toast (pages/sites.css .toast): slide up
-   20px + fade in on entrance, reverse on exit, both 0.2s. The .vellum-toast
-   -visible class is toggled by VellumUI.showToast (rAF on insert) and
-   VellumUI.dismissToast (removed, then element is removed after the
+   20px + fade in on entrance, reverse on exit, both 0.2s. The .adnota-toast
+   -visible class is toggled by AdnotaUI.showToast (rAF on insert) and
+   AdnotaUI.dismissToast (removed, then element is removed after the
    transition). Initial state below is the "off-screen" state so the
    element animates in cleanly on its first paint. */
-.vellum-toast {
+.adnota-toast {
   position: fixed;
   bottom: 96px;
   left: 50%;
@@ -272,7 +304,11 @@ html.vellum-hidden .vellum-sticky-container {
   min-height: 52px;
   max-width: 540px;
   border-radius: 12px;
-  overflow: hidden;                                         /* clips the actions section flush */
+  /* overflow stays visible so the corner dismiss X (.adnota-toast-dismiss)
+     can overhang at top:-7px/right:-7px to match the dock's affordance.
+     Children (logo, message, actions) are smaller than the toast and the
+     buttons inside .adnota-toast-actions carry their own border-radius, so
+     none of them bleed past the rounded corners. */
   background: linear-gradient(135deg, #12082b 0%, #0c0519 100%);
   border: 1px solid rgba(124, 58, 237, 0.3);
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(124, 58, 237, 0.08);
@@ -281,18 +317,18 @@ html.vellum-hidden .vellum-sticky-container {
   pointer-events: none;
 }
 
-.vellum-toast-visible {
+.adnota-toast-visible {
   opacity: 1;
   transform: translateX(-50%) translateY(0);
   pointer-events: auto;
 }
 
 /* V logo chip — matches the popup brand monogram exactly */
-.vellum-toast-logo {
+.adnota-toast-logo {
   width: 28px;
   height: 28px;
   border-radius: 7px;
-  background: linear-gradient(135deg, #7c3aed 0%, #4f46e5 100%);
+  background: var(--adnota-brand-gradient);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -308,7 +344,7 @@ html.vellum-hidden .vellum-sticky-container {
 }
 
 /* Message — sits to the right of the logo, fills available width */
-.vellum-toast-message {
+.adnota-toast-message {
   flex: 1;
   color: rgba(255, 255, 255, 0.88);
   font-size: 13px;
@@ -321,7 +357,7 @@ html.vellum-hidden .vellum-sticky-container {
 }
 
 /* Actions section — transparent, buttons carry their own gradient */
-.vellum-toast-actions {
+.adnota-toast-actions {
   display: flex;
   align-items: center;
   gap: 6px;
@@ -331,7 +367,7 @@ html.vellum-hidden .vellum-sticky-container {
 }
 
 /* Action buttons — subtle purple gradient pill */
-.vellum-toast-btn {
+.adnota-toast-btn {
   color: rgba(255, 255, 255, 0.95);
   font-size: 12px;
   font-weight: 600;
@@ -347,13 +383,13 @@ html.vellum-hidden .vellum-sticky-container {
   white-space: nowrap;
 }
 
-.vellum-toast-btn:hover {
+.adnota-toast-btn:hover {
   background: linear-gradient(135deg, rgba(124, 58, 237, 0.8) 0%, rgba(79, 70, 229, 0.8) 100%);
   border-color: rgba(124, 58, 237, 0.7);
 }
 
-/* .vellum-toast-undo: kept for JS querySelector compatibility — same style as .vellum-toast-btn */
-.vellum-toast-undo {
+/* .adnota-toast-undo: kept for JS querySelector compatibility — same style as .adnota-toast-btn */
+.adnota-toast-undo {
   color: rgba(255, 255, 255, 0.95);
   font-size: 12px;
   font-weight: 600;
@@ -368,7 +404,31 @@ html.vellum-hidden .vellum-sticky-container {
   white-space: nowrap;
 }
 
-.vellum-toast-undo:hover {
+.adnota-toast-undo:hover {
   background: linear-gradient(135deg, rgba(124, 58, 237, 0.8) 0%, rgba(79, 70, 229, 0.8) 100%);
   border-color: rgba(124, 58, 237, 0.7);
+}
+
+/* Dismiss X — every Adnota surface gets one ("we never get in your way").
+   Reuses .adnota-select-delete from marker.css (same red circle as the
+   marker delete and dock dismiss). Overhangs the top-right corner exactly
+   like #adnota-dock .adnota-dock-dismiss does — same shape, same
+   affordance, instantly recognizable. Always visible (no hover reveal) —
+   the toast is itself ephemeral, so an always-on X is more honest than
+   hiding the dismiss path until hover.
+
+   Scoped with the parent .adnota-toast class to bump specificity to (0,2,0)
+   so it wins on specificity alone over .adnota-select-delete (0,1,0) in
+   marker.css. With the descendant selector, source order doesn't matter —
+   specificity is the only thing that does. */
+.adnota-toast .adnota-toast-dismiss {
+  /* Match the dock's compact dismiss exactly — same dimensions, same
+     overhang. .adnota-select-delete's base top:-10px / right:-10px would
+     overhang too far for a small ephemeral surface; -7px is the sweet
+     spot the dock has already converged on. */
+  width: 16px;
+  height: 16px;
+  font-size: 8px;
+  top: -7px;
+  right: -7px;
 }

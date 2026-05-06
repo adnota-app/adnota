@@ -1,5 +1,7 @@
 // background.js
 
+importScripts('lib/log.js');
+
 // ─── Badge helpers ────────────────────────────────────────────────────────────
 
 /**
@@ -51,19 +53,39 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
   }
 });
 
-// Storage changes (annotation added or removed) — re-sync badge for the active tab.
-chrome.storage.onChanged.addListener(async (changes, area) => {
+// Storage changes (annotation added or removed) — re-sync badge for the active
+// tab. Trailing-debounced so a fast burst of writes (a long pencil stroke
+// auto-saving, drag-to-move re-anchoring, the autosave debounce flushing)
+// collapses to one chrome.tabs.query instead of one per write. Adnota's own
+// pref keys are all camelCase `adnota*`; domain keys are bare hostnames — so
+// pref-only changes (debug-log toggle, dock position, active mode, etc.)
+// short-circuit before scheduling any work.
+let pendingBadgeUpdate = null;
+
+chrome.storage.onChanged.addListener((changes, area) => {
   if (area !== 'local') return;
-  try {
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    if (tab?.url) await updateBadgeForTab(tab.id, tab.url);
-  } catch { }
+
+  let hasDomainKey = false;
+  for (const key in changes) {
+    if (!key.startsWith('adnota')) { hasDomainKey = true; break; }
+  }
+  if (!hasDomainKey) return;
+
+  if (pendingBadgeUpdate) clearTimeout(pendingBadgeUpdate);
+  pendingBadgeUpdate = setTimeout(async () => {
+    pendingBadgeUpdate = null;
+    try {
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      if (tab?.url) await updateBadgeForTab(tab.id, tab.url);
+    } catch { }
+  }, 150);
 });
 
 // ─── Keyboard command relay ───────────────────────────────────────────────────
 
 chrome.commands.onCommand.addListener((command, tab) => {
-  if (tab.id && (command === 'toggle-eraser' || command === 'toggle-sticky' || command === 'toggle-highlighter' || command === 'toggle-view' || command === 'toggle-resizer')) {
+  AdnotaLog.event('bg', 'cmd', { command, tabId: tab && tab.id });
+  if (tab.id && (command === 'toggle-dock' || command === 'toggle-view')) {
     chrome.tabs.sendMessage(tab.id, { action: command }).catch(() => {
       // Ignore errors if content script unavailable on this page.
     });
@@ -76,11 +98,13 @@ chrome.commands.onCommand.addListener((command, tab) => {
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.action === 'open-sites') {
+    AdnotaLog.event('bg', 'open-sites', { fromTab: sender.tab && sender.tab.id });
     chrome.tabs.create({ url: chrome.runtime.getURL('pages/sites.html') });
     return;
   }
 
   if (msg.action === 'relay-to-tab' && sender.tab?.id && msg.payload?.action) {
+    AdnotaLog.event('bg', 'relay', { tabId: sender.tab.id, payload: msg.payload });
     chrome.tabs.sendMessage(sender.tab.id, { action: msg.payload.action }).catch(() => {});
     return;
   }
