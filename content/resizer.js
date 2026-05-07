@@ -445,9 +445,8 @@ function selectElement(el) {
   selectionChipCluster.setAttribute('data-adnota-ui', '1');
   Object.assign(selectionChipCluster.style, {
     position: 'absolute',
-    top: '-2px',
-    right: '16px',
-    transform: 'translateY(-50%)',
+    top: '4px',
+    right: '32px',
     display: 'flex',
     gap: '4px',
     alignItems: 'center',
