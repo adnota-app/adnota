@@ -13,9 +13,8 @@ const overlayBadgeRow = document.createElement('div');
 overlayBadgeRow.setAttribute('data-adnota-ui', '1');
 Object.assign(overlayBadgeRow.style, {
   position: 'absolute',
-  top: '-2px',
-  right: '-3px',
-  transform: 'translateY(-50%)',
+  top: '4px',
+  right: '4px',
   display: 'inline-flex',
   alignItems: 'center',
   gap: '4px',
