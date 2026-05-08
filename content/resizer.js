@@ -704,6 +704,24 @@ function startDrag(e, axis) {
     apply('overflow', savedInline.overflow);
   };
 
+  // Shrink with max-height, grow with height. Pages like bing.com use
+  // `top: calc(100% - <rem>)` on descendants of an auto-height container; the
+  // descendants' percentage resolves to ~0 while the container is auto, but
+  // jumps to the container's full height the moment we pin it with `height:
+  // <px>` — flinging children thousands of pixels off-screen. max-height keeps
+  // the container's height "indefinite" for percentage resolution, so shrinking
+  // doesn't trigger that jump. Growing past natural size still requires `height`.
+  const applyHeight = (newH) => {
+    if (newH <= startHeight) {
+      selectedEl.style.removeProperty('height');
+      selectedEl.style.setProperty('max-height', newH + 'px', 'important');
+    } else {
+      selectedEl.style.removeProperty('max-height');
+      selectedEl.style.setProperty('height', newH + 'px', 'important');
+    }
+    selectedEl.style.setProperty('min-height', '0', 'important');
+  };
+
   // Add a full-viewport overlay to capture all mouse events during drag
   const dragOverlay = document.createElement('div');
   dragOverlay.id = 'adnota-resizer-drag-overlay';
@@ -754,9 +772,7 @@ function startDrag(e, axis) {
     if (axis === 'y' || axis === 'xy') {
       // Bottom handle: grow/shrink from the bottom edge, top edge pinned.
       const newH = Math.max(0, startHeight + dy);
-      selectedEl.style.setProperty('height', newH + 'px', 'important');
-      selectedEl.style.setProperty('min-height', '0', 'important');
-      selectedEl.style.setProperty('max-height', 'none', 'important');
+      applyHeight(newH);
       selectedEl.style.setProperty('margin-top', startMarginTop + 'px', 'important');
     }
     if (axis === 'y-top') {
@@ -764,9 +780,7 @@ function startDrag(e, axis) {
       // margin-top compensation — mirrors the left-handle math.
       const newH = Math.max(0, startHeight - dy);
       const heightDelta = newH - startHeight;
-      selectedEl.style.setProperty('height', newH + 'px', 'important');
-      selectedEl.style.setProperty('min-height', '0', 'important');
-      selectedEl.style.setProperty('max-height', 'none', 'important');
+      applyHeight(newH);
       selectedEl.style.setProperty('margin-top', (startMarginTop - heightDelta) + 'px', 'important');
     }
 
@@ -813,19 +827,23 @@ function startDrag(e, axis) {
       cssParts.push(`max-width: none !important`);
       cssParts.push(`margin-left: ${startMarginLeft - widthDelta}px !important`);
     }
+    const pushHeight = (newH) => {
+      if (newH <= startHeight) {
+        cssParts.push(`max-height: ${newH}px !important`);
+      } else {
+        cssParts.push(`height: ${newH}px !important`);
+      }
+      cssParts.push(`min-height: 0 !important`);
+    };
     if (axis === 'y' || axis === 'xy') {
       const newH = Math.max(0, startHeight + dy);
-      cssParts.push(`height: ${newH}px !important`);
-      cssParts.push(`min-height: 0 !important`);
-      cssParts.push(`max-height: none !important`);
+      pushHeight(newH);
       cssParts.push(`margin-top: ${startMarginTop}px !important`);
     }
     if (axis === 'y-top') {
       const newH = Math.max(0, startHeight - dy);
       const heightDelta = newH - startHeight;
-      cssParts.push(`height: ${newH}px !important`);
-      cssParts.push(`min-height: 0 !important`);
-      cssParts.push(`max-height: none !important`);
+      pushHeight(newH);
       cssParts.push(`margin-top: ${startMarginTop - heightDelta}px !important`);
     }
 
