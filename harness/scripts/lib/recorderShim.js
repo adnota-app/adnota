@@ -1,0 +1,156 @@
+// Injected via page.addInitScript at every navigation. Runs in the page's main
+// world, so it cannot see the extension's content-script globals (FuzzyAnchor
+// lives in the isolated world). Selector generation is therefore inlined here
+// rather than reusing the extension's helper.
+//
+// Events stream out via console.log with the [ADNOTA_RECORD] prefix; the Node
+// side listens via page.on('console'). This survives in-page navigations
+// without any cross-page state.
+
+(() => {
+  if (window.__adnotaRecorderInstalled) return;
+  window.__adnotaRecorderInstalled = true;
+
+  const PREFIX = '[ADNOTA_RECORD]';
+
+  // ─── In-page recording indicator ──────────────────────────────────────────
+  // Tiny red pill top-left so the user can see at a glance that recording is
+  // live, and watch it pulse on every meaningful event.
+  const indicator = document.createElement('div');
+  indicator.id = '__adnota-record-indicator';
+  Object.assign(indicator.style, {
+    position: 'fixed', top: '12px', left: '12px', zIndex: '2147483647',
+    background: 'rgba(220, 38, 38, 0.92)', color: '#fff',
+    padding: '4px 10px', borderRadius: '999px',
+    font: '600 11px/1 ui-monospace,monospace',
+    pointerEvents: 'none', userSelect: 'none',
+    boxShadow: '0 2px 6px rgba(0,0,0,0.35)',
+    transition: 'transform 120ms',
+  });
+  indicator.textContent = '● REC';
+  const attach = () => { if (document.body && !document.body.contains(indicator)) document.body.appendChild(indicator); };
+  if (document.body) attach();
+  else document.addEventListener('DOMContentLoaded', attach, { once: true });
+
+  let pingTimer = null;
+  function pingIndicator() {
+    if (!indicator.isConnected) attach();
+    indicator.style.transform = 'scale(1.15)';
+    clearTimeout(pingTimer);
+    pingTimer = setTimeout(() => { indicator.style.transform = 'scale(1)'; }, 120);
+  }
+
+  const send = (type, data) => {
+    try {
+      if (type !== 'pointermove') pingIndicator();
+      console.log(PREFIX + JSON.stringify({ type, data, t: Date.now() }));
+    } catch {
+      // Some payloads can include unrepresentable values; we never put DOM
+      // nodes in data, so swallow the safety net rather than spam errors.
+    }
+  };
+
+  // ─── Selector generator (self-contained, no extension deps) ────────────────
+  // Same priority order as the extension's FuzzyAnchor.generateCSSSelector but
+  // without its scoring rig. Adnota UI surfaces are recognized so they emit
+  // semantic selectors (data-tool-id, handle classes) rather than structural
+  // paths.
+  function selectorFor(el) {
+    if (!el || el.nodeType !== 1) return null;
+
+    const dockBtn = el.closest('[data-tool-id]');
+    if (dockBtn) return `[data-tool-id="${dockBtn.dataset.toolId}"]`;
+
+    const handle = el.closest('[class^="adnota-resizer-handle-"], [class*=" adnota-resizer-handle-"]');
+    if (handle) {
+      const m = handle.className.match(/adnota-resizer-handle-(left|right|top|bottom|corner)/);
+      if (m) return `.adnota-resizer-handle-${m[1]}`;
+    }
+
+    if (el.id && /^[A-Za-z][\w-]*$/.test(el.id) && document.querySelectorAll('#' + cssEscape(el.id)).length === 1) {
+      return '#' + el.id;
+    }
+
+    const classes = [...(el.classList || [])].filter(c => /^[A-Za-z][\w-]+$/.test(c) && c.length < 40 && !c.startsWith('css-'));
+    if (classes.length) {
+      const sel = el.tagName.toLowerCase() + '.' + classes.join('.');
+      if (document.querySelectorAll(sel).length === 1) return sel;
+    }
+
+    const parts = [];
+    let cur = el;
+    let depth = 0;
+    while (cur && cur.nodeType === 1 && cur !== document.body && cur !== document.documentElement && depth < 8) {
+      const parent = cur.parentElement;
+      if (!parent) break;
+      if (parent.id && /^[A-Za-z][\w-]*$/.test(parent.id)) {
+        const idx = [...parent.children].indexOf(cur) + 1;
+        parts.unshift(`#${parent.id} > ${cur.tagName.toLowerCase()}:nth-child(${idx})`);
+        return parts.join(' > ').replace(/^.*?(#[\w-]+ )/, '$1');
+      }
+      const idx = [...parent.children].indexOf(cur) + 1;
+      parts.unshift(`${cur.tagName.toLowerCase()}:nth-child(${idx})`);
+      cur = parent;
+      depth++;
+    }
+    return parts.join(' > ');
+  }
+
+  function cssEscape(s) {
+    return CSS.escape ? CSS.escape(s) : s.replace(/[^\w-]/g, '\\$&');
+  }
+
+  // ─── Event capture ─────────────────────────────────────────────────────────
+  // All listeners run in capture phase + passive so we observe events without
+  // interfering with any handlers downstream.
+
+  let lastMove = 0;
+  window.addEventListener('pointermove', (e) => {
+    const now = e.timeStamp;
+    if (now - lastMove < 60) return;
+    lastMove = now;
+    send('pointermove', { x: e.clientX, y: e.clientY, sel: selectorFor(e.target) });
+  }, { capture: true, passive: true });
+
+  window.addEventListener('pointerdown', (e) => {
+    send('pointerdown', {
+      x: e.clientX, y: e.clientY, button: e.button,
+      sel: selectorFor(e.target),
+      shift: e.shiftKey, alt: e.altKey, ctrl: e.ctrlKey, meta: e.metaKey,
+    });
+  }, { capture: true, passive: true });
+
+  window.addEventListener('pointerup', (e) => {
+    send('pointerup', {
+      x: e.clientX, y: e.clientY, button: e.button,
+      sel: selectorFor(e.target),
+    });
+  }, { capture: true, passive: true });
+
+  window.addEventListener('keydown', (e) => {
+    if (['Shift', 'Control', 'Alt', 'Meta'].includes(e.key)) return;
+    const inField = e.target && /^(INPUT|TEXTAREA)$/.test(e.target.tagName);
+    send('keydown', {
+      key: e.key,
+      shift: e.shiftKey, alt: e.altKey, ctrl: e.ctrlKey, meta: e.metaKey,
+      inField,
+      sel: selectorFor(e.target),
+    });
+  }, { capture: true, passive: true });
+
+  // ─── Stop sentinel (Alt+Shift+S) ──────────────────────────────────────────
+  // Provides a stop signal that doesn't fight Node's SIGINT handlers. We use a
+  // non-passive listener so we can preventDefault and keep the host page from
+  // seeing the combo.
+  window.addEventListener('keydown', (e) => {
+    if (e.altKey && e.shiftKey && (e.key === 's' || e.key === 'S')) {
+      e.preventDefault();
+      e.stopPropagation();
+      indicator.textContent = '● saved';
+      indicator.style.background = 'rgba(34, 197, 94, 0.92)';
+      send('stop', {});
+    }
+  }, { capture: true });
+
+  send('init', { url: location.href, viewport: { w: innerWidth, h: innerHeight } });
+})();

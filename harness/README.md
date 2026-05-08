@@ -5,6 +5,24 @@ scripts a sequence of user-level operations against a real site, captures the
 resulting world state, and pins it. Subsequent runs replay the same ops against
 the current extension code and diff against the pinned outcome.
 
+## Quick start
+
+```
+# 1. CREATE a fixture by recording yourself reproducing the (now-fixed) bug.
+#    Browser opens; do the workflow; stop with Alt+Shift+S in the browser
+#    (or Ctrl+C in the terminal). Writes ops.json + outcomes.json.
+node scripts/record.js --site=<id> --url='<url>'
+
+# 2. WATCH a fixture replay (visual confirmation that ops still pass).
+node scripts/replay.js --site=<id>
+
+# 3. RUN the whole regression suite (every fixture in sites.json).
+#    Exits 0 if all pass, 1 on any drift, 2 on setup error.
+node scripts/replay.js
+```
+
+Quote the URL — zsh treats `?` and `&` as special.
+
 ## Layout
 
 ```
@@ -39,16 +57,32 @@ headless mode.
 
 ## Running
 
-Capture (writes / overwrites `outcomes.json`):
+`record.js` opens a real browser and watches your interactions. A red `● REC`
+pill in the top-left of the page confirms the recorder is live and pulses on
+each meaningful event. When you're done, press **Alt+Shift+S** inside the
+browser (preferred — doesn't go through OS signal handling), or **Ctrl+C** in
+the terminal as a backup. The pill flips to green `● saved` on Alt+Shift+S.
+
+The recorder writes `ops.json` from your interactions and then automatically
+runs capture so `outcomes.json` is pinned in the same step. Add `--no-capture`
+to review `ops.json` before pinning.
+
+Re-pin the baseline for an existing fixture:
 
 ```
-node scripts/capture.js --site=bing
+node scripts/capture.js --site=<id>
 ```
 
-Replay (diffs against pinned `outcomes.json`, exit 1 on drift):
+Replay one fixture (diffs against pinned `outcomes.json`, exit 1 on drift):
 
 ```
-node scripts/replay.js --site=bing
+node scripts/replay.js --site=<id>
+```
+
+Replay every fixture (the full suite — same as `--site=all`):
+
+```
+node scripts/replay.js
 ```
 
 ## Op vocabulary
@@ -103,9 +137,43 @@ strings before write so per-run nondeterminism doesn't show up as drift.
 
 ## Adding a site
 
+The recorded path (preferred):
+
+```
+node scripts/record.js --site=<id> --url='<url>'
+```
+
+This adds the entry to `sites.json`, writes `ops.json` from your live
+interactions, and runs capture to produce `outcomes.json`. Hand-author a
+`notes.md` linking the commit/PR this pinning protects.
+
+The hand-authored path:
+
 1. Create `fixtures/<id>/ops.json` with the op script and invariants.
 2. Add `{ "id": "<id>", "fixture": "fixtures/<id>" }` to `sites.json`.
 3. Run `node scripts/capture.js --site=<id>` to write `outcomes.json`.
 4. Sanity-check the captured state, then write a `notes.md` linking to the
    commit/PR this pinning protects.
 5. Commit all three artifacts together.
+
+## How recording works
+
+`record.js` injects a small shim into every page via Playwright's
+`addInitScript`. The shim listens to `pointermove` / `pointerdown` /
+`pointerup` / `keydown` in capture phase and streams each event to stdout via
+`console.log` with an `[ADNOTA_RECORD]` prefix. The Node side captures the
+stream via `context.on('console')` so events survive in-page navigations.
+
+The reducer (`lib/reduceRecording.js`) walks the raw stream and emits the
+typed op vocabulary:
+
+- A click on a `[data-tool-id="X"]` dock button → `activateTool`
+- A pointerdown on `.adnota-resizer-handle-<axis>` with travel → `dragHandle`
+- A short click on a non-Adnota element → `hoverElement` + `clickToSelect`,
+  with the selector taken from the most recent pre-click hover (matches the
+  resizer's own `hoveredEl` semantics)
+
+Anything outside those patterns is dropped with a warning so you can
+hand-edit `ops.json` for the long tail. `domInvariants[]` is always written
+as an empty array — invariants are still authored by hand because they're
+the part that says *why* the captured state means "bug fixed".

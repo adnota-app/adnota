@@ -98,6 +98,22 @@ async function runOne(page, op) {
       return;
     }
 
+    case 'pressKey': {
+      // Translate our recorder's pressKey shape into Playwright's keyboard.press
+      // syntax (e.g., "Alt+a", "Control+z", "Escape").
+      let combo = '';
+      if (op.alt)   combo += 'Alt+';
+      if (op.ctrl)  combo += 'Control+';
+      if (op.meta)  combo += 'Meta+';
+      if (op.shift) combo += 'Shift+';
+      combo += op.key.length === 1 ? op.key : op.key;
+      await page.keyboard.press(combo);
+      // Tool activations and dock toggles trigger overlays/state changes;
+      // give them a frame to settle before the next op.
+      await page.waitForTimeout(150);
+      return;
+    }
+
     default:
       throw new Error(`Unknown op type: ${op.type}`);
   }
