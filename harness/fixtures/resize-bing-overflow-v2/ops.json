@@ -1,0 +1,49 @@
+{
+  "url": "https://www.bing.com",
+  "viewport": {
+    "width": 1280,
+    "height": 900
+  },
+  "settleMs": 2500,
+  "postSettleMs": 400,
+  "ops": [
+    {
+      "type": "waitForDock"
+    },
+    {
+      "type": "activateTool",
+      "tool": "resizer"
+    },
+    {
+      "type": "hoverElement",
+      "selector": "div.mc_caro.five_col"
+    },
+    {
+      "type": "clickToSelect"
+    },
+    {
+      "type": "dragHandle",
+      "handle": "top",
+      "dx": 2,
+      "dy": 26
+    },
+    {
+      "type": "activateTool",
+      "tool": "resizer"
+    },
+    {
+      "type": "hoverElement",
+      "selector": "#trending_now_tile > li:nth-child(3) > a:nth-child(1) > span:nth-child(1) > h2:nth-child(1)"
+    },
+    {
+      "type": "clickToSelect"
+    },
+    {
+      "type": "dragHandle",
+      "handle": "right",
+      "dx": -58,
+      "dy": -3
+    }
+  ],
+  "domInvariants": []
+}

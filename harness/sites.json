@@ -1,5 +1,16 @@
 {
   "sites": [
-    { "id": "bing", "fixture": "fixtures/bing" }
+    {
+      "id": "bing",
+      "fixture": "fixtures/bing"
+    },
+    {
+      "id": "resize-bing-overflow",
+      "fixture": "fixtures/resize-bing-overflow"
+    },
+    {
+      "id": "resize-bing-overflow-v2",
+      "fixture": "fixtures/resize-bing-overflow-v2"
+    }
   ]
 }
