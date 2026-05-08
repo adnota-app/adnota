@@ -17,10 +17,11 @@ const MIN_HEIGHT = 60;
 const hoverOverlay = window.AdnotaUI.createHoverOverlay('adnota-resizer-overlay', '#3b82f6', 'rgba(59, 130, 246, 0.09)');
 
 // ─── Hover chip cluster (top-right corner of hover outline) ─────────────────
-// Two chips share a flex cluster pinned at the overlay's top-right. The
-// dimension badge is read-only; the action chip surfaces structural overrides
-// (currently: unstick / restick for sticky+fixed elements) and is the only
-// clickable hit zone inside the otherwise pointer-events:none overlay.
+// Three chips share a flex cluster pinned at the overlay's top-right. The
+// dimension badge is read-only; the action chips surface structural overrides
+// (unstick / restick for sticky+fixed elements, finite scroll / infinite scroll
+// for tall growing containers) and are the only clickable hit zones inside the
+// otherwise pointer-events:none overlay.
 const chipCluster = document.createElement('div');
 chipCluster.className = 'adnota-resizer-hover-chips';
 chipCluster.setAttribute('data-adnota-ui', '1');
@@ -34,6 +35,16 @@ actionChip.className = 'adnota-resizer-action-chip';
 actionChip.setAttribute('data-adnota-ui', '1');
 actionChip.style.display = 'none';
 chipCluster.appendChild(actionChip);
+
+// Infinite-scroll chip — caps the element's height and clips overflow so the
+// page stops growing as the user scrolls. Hidden unless the hovered element
+// is taller than the viewport (the only case where capping shortens anything)
+// or already has our finite-scroll override applied. Click toggles.
+const infiniteChip = document.createElement('div');
+infiniteChip.className = 'adnota-resizer-action-chip';
+infiniteChip.setAttribute('data-adnota-ui', '1');
+infiniteChip.style.display = 'none';
+chipCluster.appendChild(infiniteChip);
 
 // Dimension badge — shows current W×H in pixels. Reuses the selection chip's
 // styling so hover and selected states share the same visual readout.
@@ -71,6 +82,7 @@ const resizerHelpBtn = window.AdnotaUI.createHelpButton({
     '<span style="color:#94a3b8"><span style="background:rgba(59,130,246,0.25);color:#93c5fd;padding:1px 4px;border-radius:3px;font-size:11px;font-weight:600;margin-right:4px">⇧+Scroll ↑↓</span>to <span style="color:#e4e4e7;font-weight:600">traverse DOM</span> (select parents/children)</span>',
     '<span style="color:#94a3b8">Drag any <span style="color:#93c5fd;font-weight:600">blue handle</span> to resize from that edge</span>',
     '<span style="color:#94a3b8">Hover a sticky bar → click <span style="color:#fbbf24;font-weight:600">unstick</span> to stop it following you</span>',
+    '<span style="color:#94a3b8">Hover an infinite feed → click <span style="color:#fbbf24;font-weight:600">finite scroll</span> to give it an end</span>',
     '<span style="color:#94a3b8">Click the <span style="color:#93c5fd;font-weight:600">↺</span> to completely reset this element</span>',
     '<span style="color:#94a3b8">Press <span style="background:rgba(59,130,246,0.25);color:#93c5fd;padding:1px 4px;border-radius:3px;font-size:11px;font-weight:600;margin-right:2px">Esc</span> to exit any tool</span>',
   ],
@@ -107,7 +119,7 @@ function setHudVisible(visible) {
 
 // Render the info section based on current hover/selection.
 function updateHUD() {
-  const dot = '<span style="color:#525264;margin:0 8px">\u00b7</span>';
+  const dot = '<span style="color:#525264;margin:0 8px">·</span>';
   let html = '';
 
   if (selectedEl) {
@@ -116,7 +128,7 @@ function updateHUD() {
     // the action hint here.
     html += `<span style="color:#6ee7b7">Selected</span>`;
     html += dot;
-    html += `<span style="color:#94a3b8">Drag a handle to resize \u00b7 <span style="color:#93c5fd">\u21BA</span> to reset</span>`;
+    html += `<span style="color:#94a3b8">Drag a handle to resize · <span style="color:#93c5fd">↺</span> to reset</span>`;
     resizerHudInfo.innerHTML = html;
     return;
   }
@@ -124,7 +136,7 @@ function updateHUD() {
   if (hoveredEl) {
     // Dimension is shown on the hover overlay’s top-right badge, so the
     // HUD info area only needs the scroll hint.
-    html += `<span style="color:#94a3b8"><span style="background:rgba(59,130,246,0.25);color:#93c5fd;padding:1px 4px;border-radius:3px;font-size:11px;font-weight:600;margin-right:4px">\u21e7+Scroll \u2191\u2193</span>to walk the DOM</span>`;
+    html += `<span style="color:#94a3b8"><span style="background:rgba(59,130,246,0.25);color:#93c5fd;padding:1px 4px;border-radius:3px;font-size:11px;font-weight:600;margin-right:4px">⇧+Scroll ↑↓</span>to walk the DOM</span>`;
     resizerHudInfo.innerHTML = html;
     return;
   }
@@ -137,7 +149,8 @@ let hoveredEl = null;
 let selectedEl = null;
 let rawHoveredEl = null;   // the actual element under the cursor (before bubble-up)
 let traverseDepth = 0;     // 0 = natural bubble-up target, >0 = walked up N parents
-let hoveredHasUnstickOverride = false;  // current chip state — drives apply vs remove on click
+let hoveredHasUnstickOverride = false;        // unstick chip state — drives apply vs remove on click
+let hoveredHasFiniteScrollOverride = false;   // finite-scroll chip state — same role for the second chip
 
 // ─── Handle elements ─────────────────────────────────────────────────────────
 let handleLeft = null;
@@ -149,6 +162,7 @@ let selectionBox = null;
 let dismissBtn = null;
 let selectionDimBadge = null;
 let selectionActionChip = null;
+let selectionInfiniteChip = null;
 let selectionChipCluster = null;
 
 // ─── Drag state ──────────────────────────────────────────────────────────────
@@ -329,6 +343,18 @@ function hasUnstickOverride(selector) {
   return false;
 }
 
+// Is there a finite-scroll override currently in the live Map for this
+// selector? Detected by `overflow: hidden` in the cssText — the unique
+// signature of finite-scroll rules in this codebase (drag-resize and unstick
+// don't touch overflow). Used to flip the chip label between `finite scroll`
+// and `infinite scroll`.
+function hasFiniteScrollOverride(selector) {
+  for (const [, rule] of window.AdnotaResizeRules) {
+    if (rule.selector === selector && rule.cssText.includes('overflow: hidden')) return true;
+  }
+  return false;
+}
+
 // ─── Selection: show drag handles around an element ──────────────────────────
 function selectElement(el) {
   window.AdnotaLog?.event('resizer', 'select', { el: window.AdnotaLog.el(el) });
@@ -408,12 +434,12 @@ function selectElement(el) {
   });
   document.documentElement.appendChild(dismissBtn);
 
-  // Selection chip cluster — flex row holding the action chip (left) and the
+  // Selection chip cluster — flex row holding the action chips (left) and the
   // dimension badge (right). Sits just to the left of the dismiss button
   // (16px right offset = dismiss button's 10px outdent + 6px gap), entirely
   // above the top edge to mirror the hover chip's placement. Mirrors the
   // hover state's cluster so users get the same chip surface in both modes.
-  // The selection-state chip exists specifically so the user can pin a
+  // The selection-state chips exist specifically so the user can pin a
   // hard-to-hover sticky bar with a click, then move the cursor freely to
   // reach the chip without losing the hover state.
   selectionDimBadge = document.createElement('div');
@@ -441,6 +467,22 @@ function selectElement(el) {
     updateSelectionChip();
   });
 
+  selectionInfiniteChip = document.createElement('div');
+  selectionInfiniteChip.className = 'adnota-resizer-action-chip';
+  selectionInfiniteChip.setAttribute('data-adnota-ui', '1');
+  selectionInfiniteChip.style.display = 'none';
+  selectionInfiniteChip.addEventListener('click', async (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!selectedEl) return;
+    if (selectionInfiniteChip._isOverridden) {
+      await removeFiniteScrollRule(selectedEl);
+    } else {
+      await applyFiniteScrollRule(selectedEl);
+    }
+    updateSelectionChip();
+  });
+
   selectionChipCluster = document.createElement('div');
   selectionChipCluster.setAttribute('data-adnota-ui', '1');
   Object.assign(selectionChipCluster.style, {
@@ -453,6 +495,7 @@ function selectElement(el) {
     zIndex: '2147483647',
   });
   selectionChipCluster.appendChild(selectionActionChip);
+  selectionChipCluster.appendChild(selectionInfiniteChip);
   selectionChipCluster.appendChild(selectionDimBadge);
   selectionBox.appendChild(selectionChipCluster);
 
@@ -460,20 +503,23 @@ function selectElement(el) {
   updateHUD();
 }
 
-// Re-evaluate the selection chip's label/visibility against the current
-// selectedEl. Called from selectElement (initial), the chip's own click
-// handler, and any path that mutates AdnotaResizeRules for this selector
+// Re-evaluate the selection chips' labels/visibility against the current
+// selectedEl. Called from selectElement (initial), the chips' own click
+// handlers, and any path that mutates AdnotaResizeRules for this selector
 // (drag persist via refreshHandles, undo).
 function updateSelectionChip() {
   if (!selectionActionChip || !selectedEl) return;
   const cs = getComputedStyle(selectedEl);
-  const overridden = hasUnstickOverride(generateCSSSelector(selectedEl));
+  const selector = generateCSSSelector(selectedEl);
+
+  // Unstick chip
+  const unstickOverridden = hasUnstickOverride(selector);
   if (cs.position === 'sticky' || cs.position === 'fixed') {
     selectionActionChip.textContent = 'unstick';
     selectionActionChip.setAttribute('data-adnota-tooltip', 'Stop this from following you when scrolling');
     selectionActionChip.style.display = '';
     selectionActionChip._isOverridden = false;
-  } else if (overridden) {
+  } else if (unstickOverridden) {
     selectionActionChip.textContent = 'restick';
     selectionActionChip.setAttribute('data-adnota-tooltip', 'Restore the original sticky behavior');
     selectionActionChip.style.display = '';
@@ -481,6 +527,29 @@ function updateSelectionChip() {
   } else {
     selectionActionChip.style.display = 'none';
     selectionActionChip._isOverridden = false;
+  }
+
+  // Finite-scroll chip — surface only on tall elements (where capping would
+  // actually shorten the page) or when the override is already applied (so
+  // the user can flip it back).
+  if (selectionInfiniteChip) {
+    const rect = selectedEl.getBoundingClientRect();
+    const tallEnough = rect.height > window.innerHeight;
+    const finiteOverridden = hasFiniteScrollOverride(selector);
+    if (finiteOverridden) {
+      selectionInfiniteChip.textContent = 'infinite scroll';
+      selectionInfiniteChip.setAttribute('data-adnota-tooltip', 'Restore the page\'s natural infinite scrolling');
+      selectionInfiniteChip.style.display = '';
+      selectionInfiniteChip._isOverridden = true;
+    } else if (tallEnough) {
+      selectionInfiniteChip.textContent = 'finite scroll';
+      selectionInfiniteChip.setAttribute('data-adnota-tooltip', 'Stop this from growing as you scroll');
+      selectionInfiniteChip.style.display = '';
+      selectionInfiniteChip._isOverridden = false;
+    } else {
+      selectionInfiniteChip.style.display = 'none';
+      selectionInfiniteChip._isOverridden = false;
+    }
   }
 }
 
@@ -494,10 +563,11 @@ function deselectElement() {
   if (handleBottom) { handleBottom.remove(); handleBottom = null; }
   if (handleCorner) { handleCorner.remove(); handleCorner = null; }
   if (dismissBtn)   { dismissBtn.remove();   dismissBtn = null; }
-  // Cluster removal also drops its children (selectionDimBadge + selectionActionChip).
+  // Cluster removal also drops its children (badge + action + infinite chips).
   if (selectionChipCluster) { selectionChipCluster.remove(); selectionChipCluster = null; }
   selectionDimBadge = null;
   selectionActionChip = null;
+  selectionInfiniteChip = null;
   if (hadSelection && window.AdnotaState.mode === 'resizer') updateHUD();
 }
 
@@ -991,6 +1061,66 @@ async function removeUnstickRule(el) {
   window.AdnotaUndo.push(undoEntry);
 }
 
+// ─── Finite-scroll chip: apply / remove the override ───────────────────────
+// Apply caps the element's *current* rendered height and clips overflow so
+// the page stops growing as the user scrolls. Future scroll-loaded content
+// renders into the clipped region invisibly. Stored with `kind:
+// 'finite-scroll'` so the inverse path can find and remove it.
+async function applyFiniteScrollRule(el) {
+  const h = Math.round(el.getBoundingClientRect().height);
+  const cssText = `max-height: ${h}px !important; overflow: hidden !important`;
+  await commitResizeRule(el, cssText, 'finite-scroll');
+}
+
+// Targeted removal: deletes only the finite-scroll entries for this selector,
+// preserving any coexisting width/height/unstick rules. Mirrors
+// removeUnstickRule's structure (live Map → storage → reflow → undo).
+async function removeFiniteScrollRule(el) {
+  const selector = generateCSSSelector(el);
+  const domain = location.hostname;
+
+  if (!window.AdnotaStorage) return;
+  const data = await chrome.storage.local.get(domain);
+  if (!data[domain]) return;
+
+  const matching = data[domain].items.filter(
+    i => i.action === 'RESIZE' && i.selector === selector && i.kind === 'finite-scroll'
+  );
+  if (matching.length === 0) return;
+
+  const snapshot = matching.map(i => ({ ...i }));
+
+  for (const entry of matching) window.AdnotaResizeRules.delete(entry._id);
+  rebuildResizeStyleTag();
+
+  const removedIds = new Set(matching.map(i => i._id));
+  data[domain].items = data[domain].items.filter(i => !removedIds.has(i._id));
+  await chrome.storage.local.set({ [domain]: data[domain] });
+
+  void el.offsetHeight;
+
+  window.AdnotaLog?.event('resizer', 'infinite-scroll-restore', {
+    sel: selector, count: matching.length, el: window.AdnotaLog.el(el),
+  });
+
+  const undoEntry = {
+    _resizeSelector: selector,
+    undo: async () => {
+      window.AdnotaLog?.event('resizer', 'undo', { sel: selector, kind: 'restore-finite-scroll' });
+      for (const entry of snapshot) {
+        window.AdnotaResizeRules.set(entry._id, { selector: entry.selector, cssText: entry.cssText });
+      }
+      rebuildResizeStyleTag();
+      const fresh = await chrome.storage.local.get(domain);
+      const domainData = fresh[domain] || { items: [] };
+      for (const entry of snapshot) domainData.items.push(entry);
+      await chrome.storage.local.set({ [domain]: domainData });
+      window.AdnotaUndo.remove(undoEntry);
+    },
+  };
+  window.AdnotaUndo.push(undoEntry);
+}
+
 // Chip click handler. Fires before the document-level click handler bails on
 // `isAdnotaElement(e.target)`, but the stopPropagation is a defensive belt —
 // the document-level handler already short-circuits on Adnota targets.
@@ -1005,6 +1135,20 @@ actionChip.addEventListener('click', async (e) => {
     await applyUnstickRule(target);
   }
   // Re-evaluate chip state (label flips) after the action settles.
+  updateHoverTarget();
+});
+
+// Infinite-scroll chip click handler. Mirrors actionChip's flow.
+infiniteChip.addEventListener('click', async (e) => {
+  e.preventDefault();
+  e.stopPropagation();
+  if (!hoveredEl) return;
+  const target = hoveredEl;
+  if (hoveredHasFiniteScrollOverride) {
+    await removeFiniteScrollRule(target);
+  } else {
+    await applyFiniteScrollRule(target);
+  }
   updateHoverTarget();
 });
 
@@ -1079,7 +1223,9 @@ document.addEventListener('mousemove', (e) => {
     hoverOverlay.style.display = 'none';
     dimensionBadge.textContent = '';
     actionChip.style.display = 'none';
+    infiniteChip.style.display = 'none';
     hoveredHasUnstickOverride = false;
+    hoveredHasFiniteScrollOverride = false;
     updateHUD();
     return;
   }
@@ -1114,21 +1260,22 @@ function updateHoverTarget() {
       width:  `${rect.width}px`,
       height: `${rect.height}px`,
     });
-    dimensionBadge.textContent = `${Math.round(rect.width)}\u00d7${Math.round(rect.height)}`;
+    dimensionBadge.textContent = `${Math.round(rect.width)}×${Math.round(rect.height)}`;
 
-    // Action chip: surface only when there's something to act on.
+    const cs = getComputedStyle(target);
+    const selector = generateCSSSelector(target);
+
+    // Unstick chip: surface only when there's something to act on.
     //   - Naturally sticky/fixed -> show `unstick`
     //   - Naturally static but our override is winning -> show `restick`
     //   - Naturally static and no override -> no chip
-    const cs = getComputedStyle(target);
-    const selector = generateCSSSelector(target);
-    const overridden = hasUnstickOverride(selector);
+    const unstickOverridden = hasUnstickOverride(selector);
     if (cs.position === 'sticky' || cs.position === 'fixed') {
       hoveredHasUnstickOverride = false;
       actionChip.textContent = 'unstick';
       actionChip.setAttribute('data-adnota-tooltip', 'Stop this from following you when scrolling');
       actionChip.style.display = '';
-    } else if (overridden) {
+    } else if (unstickOverridden) {
       hoveredHasUnstickOverride = true;
       actionChip.textContent = 'restick';
       actionChip.setAttribute('data-adnota-tooltip', 'Restore the original sticky behavior');
@@ -1137,12 +1284,34 @@ function updateHoverTarget() {
       hoveredHasUnstickOverride = false;
       actionChip.style.display = 'none';
     }
+
+    // Infinite-scroll chip: surface only when capping would actually shorten
+    // the visible page (rect.height > viewport) or when the override is
+    // already applied (so the user can flip it back).
+    const finiteOverridden = hasFiniteScrollOverride(selector);
+    const tallEnough = rect.height > window.innerHeight;
+    if (finiteOverridden) {
+      hoveredHasFiniteScrollOverride = true;
+      infiniteChip.textContent = 'infinite scroll';
+      infiniteChip.setAttribute('data-adnota-tooltip', 'Restore the page\'s natural infinite scrolling');
+      infiniteChip.style.display = '';
+    } else if (tallEnough) {
+      hoveredHasFiniteScrollOverride = false;
+      infiniteChip.textContent = 'finite scroll';
+      infiniteChip.setAttribute('data-adnota-tooltip', 'Stop this from growing as you scroll');
+      infiniteChip.style.display = '';
+    } else {
+      hoveredHasFiniteScrollOverride = false;
+      infiniteChip.style.display = 'none';
+    }
   } else {
     hoveredEl = null;
     hoverOverlay.style.display = 'none';
     dimensionBadge.textContent = '';
     actionChip.style.display = 'none';
+    infiniteChip.style.display = 'none';
     hoveredHasUnstickOverride = false;
+    hoveredHasFiniteScrollOverride = false;
   }
   updateHUD();
 }
