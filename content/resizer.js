@@ -702,22 +702,24 @@ function startDrag(e, axis) {
     apply('margin-top', savedInline.marginTop);
   };
 
-  // Shrink with max-height, grow with height. Pages like bing.com use
+  // Shrink with max-height, grow with min-height. Pages like bing.com use
   // `top: calc(100% - <rem>)` on descendants of an auto-height container; the
   // descendants' percentage resolves to ~0 while the container is auto, but
   // jumps to the container's full height the moment we pin it with `height:
-  // <px>` — flinging children thousands of pixels off-screen. max-height keeps
-  // the container's height "indefinite" for percentage resolution, so shrinking
-  // doesn't trigger that jump. Growing past natural size still requires `height`.
+  // <px>` — flinging children thousands of pixels off-screen. Both max-height
+  // (shrink) and min-height (grow) keep the container's height "indefinite"
+  // for percentage resolution while still constraining the element to the
+  // user's chosen size, so neither path triggers the jump.
   const applyHeight = (newH) => {
     if (newH <= startHeight) {
       selectedEl.style.removeProperty('height');
       selectedEl.style.setProperty('max-height', newH + 'px', 'important');
+      selectedEl.style.setProperty('min-height', '0', 'important');
     } else {
+      selectedEl.style.removeProperty('height');
       selectedEl.style.removeProperty('max-height');
-      selectedEl.style.setProperty('height', newH + 'px', 'important');
+      selectedEl.style.setProperty('min-height', newH + 'px', 'important');
     }
-    selectedEl.style.setProperty('min-height', '0', 'important');
   };
 
   // Add a full-viewport overlay to capture all mouse events during drag
@@ -818,10 +820,11 @@ function startDrag(e, axis) {
     const pushHeight = (newH) => {
       if (newH <= startHeight) {
         cssParts.push(`max-height: ${newH}px !important`);
+        cssParts.push(`min-height: 0 !important`);
       } else {
-        cssParts.push(`height: ${newH}px !important`);
+        cssParts.push(`min-height: ${newH}px !important`);
+        cssParts.push(`max-height: none !important`);
       }
-      cssParts.push(`min-height: 0 !important`);
     };
     if (axis === 'y' || axis === 'xy') {
       const newH = Math.max(0, startHeight + dy);
