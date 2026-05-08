@@ -72,6 +72,131 @@
   margin-right: auto;
 }
 
+/* ── Mode-switcher icon button + popover ─────────────────────────────────── */
+/* Sits in the right-side icon cluster (before the funnel). Same 22×22
+   footprint as the funnel/copy/close buttons so the row reads as a unified
+   icon strip. Active state (when its popover is open) borrows the brand
+   purple, mirroring the funnel's open-state styling. The accent dot
+   indicates the *inactive* mode has content waiting. */
+.adnota-scratchpad-mode-btn {
+  appearance: none;
+  position: relative;
+  border: none;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.5);
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: color 0.15s ease, background 0.15s ease;
+}
+.adnota-scratchpad-mode-btn-glyph {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.adnota-scratchpad-mode-btn svg { width: 14px; height: 14px; }
+.adnota-scratchpad-mode-btn:hover {
+  color: #e9d5ff;
+  background: rgba(124, 58, 237, 0.18);
+}
+.adnota-scratchpad-mode-btn.active {
+  color: var(--adnota-accent, #c084fc);
+  background: rgba(124, 58, 237, 0.18);
+}
+.adnota-scratchpad-mode-btn-edits {
+  /* Subtle blue tint when in Edits mode — discoverable without the popover. */
+  color: #93c5fd;
+}
+.adnota-scratchpad-mode-btn-edits:hover {
+  color: #bfdbfe;
+  background: rgba(59, 130, 246, 0.18);
+}
+.adnota-scratchpad-mode-btn-dot {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--adnota-accent, #c084fc);
+  box-shadow: 0 0 0 1.5px rgba(0, 0, 0, 0.45);
+  pointer-events: none;
+}
+.adnota-scratchpad-mode-btn-dot[hidden] {
+  display: none;
+}
+
+/* Popover — frosted-glass panel matching the scratch pad surface. Two rows,
+   each clickable, with a leading checkmark on the active mode. Pure CSS;
+   no portal needed. Position is set inline at open() time. */
+.adnota-scratchpad-modemenu {
+  background: var(--adnota-hud-bg, rgba(20, 20, 20, 0.94));
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+  color: var(--adnota-hud-text, #f3f4f6);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  padding: 4px;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.adnota-scratchpad-modemenu-item {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.85);
+  font: inherit;
+  font-size: 12.5px;
+  text-align: left;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px 6px 6px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+.adnota-scratchpad-modemenu-item:hover {
+  background: rgba(124, 58, 237, 0.18);
+  color: #ffffff;
+}
+.adnota-scratchpad-modemenu-item.active {
+  color: var(--adnota-accent, #c084fc);
+}
+.adnota-scratchpad-modemenu-check {
+  width: 14px;
+  height: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 14px;
+  color: var(--adnota-accent, #c084fc);
+}
+.adnota-scratchpad-modemenu-check svg {
+  width: 12px;
+  height: 12px;
+}
+.adnota-scratchpad-modemenu-label {
+  flex: 1 1 auto;
+  font-weight: 500;
+}
+.adnota-scratchpad-modemenu-count {
+  color: rgba(255, 255, 255, 0.45);
+  font-variant-numeric: tabular-nums;
+  font-size: 11.5px;
+}
+.adnota-scratchpad-modemenu-item.active .adnota-scratchpad-modemenu-count {
+  color: rgba(192, 132, 252, 0.65);
+}
+
 .adnota-scratchpad-filter {
   appearance: none;
   border: none;
@@ -318,6 +443,89 @@
   font-family: monospace;
   letter-spacing: -1px;
   color: rgba(255, 255, 255, 0.55);
+}
+
+/* ── Edit row (ERASE / RESIZE) ──────────────────────────────────────────── */
+/* Selector primary in monospace, dim text excerpt suffix when present.
+   Click the row body to toggle the inline expanded-detail block. Stale rows
+   (selector no longer matches the page) dim to ~50% opacity — the visual
+   state itself signals "couldn't find this anymore." */
+.adnota-scratchpad-row-mono {
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 12.5px;
+  white-space: normal;
+  word-break: break-all;
+}
+.adnota-scratchpad-row-selector {
+  color: rgba(255, 255, 255, 0.92);
+}
+.adnota-scratchpad-row-suffix {
+  color: rgba(255, 255, 255, 0.50);
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-size: 12.5px;
+}
+.adnota-scratchpad-row-stale {
+  opacity: 0.5;
+}
+.adnota-scratchpad-row-stale .adnota-scratchpad-row-selector {
+  text-decoration: line-through;
+  text-decoration-color: rgba(255, 255, 255, 0.3);
+}
+.adnota-scratchpad-row-edit.adnota-scratchpad-row-expanded {
+  /* Slightly darker backing when expanded so the inline detail reads as a
+     subordinate region of the same row. */
+  background: rgba(255, 255, 255, 0.02);
+}
+
+/* Inline expanded-detail block — only used in Edits mode. Monospace key/value
+   list + a small "Copy as JSON" button. Indented one step so the visual
+   relationship to the row above is obvious. */
+.adnota-scratchpad-detail {
+  margin-top: 6px;
+  padding: 8px 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(0, 0, 0, 0.20);
+  border-radius: 4px;
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 11.5px;
+  color: rgba(255, 255, 255, 0.78);
+}
+.adnota-scratchpad-detail-row {
+  display: flex;
+  gap: 8px;
+  padding: 1px 0;
+  word-break: break-all;
+}
+.adnota-scratchpad-detail-key {
+  flex: 0 0 60px;
+  color: rgba(255, 255, 255, 0.45);
+  text-transform: uppercase;
+  font-size: 10px;
+  letter-spacing: 0.5px;
+  padding-top: 2px;
+}
+.adnota-scratchpad-detail-val {
+  flex: 1 1 auto;
+  color: rgba(255, 255, 255, 0.85);
+}
+.adnota-scratchpad-detail-copyjson {
+  appearance: none;
+  margin-top: 8px;
+  padding: 3px 8px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: transparent;
+  color: rgba(255, 255, 255, 0.65);
+  font: inherit;
+  font-size: 11px;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: color 0.15s, background 0.15s, border-color 0.15s;
+}
+.adnota-scratchpad-detail-copyjson:hover {
+  color: #ffffff;
+  background: rgba(124, 58, 237, 0.18);
+  border-color: rgba(124, 58, 237, 0.45);
 }
 
 .adnota-scratchpad-rowcopy,

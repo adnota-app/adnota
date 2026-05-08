@@ -1218,4 +1218,55 @@ window.addEventListener('scroll', () => {
   requestAnimationFrame(() => { scrollSyncPending = false; refreshHandles(); });
 }, { passive: true, capture: true });
 
+// ─── Public API ──────────────────────────────────────────────────────────────
+// removeOne(id): live-state revert for a single resize entry, used by the
+// scratch pad's per-row trash. Caller is responsible for storage deletion.
+// Reverts: drops the rule from the Map, rebuilds the override style tag, and
+// forces a reflow on the matching element (if still in the DOM) so the new
+// natural layout takes effect immediately. Mirrors the undo callback in
+// commitResizeRule but without storage I/O or undo-stack management.
+function removeOneResize(id) {
+  const rule = window.AdnotaResizeRules?.get(id);
+  window.AdnotaResizeRules?.delete(id);
+  if (typeof window.rebuildResizeStyleTag === 'function') {
+    window.rebuildResizeStyleTag();
+  }
+  if (rule?.selector) {
+    let target = null;
+    try { target = document.querySelector(rule.selector); } catch (_) {}
+    if (target) void target.offsetHeight; // force reflow
+  }
+  // If the user is currently selected on the same element, refresh handles
+  // so the selection box matches the new natural size.
+  try { refreshHandles?.(); } catch (_) {}
+  window.AdnotaLog?.event('resizer', 'remove-one', { id, sel: rule?.selector || null });
+}
+
+// applyOne(record): inverse of removeOne — re-applies a single resize to
+// the live page from a storage record. Used when scratch pad undo restores
+// a trashed entry. Adds the rule back to AdnotaResizeRules and rebuilds
+// the style tag; forces a reflow so the new layout takes effect immediately.
+function applyOneResize(record) {
+  if (!record) return;
+  const id = record._id;
+  const selector = record.selector;
+  const cssText = record.cssText;
+  if (!id || !selector || !cssText) return;
+  if (!window.AdnotaResizeRules) return;
+  window.AdnotaResizeRules.set(id, { selector, cssText });
+  if (typeof window.rebuildResizeStyleTag === 'function') {
+    window.rebuildResizeStyleTag();
+  }
+  let target = null;
+  try { target = document.querySelector(selector); } catch (_) {}
+  if (target) void target.offsetHeight;
+  try { refreshHandles?.(); } catch (_) {}
+  window.AdnotaLog?.event('resizer', 'apply-one', { id, sel: selector });
+}
+
+window.AdnotaResizer = Object.assign(window.AdnotaResizer || {}, {
+  removeOne: removeOneResize,
+  applyOne: applyOneResize,
+});
+
 })();
