@@ -77,7 +77,8 @@
         "content/marker.js",
         "content/resizer.js",
         "content/restorer.js",
-        "content/quickHighlight.js"
+        "content/quickHighlight.js",
+        "content/debugCapture.js"
       ],
       "css": [
         "lib/adnotaTokens.css",
