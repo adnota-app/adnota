@@ -463,6 +463,34 @@
   background: rgba(255, 255, 255, 0.02);
 }
 
+/* ── Drawing row (MARKER) ───────────────────────────────────────────────── */
+/* Leading color swatch (8px filled circle in the drawing's color), shape
+   label in regular weight, optional dim text excerpt suffix only on text
+   shapes. Sits visually distinct from the monospace selector rows above —
+   the swatch is the primary identifier, color encodes which drawing is
+   which, the label disambiguates when colors collide. */
+.adnota-scratchpad-row-drawing {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.92);
+}
+.adnota-scratchpad-row-swatch {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  /* Slight vertical nudge so the swatch sits on the text baseline rather
+     than below it (default inline-block alignment). */
+  transform: translateY(1px);
+  flex: 0 0 auto;
+}
+.adnota-scratchpad-row-label {
+  font-weight: 500;
+}
+
 /* Inline expanded-detail block — only used in Edits mode. Monospace key/value
    list + a small "Copy as JSON" button. Indented one step so the visual
    relationship to the row above is obvious. */
