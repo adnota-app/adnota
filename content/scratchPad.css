@@ -116,20 +116,6 @@
   color: #bfdbfe;
   background: rgba(59, 130, 246, 0.18);
 }
-.adnota-scratchpad-mode-btn-dot {
-  position: absolute;
-  top: 2px;
-  right: 2px;
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background: var(--adnota-accent, #c084fc);
-  box-shadow: 0 0 0 1.5px rgba(0, 0, 0, 0.45);
-  pointer-events: none;
-}
-.adnota-scratchpad-mode-btn-dot[hidden] {
-  display: none;
-}
 
 /* Popover — frosted-glass panel matching the scratch pad surface. Two rows,
    each clickable, with a leading checkmark on the active mode. Pure CSS;
