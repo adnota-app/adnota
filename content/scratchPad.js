@@ -50,7 +50,6 @@
   let filtersEl    = null;
   let filterEls    = [];
   let modeBtnEl   = null;
-  let modeDotEl    = null;
   let tagBarEl     = null;
   let tagToggleBtn = null;
   let snippetCache = [];
@@ -233,16 +232,6 @@
     }
     if (activeTag) list = list.filter(s => s.tag === activeTag);
     return list;
-  }
-
-  // Count of items in the *inactive* mode — drives the accent dot on the
-  // mode pill so the user knows there's content waiting in the other view.
-  function inactiveModeCount() {
-    const otherMode = activeMode === 'snippets' ? 'edits' : 'snippets';
-    const allowed = TYPES_BY_MODE[otherMode];
-    let count = 0;
-    for (const s of snippetCache) if (allowed.has(s.type)) count++;
-    return count;
   }
 
   // ── Public helper used by the dock to drive its disabled state ───────────
@@ -428,7 +417,8 @@
   // listing the two modes with counts and a checkmark on the active one.
   // Active mode is also conveyed by the sub-tabs that follow (Highlights/
   // Notes vs Erased/Resized), so the icon stays neutral and just opens the
-  // menu — no label needed in the button.
+  // menu — no label or status indicator on the button itself. The popover
+  // is where you see what's in the other mode (full count per item).
   function renderModeButton() {
     if (!modeBtnEl) return;
     modeBtnEl.classList.toggle('adnota-scratchpad-mode-btn-edits', activeMode === 'edits');
@@ -437,10 +427,6 @@
     glyph.className = 'adnota-scratchpad-mode-btn-glyph';
     glyph.innerHTML = ICON_LAYERS;
     modeBtnEl.appendChild(glyph);
-    modeDotEl = document.createElement('span');
-    modeDotEl.className = 'adnota-scratchpad-mode-btn-dot';
-    modeDotEl.hidden = inactiveModeCount() === 0;
-    modeBtnEl.appendChild(modeDotEl);
   }
 
   // ── Mode menu (popover) ──────────────────────────────────────────────────
@@ -1377,7 +1363,6 @@
     tagToggleBtn = null;
     filtersEl = null;
     modeBtnEl = null;
-    modeDotEl = null;
     filterEls = [];
     expandedIds.clear();
     activeTag = null;
