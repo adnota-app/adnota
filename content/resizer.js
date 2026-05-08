@@ -673,6 +673,14 @@ function startDrag(e, axis) {
   startMarginLeft = parseFloat(cs.marginLeft) || 0;
   startMarginTop = parseFloat(cs.marginTop) || 0;
 
+  // Preserve native scroll mechanisms. Forcing overflow:hidden on a scroll
+  // container (e.g. a sidebar with `overflow-y: auto`) kills its scrollbar and
+  // any scroll/IntersectionObserver-driven lazy load that depended on it. When
+  // an axis is already scrollable, leave its overflow alone — the scroll itself
+  // is the visual boundary. Snapshot once so the decision can't flip mid-drag.
+  const yWasScrollable = cs.overflowY === 'auto' || cs.overflowY === 'scroll';
+  const xWasScrollable = cs.overflowX === 'auto' || cs.overflowX === 'scroll';
+
   // Snapshot the page's pre-drag inline values for the props we'll touch.
   // A blanket removeProperty on release would strip longhands the page's own
   // shorthand expanded into — e.g. inline `margin: 24px auto 0` becomes
@@ -686,7 +694,8 @@ function startDrag(e, axis) {
     maxHeight: selectedEl.style.maxHeight,
     marginLeft: selectedEl.style.marginLeft,
     marginTop: selectedEl.style.marginTop,
-    overflow: selectedEl.style.overflow,
+    overflowX: selectedEl.style.overflowX,
+    overflowY: selectedEl.style.overflowY,
   };
   const restoreInline = () => {
     const apply = (prop, value) => {
@@ -701,7 +710,8 @@ function startDrag(e, axis) {
     apply('max-height', savedInline.maxHeight);
     apply('margin-left', savedInline.marginLeft);
     apply('margin-top', savedInline.marginTop);
-    apply('overflow', savedInline.overflow);
+    apply('overflow-x', savedInline.overflowX);
+    apply('overflow-y', savedInline.overflowY);
   };
 
   // Shrink with max-height, grow with height. Pages like bing.com use
@@ -746,7 +756,9 @@ function startDrag(e, axis) {
     // children paint outside the resized container — the layout is smaller
     // but the user sees no change. Set once per drag tick, regardless of
     // axis. See README's resizer cssText format note for the rationale.
-    selectedEl.style.setProperty('overflow', 'hidden', 'important');
+    // Skip the axis if it was already scrollable — see startDrag.
+    if (!xWasScrollable) selectedEl.style.setProperty('overflow-x', 'hidden', 'important');
+    if (!yWasScrollable) selectedEl.style.setProperty('overflow-y', 'hidden', 'important');
 
     if (axis === 'x' || axis === 'xy') {
       // Right handle: grow/shrink from the right edge, left edge pinned.
@@ -810,7 +822,9 @@ function startDrag(e, axis) {
     // for every resize regardless of axis — clips ad iframes, oversized
     // images, and abs-positioned children so the visual matches the new
     // bounds.
-    const cssParts = [`overflow: hidden !important`];
+    const cssParts = [];
+    if (!xWasScrollable) cssParts.push(`overflow-x: hidden !important`);
+    if (!yWasScrollable) cssParts.push(`overflow-y: hidden !important`);
 
     if (axis === 'x' || axis === 'xy') {
       const newW = Math.max(0, startWidth + dx);
