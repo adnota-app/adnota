@@ -28,21 +28,22 @@
   // toggles between them; sub-tabs are mode-dependent.
   // Snippets keeps 'All' because highlights and notes are categorically alike
   // (both prose, both readable as a unified reference list). Edits omits 'All'
-  // — ERASE and RESIZE are different actions, both render as monospace
-  // selectors, and a mixed list reads as undifferentiated noise. The default
-  // tab for each mode is the first entry below.
+  // — ERASE / RESIZE / MARKER are different actions with different row
+  // formats (monospace selectors vs color swatches), and a mixed list reads
+  // as undifferentiated noise. The default tab for each mode is the first
+  // entry below.
   const TABS_BY_MODE = {
     snippets: [['all', 'All'], ['highlights', 'Highlights'], ['notes', 'Notes']],
-    edits:    [['erased', 'Erased'], ['resized', 'Resized']],
+    edits:    [['erased', 'Erased'], ['resized', 'Resized'], ['drawing', 'Drawings']],
   };
   const TYPES_BY_MODE = {
     snippets: new Set(['highlight', 'note']),
-    edits:    new Set(['erase', 'resize']),
+    edits:    new Set(['erase', 'resize', 'drawing']),
   };
-  // Generic delete plumbing — keyed by snippet.type. ID field varies because
-  // NOTE records use `uuid` while everything else uses `_id`.
-  const ACTION_BY_TYPE  = { highlight: 'HIGHLIGHT', note: 'NOTE', erase: 'ERASE', resize: 'RESIZE' };
-  const ID_FIELD_BY_TYPE = { highlight: '_id', note: 'uuid', erase: '_id', resize: '_id' };
+  // Generic delete plumbing — keyed by snippet.type. NOTE and MARKER both
+  // use `uuid` as their identifier; the rest use `_id`.
+  const ACTION_BY_TYPE  = { highlight: 'HIGHLIGHT', note: 'NOTE', erase: 'ERASE', resize: 'RESIZE', drawing: 'MARKER' };
+  const ID_FIELD_BY_TYPE = { highlight: '_id', note: 'uuid', erase: '_id', resize: '_id', drawing: 'uuid' };
 
   let panel        = null;
   let bodyEl       = null;
@@ -206,6 +207,45 @@
           record: item,
           ts: item.timestamp ?? 0,
         });
+      } else if (item.action === 'MARKER') {
+        // Drawings are visual overlays — no text content. The row label
+        // comes from the shape type (Pencil / Arrow / Rectangle / Circle /
+        // Text), with the color surfaced as a leading swatch in buildRow.
+        // Liveness is checked against the marker overlay (each rendered
+        // wrapper carries data-uuid), so a missing wrapper means the
+        // anchor didn't match on this load → stale.
+        const SHAPE_LABELS = {
+          freehand: 'Pencil',
+          arrow:    'Arrow',
+          rect:     'Rectangle',
+          ellipse:  'Circle',
+          text:     'Text',
+        };
+        const shapeType = item.shapeType || (item.isArrow ? 'arrow' : 'freehand');
+        const label = SHAPE_LABELS[shapeType] || 'Shape';
+        let liveEl = null;
+        try {
+          liveEl = document.querySelector(`.adnota-marker-wrapper[data-uuid="${item.uuid}"]`);
+        } catch (_) {}
+        // For text shapes, the actual text content is the most identifying
+        // suffix — surfaces e.g. `● Text — "Sale!"` in the row.
+        let excerpt = '';
+        if (shapeType === 'text' && item.text) {
+          excerpt = String(item.text).trim();
+          if (excerpt.length > 80) excerpt = excerpt.slice(0, 77) + '…';
+        }
+        out.push({
+          id: item.uuid,
+          type: 'drawing',
+          shapeType,
+          label,
+          color: item.color || '#888',
+          excerpt,
+          stale: !liveEl,
+          liveEl,
+          record: item,
+          ts: item.timestamp ?? 0,
+        });
       }
     }
     out.sort((a, b) => b.ts - a.ts);
@@ -224,11 +264,12 @@
       if (activeFilter === 'highlights') list = list.filter(s => s.type === 'highlight');
       else if (activeFilter === 'notes') list = list.filter(s => s.type === 'note');
     } else {
-      // Edits mode has no 'all' tab; activeFilter must be 'erased' or
-      // 'resized'. Anything else (e.g., stale persisted 'all' from before
-      // the tab was removed) gets normalized to the default tab here.
-      if (activeFilter === 'resized') list = list.filter(s => s.type === 'resize');
-      else                            list = list.filter(s => s.type === 'erase');
+      // Edits mode has no 'all' tab; activeFilter is one of the per-type
+      // values. Stale persisted filters (e.g., 'all' from before the tab
+      // was removed) fall through to the default tab (erased).
+      if (activeFilter === 'resized')      list = list.filter(s => s.type === 'resize');
+      else if (activeFilter === 'drawing') list = list.filter(s => s.type === 'drawing');
+      else                                 list = list.filter(s => s.type === 'erase');
     }
     if (activeTag) list = list.filter(s => s.tag === activeTag);
     return list;
@@ -540,6 +581,7 @@
       : {
           erased:  modeList.filter(s => s.type === 'erase').length,
           resized: modeList.filter(s => s.type === 'resize').length,
+          drawing: modeList.filter(s => s.type === 'drawing').length,
         };
     for (const { btn, value, label } of filterEls) {
       btn.classList.toggle('active', value === activeFilter);
@@ -563,6 +605,7 @@
         notes:      'notes',
         erased:     'erased elements',
         resized:    'resized elements',
+        drawing:    'drawings',
       };
       empty.textContent = `No ${EMPTY_LABELS[activeFilter] ?? 'items'} on this page yet.`;
       bodyEl.appendChild(empty);
@@ -580,7 +623,8 @@
   function buildRow(snippet) {
     const row = document.createElement('div');
     row.className = 'adnota-scratchpad-row';
-    if (snippet.type === 'erase' || snippet.type === 'resize') {
+    const isEdit = snippet.type === 'erase' || snippet.type === 'resize' || snippet.type === 'drawing';
+    if (isEdit) {
       row.classList.add('adnota-scratchpad-row-edit');
       if (snippet.stale) row.classList.add('adnota-scratchpad-row-stale');
     }
@@ -605,6 +649,37 @@
         suffix.textContent = ` — ${quoted}`;
         text.appendChild(suffix);
       }
+    } else if (snippet.type === 'drawing') {
+      // Drawing row: leading color swatch, shape label, optional text
+      // excerpt suffix (only meaningful for shapeType === 'text'). No
+      // monospace — drawings aren't selector-shaped.
+      text.classList.add('adnota-scratchpad-row-drawing');
+      const swatch = document.createElement('span');
+      swatch.className = 'adnota-scratchpad-row-swatch';
+      swatch.style.background = snippet.color;
+      // Outline a tiny ring so very-light or very-dark colors stay visible
+      // against the dark panel background.
+      swatch.style.boxShadow = '0 0 0 1px rgba(255,255,255,0.18) inset';
+      text.appendChild(swatch);
+      const label = document.createElement('span');
+      label.className = 'adnota-scratchpad-row-label';
+      label.textContent = snippet.label;
+      text.appendChild(label);
+      if (snippet.excerpt) {
+        const suffix = document.createElement('span');
+        suffix.className = 'adnota-scratchpad-row-suffix';
+        suffix.textContent = ` — "${snippet.excerpt}"`;
+        text.appendChild(suffix);
+      }
+    } else if (isRedaction(snippet)) {
+      text.classList.add('adnota-scratchpad-redaction');
+      text.textContent = redactionBar(snippet.text);
+      text.title = 'Redacted';
+    } else {
+      text.textContent = snippet.text;
+    }
+
+    if (isEdit) {
       // Selection guard: clicks that follow a drag-select shouldn't toggle
       // the expansion (the user is trying to copy). Same pattern as the
       // panel's drag handler.
@@ -615,12 +690,6 @@
         toggleExpanded(snippet, row);
       });
       text.style.cursor = 'pointer';
-    } else if (isRedaction(snippet)) {
-      text.classList.add('adnota-scratchpad-redaction');
-      text.textContent = redactionBar(snippet.text);
-      text.title = 'Redacted';
-    } else {
-      text.textContent = snippet.text;
     }
     row.appendChild(text);
 
@@ -629,7 +698,7 @@
 
     // Re-attach the expanded detail block immediately if this row was
     // expanded before a re-render (e.g., storage onChanged tick).
-    if ((snippet.type === 'erase' || snippet.type === 'resize') && expandedIds.has(snippet.id)) {
+    if (isEdit && expandedIds.has(snippet.id)) {
       row.appendChild(buildExpandedDetail(snippet));
       row.classList.add('adnota-scratchpad-row-expanded');
     }
@@ -655,11 +724,15 @@
       e.stopPropagation();
       e.preventDefault();
       // Edits-mode copy is the selector — the most useful debug snippet to
-      // paste into a console or bug report. Full record JSON lives in the
-      // expanded detail.
+      // paste into a console or bug report. Drawings have no selector, so
+      // copy falls through to the text content (only meaningful for the
+      // 'text' shape type) or the uuid as a last resort. Full record JSON
+      // lives in the expanded detail.
       let payload;
       if (snippet.type === 'erase' || snippet.type === 'resize') {
         payload = snippet.selector || '';
+      } else if (snippet.type === 'drawing') {
+        payload = snippet.excerpt || snippet.id;
       } else {
         payload = isRedaction(snippet) ? redactionBar(snippet.text) : snippet.text;
       }
@@ -685,6 +758,7 @@
       snippet.type === 'note'      ? 'Delete this note' :
       snippet.type === 'erase'     ? 'Restore this element' :
       snippet.type === 'resize'    ? 'Revert this resize' :
+      snippet.type === 'drawing'   ? 'Delete this drawing' :
       'Delete';
     trashBtn.innerHTML = ICON_TRASH;
     trashBtn.addEventListener('click', (e) => {
@@ -701,7 +775,7 @@
   // Toggles the inline expansion below an Edits-mode row. Tracks state in
   // expandedIds so re-renders (storage onChanged) preserve the open state.
   function toggleExpanded(snippet, row) {
-    if (snippet.type !== 'erase' && snippet.type !== 'resize') return;
+    if (snippet.type !== 'erase' && snippet.type !== 'resize' && snippet.type !== 'drawing') return;
     if (expandedIds.has(snippet.id)) {
       expandedIds.delete(snippet.id);
       row.classList.remove('adnota-scratchpad-row-expanded');
@@ -727,7 +801,19 @@
     const rec = snippet.record || {};
     const rows = [];
     rows.push(['ID', String(snippet.id)]);
-    rows.push(['Selector', snippet.selector || '(unknown)']);
+    if (snippet.type === 'erase' || snippet.type === 'resize') {
+      rows.push(['Selector', snippet.selector || '(unknown)']);
+    }
+    if (snippet.type === 'drawing') {
+      rows.push(['Shape', rec.shapeType || '(unknown)']);
+      if (rec.color) rows.push(['Color', rec.color]);
+      if (rec.strokeWidth != null) rows.push(['Stroke', String(rec.strokeWidth)]);
+      if (rec.shapeType === 'freehand' && Array.isArray(rec.drawing)) {
+        rows.push(['Points', String(rec.drawing.length)]);
+      }
+      if (rec.text) rows.push(['Text', rec.text]);
+      if (rec.fontSize != null) rows.push(['Font', String(rec.fontSize)]);
+    }
     if (snippet.type === 'resize' && rec.cssText) rows.push(['CSS', rec.cssText]);
     if (snippet.type === 'resize' && rec.kind)    rows.push(['Kind', rec.kind]);
     if (rec.path) rows.push(['Path', rec.path]);
@@ -735,7 +821,11 @@
       try { rows.push(['When', new Date(rec.timestamp).toISOString()]); }
       catch (_) {}
     }
-    if (snippet.stale) rows.push(['Status', 'stale (selector did not match)']);
+    if (snippet.stale) {
+      rows.push(['Status', snippet.type === 'drawing'
+        ? 'stale (anchor not on this page)'
+        : 'stale (selector did not match)']);
+    }
 
     for (const [k, v] of rows) {
       const row = document.createElement('div');
@@ -807,13 +897,15 @@
     }
 
     // Live-state revert. Highlights/notes are managed by their own engines
-    // observing storage changes, but ERASE/RESIZE keep an in-memory rules Map
-    // and (for ERASE) inline display:none — those need explicit cleanup so
-    // the page reflects the deletion immediately, not on next refresh.
+    // observing storage changes, but ERASE/RESIZE/MARKER need explicit
+    // cleanup so the page reflects the deletion immediately, not on next
+    // refresh. Each tool exposes a removeOne(id) symmetric with applyOne.
     if (snippet.type === 'erase') {
       try { window.AdnotaEraser?.removeOne?.(snippet.id); } catch (_) {}
     } else if (snippet.type === 'resize') {
       try { window.AdnotaResizer?.removeOne?.(snippet.id); } catch (_) {}
+    } else if (snippet.type === 'drawing') {
+      try { window.AdnotaMarker?.removeOne?.(snippet.id); } catch (_) {}
     }
 
     expandedIds.delete(snippet.id);
@@ -824,21 +916,24 @@
       snippet.type === 'highlight' ? 'Snippet deleted' :
       snippet.type === 'note'      ? 'Note deleted' :
       snippet.type === 'erase'     ? 'Erase reverted' :
-      snippet.type === 'resize'    ? 'Resize reverted' : 'Item deleted';
+      snippet.type === 'resize'    ? 'Resize reverted' :
+      snippet.type === 'drawing'   ? 'Drawing deleted' : 'Item deleted';
     showUndoToast(message, async () => {
       try {
         const again = await chrome.storage.local.get(hostname);
         const rec = again[hostname] || { items: [] };
         rec.items = (rec.items || []).concat([snapshot]);
         await chrome.storage.local.set({ [hostname]: rec });
-        // For ERASE/RESIZE, putting the record back into storage isn't
-        // enough — the live rules Map and inline state were cleared by
-        // removeOne(). Call applyOne() to re-apply the edit live so the
-        // page reflects the undo without a refresh.
+        // For ERASE/RESIZE/MARKER, putting the record back into storage
+        // isn't enough — the live state was cleared by removeOne(). Call
+        // applyOne() to re-apply the edit live so the page reflects the
+        // undo without a refresh.
         if (snippet.type === 'erase') {
           try { window.AdnotaEraser?.applyOne?.(snapshot); } catch (_) {}
         } else if (snippet.type === 'resize') {
           try { window.AdnotaResizer?.applyOne?.(snapshot); } catch (_) {}
+        } else if (snippet.type === 'drawing') {
+          try { window.AdnotaMarker?.applyOne?.(snapshot); } catch (_) {}
         }
         window.AdnotaLog?.event('scratchpad', 'delete-undo', { type: snippet.type });
       } catch (err) {
@@ -885,11 +980,14 @@
   async function copyAll() {
     const list = filtered();
     if (!list.length) return;
-    // Snippets mode: prose join (the original behavior). Edits mode: one
-    // selector per line — useful as a quick "what did I change here" digest
-    // for bug reports or moving rules into a stylesheet.
+    // Snippets mode: prose join (the original behavior). Edits mode: a
+    // line per item — selector for erase/resize, "Label · uuid" for
+    // drawings (no selector, but still useful for cross-referencing).
     const payload = activeMode === 'edits'
-      ? list.map(s => s.selector || '').filter(Boolean).join('\n')
+      ? list.map(s => {
+          if (s.type === 'drawing') return `${s.label} · ${s.id}`;
+          return s.selector || '';
+        }).filter(Boolean).join('\n')
       : list.map(s => isRedaction(s) ? redactionBar(s.text) : s.text).join('\n\n');
     if (!payload) return;
     try { await navigator.clipboard.writeText(payload); }
@@ -917,6 +1015,8 @@
       ok = !!window.StickyEngine?.scrollTo?.(snippet.id);
     } else if (snippet.type === 'erase' || snippet.type === 'resize') {
       ok = scrollToEditElement(snippet);
+    } else if (snippet.type === 'drawing') {
+      ok = scrollToDrawing(snippet);
     }
     if (!ok) {
       showScratchToast("Couldn't locate this on the page.");
@@ -949,6 +1049,19 @@
     } else {
       spawnEditPulse(target, accent);
     }
+    return true;
+  }
+
+  // Locate logic for DRAWING rows. The marker engine exposes scrollTo, and
+  // the pulse animates the wrapper's bounding rect — drawings are visible
+  // on the page already, so no reveal-and-pulse hack is needed.
+  function scrollToDrawing(snippet) {
+    if (!window.AdnotaMarker?.scrollTo?.(snippet.id)) return false;
+    let wrapper = null;
+    try {
+      wrapper = document.querySelector(`.adnota-marker-wrapper[data-uuid="${snippet.id}"]`);
+    } catch (_) {}
+    if (wrapper) spawnEditPulse(wrapper, snippet.color || '#a78bfa');
     return true;
   }
 
