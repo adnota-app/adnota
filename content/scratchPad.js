@@ -133,10 +133,10 @@
   // Clipboard with list lines — "copy everything" semantics, distinct from
   // ICON_COPY's duplicate-rectangle glyph used for the per-row action.
   const ICON_COPY_ALL = `<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="4" width="10" height="13" rx="1.5"/><path d="M8 3h4v3H8z"/><line x1="7.5" y1="9.5" x2="12.5" y2="9.5"/><line x1="7.5" y1="12" x2="12.5" y2="12"/><line x1="7.5" y1="14.5" x2="11" y2="14.5"/></svg>`;
-  // Two stacked rectangles — "view categories" affordance for the mode
-  // button. Generic enough that it doesn't lock us into a specific shape;
-  // the popover labels carry the actual semantics (Snippets / Edits).
-  const ICON_LAYERS = `<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="14" height="5" rx="1.2"/><rect x="3" y="11" width="14" height="5" rx="1.2"/></svg>`;
+  // Chevron-down — universal "click to open a menu" affordance for the
+  // mode button. The popover's labels carry the actual category semantics;
+  // the icon just needs to say "this is a dropdown."
+  const ICON_CHEVRON_DOWN = `<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><polyline points="5 8 10 13 15 8"/></svg>`;
 
   // ── Snippet derivation ────────────────────────────────────────────────────
   // Projects all four record types into a unified shape so the panel can
@@ -293,15 +293,10 @@
     const header = document.createElement('div');
     header.className = 'adnota-scratchpad-header';
 
-    filtersEl = document.createElement('div');
-    filtersEl.className = 'adnota-scratchpad-filters';
-    buildSubTabs();
-    header.appendChild(filtersEl);
-
-    // Mode-switcher icon button in the right cluster (before the funnel).
-    // Click opens a small popover with the two view-category options. Light
-    // chrome — same 22×22 footprint as the other right-cluster buttons.
-    // Accent dot indicates the inactive mode has content waiting.
+    // Mode-switcher icon button — far-left of the header. Outermost-left
+    // reads as the primary category control (Snippets vs Edits); the
+    // sub-tabs that follow are filters within that category. Click opens
+    // a small popover listing both modes with counts.
     modeBtnEl = document.createElement('button');
     modeBtnEl.type = 'button';
     modeBtnEl.className = 'adnota-scratchpad-mode-btn';
@@ -311,6 +306,11 @@
       toggleModeMenu();
     });
     header.appendChild(modeBtnEl);
+
+    filtersEl = document.createElement('div');
+    filtersEl.className = 'adnota-scratchpad-filters';
+    buildSubTabs();
+    header.appendChild(filtersEl);
 
     tagToggleBtn = document.createElement('button');
     tagToggleBtn.type = 'button';
@@ -454,19 +454,17 @@
 
   // ── Mode switcher (isolated render) ──────────────────────────────────────
   // Single point of truth for the Snippets/Edits affordance. The button
-  // sits in the right-side icon cluster; clicking opens a small popover
-  // listing the two modes with counts and a checkmark on the active one.
-  // Active mode is also conveyed by the sub-tabs that follow (Highlights/
-  // Notes vs Erased/Resized), so the icon stays neutral and just opens the
-  // menu — no label or status indicator on the button itself. The popover
-  // is where you see what's in the other mode (full count per item).
+  // sits at the far-left of the header — outermost = primary category,
+  // sub-tabs after it = filter within that category, right cluster = utility.
+  // The icon is a plain chevron-down: "click to open a menu." No data-driven
+  // tinting (the popover's count rows tell you what's in each mode); active
+  // state shows only when the popover is open.
   function renderModeButton() {
     if (!modeBtnEl) return;
-    modeBtnEl.classList.toggle('adnota-scratchpad-mode-btn-edits', activeMode === 'edits');
     while (modeBtnEl.firstChild) modeBtnEl.firstChild.remove();
     const glyph = document.createElement('span');
     glyph.className = 'adnota-scratchpad-mode-btn-glyph';
-    glyph.innerHTML = ICON_LAYERS;
+    glyph.innerHTML = ICON_CHEVRON_DOWN;
     modeBtnEl.appendChild(glyph);
   }
 
@@ -523,13 +521,13 @@
       menu.appendChild(item);
     }
 
-    // Position fixed below the button. Right-aligned so it doesn't extend
-    // past the panel's right edge.
+    // Position fixed below the button. Left-aligned with the icon now that
+    // the button lives at the far-left of the header.
     const r = modeBtnEl.getBoundingClientRect();
     Object.assign(menu.style, {
       position: 'fixed',
       top:  (r.bottom + 4) + 'px',
-      left: (r.right - 152) + 'px',
+      left: r.left + 'px',
       width: '152px',
       zIndex: '2147483646',
     });

@@ -73,11 +73,12 @@
 }
 
 /* ── Mode-switcher icon button + popover ─────────────────────────────────── */
-/* Sits in the right-side icon cluster (before the funnel). Same 22×22
-   footprint as the funnel/copy/close buttons so the row reads as a unified
-   icon strip. Active state (when its popover is open) borrows the brand
-   purple, mirroring the funnel's open-state styling. The accent dot
-   indicates the *inactive* mode has content waiting. */
+/* Lives at the far-left of the header — the outermost control reads as the
+   primary category picker (Snippets vs Edits). Same 22×22 footprint as the
+   right-cluster utility icons so the line-art family stays consistent.
+   Plain neutral color always; counts live in the popover, not on the icon.
+   Active state (popover open) borrows the brand purple, matching the
+   funnel's open-state styling. */
 .adnota-scratchpad-mode-btn {
   appearance: none;
   position: relative;
@@ -90,6 +91,8 @@
   align-items: center;
   justify-content: center;
   padding: 0;
+  margin-left: -2px;
+  margin-right: -4px;
   border-radius: 4px;
   cursor: pointer;
   transition: color 0.15s ease, background 0.15s ease;
@@ -107,14 +110,6 @@
 .adnota-scratchpad-mode-btn.active {
   color: var(--adnota-accent, #c084fc);
   background: rgba(124, 58, 237, 0.18);
-}
-.adnota-scratchpad-mode-btn-edits {
-  /* Subtle blue tint when in Edits mode — discoverable without the popover. */
-  color: #93c5fd;
-}
-.adnota-scratchpad-mode-btn-edits:hover {
-  color: #bfdbfe;
-  background: rgba(59, 130, 246, 0.18);
 }
 
 /* Popover — frosted-glass panel matching the scratch pad surface. Two rows,
