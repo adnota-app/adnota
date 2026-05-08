@@ -445,9 +445,8 @@ function selectElement(el) {
   selectionChipCluster.setAttribute('data-adnota-ui', '1');
   Object.assign(selectionChipCluster.style, {
     position: 'absolute',
-    top: '-2px',
-    right: '16px',
-    transform: 'translateY(-50%)',
+    top: '4px',
+    right: '32px',
     display: 'flex',
     gap: '4px',
     alignItems: 'center',
@@ -687,7 +686,6 @@ function startDrag(e, axis) {
     maxHeight: selectedEl.style.maxHeight,
     marginLeft: selectedEl.style.marginLeft,
     marginTop: selectedEl.style.marginTop,
-    overflow: selectedEl.style.overflow,
   };
   const restoreInline = () => {
     const apply = (prop, value) => {
@@ -702,7 +700,24 @@ function startDrag(e, axis) {
     apply('max-height', savedInline.maxHeight);
     apply('margin-left', savedInline.marginLeft);
     apply('margin-top', savedInline.marginTop);
-    apply('overflow', savedInline.overflow);
+  };
+
+  // Shrink with max-height, grow with height. Pages like bing.com use
+  // `top: calc(100% - <rem>)` on descendants of an auto-height container; the
+  // descendants' percentage resolves to ~0 while the container is auto, but
+  // jumps to the container's full height the moment we pin it with `height:
+  // <px>` — flinging children thousands of pixels off-screen. max-height keeps
+  // the container's height "indefinite" for percentage resolution, so shrinking
+  // doesn't trigger that jump. Growing past natural size still requires `height`.
+  const applyHeight = (newH) => {
+    if (newH <= startHeight) {
+      selectedEl.style.removeProperty('height');
+      selectedEl.style.setProperty('max-height', newH + 'px', 'important');
+    } else {
+      selectedEl.style.removeProperty('max-height');
+      selectedEl.style.setProperty('height', newH + 'px', 'important');
+    }
+    selectedEl.style.setProperty('min-height', '0', 'important');
   };
 
   // Add a full-viewport overlay to capture all mouse events during drag
@@ -723,13 +738,6 @@ function startDrag(e, axis) {
   function onMove(ev) {
     const dx = ev.clientX - dragStartX;
     const dy = ev.clientY - dragStartY;
-
-    // Clip overflow on every resize so the visual matches the new bounds.
-    // Without this, ad iframes / oversized images / absolutely-positioned
-    // children paint outside the resized container — the layout is smaller
-    // but the user sees no change. Set once per drag tick, regardless of
-    // axis. See README's resizer cssText format note for the rationale.
-    selectedEl.style.setProperty('overflow', 'hidden', 'important');
 
     if (axis === 'x' || axis === 'xy') {
       // Right handle: grow/shrink from the right edge, left edge pinned.
@@ -755,9 +763,7 @@ function startDrag(e, axis) {
     if (axis === 'y' || axis === 'xy') {
       // Bottom handle: grow/shrink from the bottom edge, top edge pinned.
       const newH = Math.max(0, startHeight + dy);
-      selectedEl.style.setProperty('height', newH + 'px', 'important');
-      selectedEl.style.setProperty('min-height', '0', 'important');
-      selectedEl.style.setProperty('max-height', 'none', 'important');
+      applyHeight(newH);
       selectedEl.style.setProperty('margin-top', startMarginTop + 'px', 'important');
     }
     if (axis === 'y-top') {
@@ -765,9 +771,7 @@ function startDrag(e, axis) {
       // margin-top compensation — mirrors the left-handle math.
       const newH = Math.max(0, startHeight - dy);
       const heightDelta = newH - startHeight;
-      selectedEl.style.setProperty('height', newH + 'px', 'important');
-      selectedEl.style.setProperty('min-height', '0', 'important');
-      selectedEl.style.setProperty('max-height', 'none', 'important');
+      applyHeight(newH);
       selectedEl.style.setProperty('margin-top', (startMarginTop - heightDelta) + 'px', 'important');
     }
 
@@ -793,11 +797,8 @@ function startDrag(e, axis) {
     // rule's !important takes over for the props we resized.
     restoreInline();
 
-    // Build CSS rule from final dimensions. `overflow: hidden` is set once
-    // for every resize regardless of axis — clips ad iframes, oversized
-    // images, and abs-positioned children so the visual matches the new
-    // bounds.
-    const cssParts = [`overflow: hidden !important`];
+    // Build CSS rule from final dimensions.
+    const cssParts = [];
 
     if (axis === 'x' || axis === 'xy') {
       const newW = Math.max(0, startWidth + dx);
@@ -814,19 +815,23 @@ function startDrag(e, axis) {
       cssParts.push(`max-width: none !important`);
       cssParts.push(`margin-left: ${startMarginLeft - widthDelta}px !important`);
     }
+    const pushHeight = (newH) => {
+      if (newH <= startHeight) {
+        cssParts.push(`max-height: ${newH}px !important`);
+      } else {
+        cssParts.push(`height: ${newH}px !important`);
+      }
+      cssParts.push(`min-height: 0 !important`);
+    };
     if (axis === 'y' || axis === 'xy') {
       const newH = Math.max(0, startHeight + dy);
-      cssParts.push(`height: ${newH}px !important`);
-      cssParts.push(`min-height: 0 !important`);
-      cssParts.push(`max-height: none !important`);
+      pushHeight(newH);
       cssParts.push(`margin-top: ${startMarginTop}px !important`);
     }
     if (axis === 'y-top') {
       const newH = Math.max(0, startHeight - dy);
       const heightDelta = newH - startHeight;
-      cssParts.push(`height: ${newH}px !important`);
-      cssParts.push(`min-height: 0 !important`);
-      cssParts.push(`max-height: none !important`);
+      pushHeight(newH);
       cssParts.push(`margin-top: ${startMarginTop - heightDelta}px !important`);
     }
 
@@ -1212,5 +1217,56 @@ window.addEventListener('scroll', () => {
   scrollSyncPending = true;
   requestAnimationFrame(() => { scrollSyncPending = false; refreshHandles(); });
 }, { passive: true, capture: true });
+
+// ─── Public API ──────────────────────────────────────────────────────────────
+// removeOne(id): live-state revert for a single resize entry, used by the
+// scratch pad's per-row trash. Caller is responsible for storage deletion.
+// Reverts: drops the rule from the Map, rebuilds the override style tag, and
+// forces a reflow on the matching element (if still in the DOM) so the new
+// natural layout takes effect immediately. Mirrors the undo callback in
+// commitResizeRule but without storage I/O or undo-stack management.
+function removeOneResize(id) {
+  const rule = window.AdnotaResizeRules?.get(id);
+  window.AdnotaResizeRules?.delete(id);
+  if (typeof window.rebuildResizeStyleTag === 'function') {
+    window.rebuildResizeStyleTag();
+  }
+  if (rule?.selector) {
+    let target = null;
+    try { target = document.querySelector(rule.selector); } catch (_) {}
+    if (target) void target.offsetHeight; // force reflow
+  }
+  // If the user is currently selected on the same element, refresh handles
+  // so the selection box matches the new natural size.
+  try { refreshHandles?.(); } catch (_) {}
+  window.AdnotaLog?.event('resizer', 'remove-one', { id, sel: rule?.selector || null });
+}
+
+// applyOne(record): inverse of removeOne — re-applies a single resize to
+// the live page from a storage record. Used when scratch pad undo restores
+// a trashed entry. Adds the rule back to AdnotaResizeRules and rebuilds
+// the style tag; forces a reflow so the new layout takes effect immediately.
+function applyOneResize(record) {
+  if (!record) return;
+  const id = record._id;
+  const selector = record.selector;
+  const cssText = record.cssText;
+  if (!id || !selector || !cssText) return;
+  if (!window.AdnotaResizeRules) return;
+  window.AdnotaResizeRules.set(id, { selector, cssText });
+  if (typeof window.rebuildResizeStyleTag === 'function') {
+    window.rebuildResizeStyleTag();
+  }
+  let target = null;
+  try { target = document.querySelector(selector); } catch (_) {}
+  if (target) void target.offsetHeight;
+  try { refreshHandles?.(); } catch (_) {}
+  window.AdnotaLog?.event('resizer', 'apply-one', { id, sel: selector });
+}
+
+window.AdnotaResizer = Object.assign(window.AdnotaResizer || {}, {
+  removeOne: removeOneResize,
+  applyOne: applyOneResize,
+});
 
 })();

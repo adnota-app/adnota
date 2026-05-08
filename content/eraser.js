@@ -13,9 +13,8 @@ const overlayBadgeRow = document.createElement('div');
 overlayBadgeRow.setAttribute('data-adnota-ui', '1');
 Object.assign(overlayBadgeRow.style, {
   position: 'absolute',
-  top: '-2px',
-  right: '-3px',
-  transform: 'translateY(-50%)',
+  top: '4px',
+  right: '4px',
   display: 'inline-flex',
   alignItems: 'center',
   gap: '4px',
@@ -901,3 +900,63 @@ document.addEventListener('click', async (e) => {
   });
 
 }, true); // Capture phase — intercept before the page's own handlers.
+
+// ── Public API ───────────────────────────────────────────────────────────────
+// removeOne(id): live-state revert for a single erasure, used by the scratch
+// pad's per-row trash. Caller is responsible for storage deletion. Reverts:
+// drops the selector from the rules Map and rebuilds the override style tag,
+// clears the inline `display: none` on the resolved element, detaches the
+// style guard, and drops the element from AdnotaErasedElements. Safe when
+// the element is no longer in the DOM (e.g., page mutated after erase).
+function removeOneErase(id) {
+  const selector = window.AdnotaEraseRules?.get(id);
+  let target = null;
+  if (selector) {
+    try { target = document.querySelector(selector); } catch (_) {}
+  }
+  if (target) {
+    try { window.AdnotaUI?.detachEraseStyleGuard?.(target); } catch (_) {}
+    target.style.removeProperty('display');
+    try { window.AdnotaErasedElements?.delete(target); } catch (_) {}
+  }
+  window.AdnotaEraseRules?.delete(id);
+  if (typeof window.rebuildEraseStyleTag === 'function') {
+    window.rebuildEraseStyleTag();
+  }
+  window.AdnotaLog?.event('eraser', 'remove-one', { id, sel: selector || null, found: !!target });
+}
+
+// applyOne(record): inverse of removeOne — re-applies a single erasure to
+// the live page from a storage record. Used when scratch pad undo restores
+// a trashed entry. Sets the rule in AdnotaEraseRules + rebuilds the style
+// tag (the CSS hide is the primary mechanism); also sets the inline guard
+// state on the resolved element when present so override-resistant pages
+// stay erased like they did before deletion.
+function applyOneErase(record) {
+  if (!record) return;
+  const id = record._id;
+  const selector = record.selector || record.anchor?.cssSelector;
+  if (!id || !selector) return;
+  if (!window.AdnotaEraseRules) return;
+  window.AdnotaEraseRules.set(id, selector);
+  if (typeof window.rebuildEraseStyleTag === 'function') {
+    window.rebuildEraseStyleTag();
+  }
+  let target = null;
+  try { target = document.querySelector(selector); } catch (_) {}
+  if (target) {
+    target.style.setProperty('display', 'none', 'important');
+    try { window.AdnotaErasedElements?.add(target); } catch (_) {}
+    try {
+      window.AdnotaUI?.attachEraseStyleGuard?.(target, {
+        id, ruleSelector: selector, reason: 'undo-restore',
+      });
+    } catch (_) {}
+  }
+  window.AdnotaLog?.event('eraser', 'apply-one', { id, sel: selector, found: !!target });
+}
+
+window.AdnotaEraser = Object.assign(window.AdnotaEraser || {}, {
+  removeOne: removeOneErase,
+  applyOne: applyOneErase,
+});
