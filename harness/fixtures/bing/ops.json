@@ -1,0 +1,23 @@
+{
+  "url": "https://www.bing.com/search?q=adnota+harness+test",
+  "viewport": { "width": 1280, "height": 900 },
+  "settleMs": 2500,
+  "postSettleMs": 400,
+  "ops": [
+    { "type": "waitForDock" },
+    { "type": "activateTool", "tool": "resizer" },
+    { "type": "hoverElement", "selector": "#b_results" },
+    { "type": "clickToSelect" },
+    { "type": "dragHandle", "handle": "bottom", "dy": -200 }
+  ],
+  "domInvariants": [
+    {
+      "name": "page-scrollable-after-resize",
+      "expr": "document.scrollingElement.scrollHeight > window.innerHeight + 50"
+    },
+    {
+      "name": "results-container-overflow-y-not-hidden",
+      "expr": "getComputedStyle(document.querySelector('#b_results')).overflowY !== 'hidden'"
+    }
+  ]
+}

@@ -1,0 +1,44 @@
+{
+  "$schema": "1",
+  "site": "bing",
+  "pinnedAt": "2026-05-08",
+  "storage": {
+    "adnotaActiveMode": "resizer",
+    "adnotaToolEscTutorialShown": true,
+    "adnota_stats": {
+      "https://www.bing.com/search?q=adnota+harness+test": {
+        "broken": 0,
+        "notes": 0,
+        "resizes": 1,
+        "success": 0
+      }
+    },
+    "www.bing.com": {
+      "items": [
+        {
+          "_id": "<id>",
+          "action": "RESIZE",
+          "cssText": "max-height: 0px !important; min-height: 0 !important; margin-top: 0px !important",
+          "path": "*",
+          "selector": "#b_results > li:nth-child(4)",
+          "timestamp": "<ts>",
+          "version": 1
+        }
+      ]
+    }
+  },
+  "styleOverrides": "#b_results > li:nth-child(4) { max-height: 0px !important; min-height: 0 !important; margin-top: 0px !important }",
+  "eraseOverrides": "",
+  "domInvariants": [
+    {
+      "name": "page-scrollable-after-resize",
+      "expr": "document.scrollingElement.scrollHeight > window.innerHeight + 50",
+      "result": true
+    },
+    {
+      "name": "results-container-overflow-y-not-hidden",
+      "expr": "getComputedStyle(document.querySelector('#b_results')).overflowY !== 'hidden'",
+      "result": true
+    }
+  ]
+}

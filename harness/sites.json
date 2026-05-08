@@ -1,0 +1,5 @@
+{
+  "sites": [
+    { "id": "bing", "fixture": "fixtures/bing" }
+  ]
+}
