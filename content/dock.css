@@ -149,12 +149,15 @@
   margin-left: 0;
   overflow-x: clip;
   overflow-y: visible;
-  transition: max-width 0.18s ease-out, margin-left 0.18s ease-out;
+  /* Asymmetric timing: instant expand on hover, but a brief delay before
+     shrinking so a fleeting cursor exit doesn't rip the menu away. */
+  transition: max-width 0.18s ease-out 0.2s, margin-left 0.18s ease-out 0.2s;
 }
 
 #adnota-dock:hover:not(.adnota-dock-active) .adnota-dock-tools {
   max-width: 300px;
   margin-left: 8px;
+  transition: max-width 0.18s ease-out, margin-left 0.18s ease-out;
 }
 
 #adnota-dock.adnota-dock-active .adnota-dock-tools {
@@ -271,13 +274,16 @@
   right: -7px;
   opacity: 0;
   pointer-events: none;
-  transition: opacity 0.12s ease, background 0.15s, transform 0.15s;
+  /* Match the tool row: instant fade-in on hover, delayed fade-out so the X
+     doesn't disappear before the menu starts shrinking. */
+  transition: opacity 0.12s ease 0.2s, background 0.15s, transform 0.15s;
   z-index: 1;
 }
 
 #adnota-dock:hover:not(.adnota-dock-active) .adnota-dock-dismiss {
   opacity: 1;
   pointer-events: auto;
+  transition: opacity 0.12s ease, background 0.15s, transform 0.15s;
 }
 
 /* Never print the dock — otherwise a user reaching for Ctrl+P has to

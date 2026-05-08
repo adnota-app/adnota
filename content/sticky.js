@@ -397,20 +397,167 @@ function clientToPlacement(clientX, clientY) {
 window.StickyEngine = {
   createAt: createStickyAt,
 
-  // Smooth-scrolls the rendered sticky note for the given UUID into view,
-  // then paints a brief purple pulse over its container so the user sees
-  // where they landed. Returns true on success, false if the note isn't
-  // currently rendered (waiting on a restoration pass, or torn down by an
-  // SPA URL change). The scratch pad's GOTO button uses the return value to
-  // surface a "couldn't locate" toast.
+  // Smooth-scrolls the source location of the given sticky into view.
+  // Returns true on success, false if the note isn't currently rendered
+  // (waiting on a restoration pass, or torn down by an SPA URL change).
+  // The scratch pad's GOTO button uses the return value to surface a
+  // "couldn't locate" toast.
+  //
+  // We can't call scrollIntoView on the sticky container — it lives inside
+  // #adnota-sticky-overlay (position: fixed), so the browser treats it as
+  // already viewport-anchored and the call no-ops. We also can't call
+  // scrollIntoView on the resolved Tier 1 anchor: a sticky dropped in
+  // page whitespace anchors to a tall wrapper (Wikipedia's <main> at
+  // 24,000px is the canonical case) and centering the wrapper leaves the
+  // sticky thousands of pixels away. Instead, mirror updatePosition's
+  // tier cascade and compute a target scrollTop directly:
+  //   Tier 1: math from anchor rect + anchorOffset.dy in scroller-content space
+  //   Tier 2: containerOffsetY (already in scroller-content space)
+  //   Tier 3: yScrollPct * scrollHeight
+  // Centers the sticky vertically in the scroller (or window for Tier 3).
   scrollTo(uuid) {
     if (!uuid) return false;
-    const container = document.querySelector(
-      `.adnota-sticky-container[data-uuid="${uuid}"]`
-    );
-    if (!container) return false;
-    try { container.scrollIntoView({ block: 'center', behavior: 'smooth' }); }
-    catch (_) { container.scrollIntoView(); }
+    const noteState = activeNotes.get(uuid);
+    if (!noteState) {
+      window.AdnotaLog?.event('sticky', 'goto-no-state', { uuid });
+      return false;
+    }
+
+    const { anchor, anchorOffset, fallback, placement, container } = noteState;
+    const containerRect = container?.getBoundingClientRect();
+    window.AdnotaLog?.event('sticky', 'goto-start', {
+      uuid,
+      hasAnchor: !!(anchor && anchorOffset),
+      hasFallback: !!(fallback && fallback.containerAnchor),
+      placement,
+      anchorOffset,
+      fallback: fallback ? {
+        containerSel: fallback.containerAnchor?.cssSelector,
+        containerOffsetX: fallback.containerOffsetX,
+        containerOffsetY: fallback.containerOffsetY,
+      } : null,
+      containerViewport: containerRect ? {
+        top: Math.round(containerRect.top),
+        left: Math.round(containerRect.left),
+      } : null,
+      windowScrollY: Math.round(window.pageYOffset || document.documentElement.scrollTop),
+      docScrollHeight: document.documentElement.scrollHeight,
+      innerHeight: window.innerHeight,
+    });
+
+    // Tier 1: anchor resolved to a real page-DOM element. We can't just
+    // call scrollIntoView on it: the sticky is offset *inside* the anchor
+    // by anchorOffset.dy, so on a tall wrapper (e.g. Wikipedia's <main>
+    // at 24,000px) scrollIntoView centers the wrapper and the sticky
+    // ends up thousands of pixels from the viewport. Instead, compute
+    // where the sticky's center *currently* lives in the scroller's
+    // content space and scroll that point to viewport center. Walks up
+    // from the anchor to find the right scroll container so this works
+    // for both document scroll and inner scrollers (claude.ai, chatgpt.com).
+    if (anchor && anchorOffset && window.FuzzyAnchor) {
+      const match = window.FuzzyAnchor.findMatch(anchor);
+      if (match.confidence >= 40 && match.element) {
+        const r = match.element.getBoundingClientRect();
+        // Use the same walker as buildContainerFallback so save-time and
+        // goto-time agree on which ancestor is the scroll context.
+        // findScrollContainer returns null when no inner scroller exists
+        // — fall through to scrollingElement so the document case works.
+        const sc = window.AdnotaUI?.findScrollContainer?.(match.element)
+          || document.scrollingElement
+          || document.documentElement;
+        const isDoc = sc === document.scrollingElement || sc === document.documentElement || sc === document.body;
+        const scRectTop = isDoc ? 0 : sc.getBoundingClientRect().top;
+        // 140px = default sticky card height (sticky.css). Belt-and-
+        // suspenders for the brief pendingAnchor/opacity:0 window where
+        // offsetHeight could read 0 mid-restore.
+        const containerH = container.offsetHeight || 140;
+        // Position of sticky's vertical center, expressed in scroller-content space:
+        //   (viewport y of sticky top) - (viewport y of scroller) + scroller's scrollTop + half-height
+        const stickyCenterInContent =
+          (r.top - scRectTop) + anchorOffset.dy + containerH / 2 + (sc.scrollTop || 0);
+        const targetTop = Math.max(0, stickyCenterInContent - sc.clientHeight / 2);
+        window.AdnotaLog?.event('sticky', 'goto-tier1', {
+          uuid,
+          confidence: match.confidence,
+          el: window.AdnotaLog?.el(match.element),
+          rectTop: Math.round(r.top),
+          rectLeft: Math.round(r.left),
+          anchorH: Math.round(r.height),
+          dy: anchorOffset.dy,
+          scTag: sc.tagName?.toLowerCase(),
+          scIsDoc: isDoc,
+          scScrollTop: Math.round(sc.scrollTop || 0),
+          scClientHeight: sc.clientHeight,
+          containerH,
+          stickyCenterInContent: Math.round(stickyCenterInContent),
+          targetTop: Math.round(targetTop),
+        });
+        try { sc.scrollTo({ top: targetTop, behavior: 'smooth' }); }
+        catch (_) { sc.scrollTop = targetTop; }
+        return true;
+      }
+      window.AdnotaLog?.event('sticky', 'goto-tier1-miss', {
+        uuid, confidence: match.confidence,
+      });
+    }
+
+    // Tier 2: container-fallback. The resolved element IS the scroll
+    // container, so scrollIntoView on it would scroll the *parent* to
+    // reveal the container, not adjust the container's own scrollTop —
+    // visible as a tiny no-op scroll when the user drops a sticky in
+    // page whitespace and Tier 1 doesn't latch. Set scrollTop directly
+    // from containerOffsetY (the y-coord of the click within the
+    // container's scrollable content) and center it in the viewport.
+    if (fallback && fallback.containerAnchor && window.FuzzyAnchor) {
+      const cMatch = window.FuzzyAnchor.findMatch(fallback.containerAnchor);
+      if (cMatch.confidence >= 40 && cMatch.element) {
+        const sc = cMatch.element;
+        const top = Math.max(0, fallback.containerOffsetY - sc.clientHeight / 2);
+        window.AdnotaLog?.event('sticky', 'goto-tier2', {
+          uuid,
+          confidence: cMatch.confidence,
+          sc: window.AdnotaLog?.el(sc),
+          scIsDocEl: sc === document.documentElement,
+          scIsBody: sc === document.body,
+          scScrollTop: sc.scrollTop,
+          scScrollHeight: sc.scrollHeight,
+          scClientHeight: sc.clientHeight,
+          containerOffsetY: fallback.containerOffsetY,
+          targetTop: Math.round(top),
+        });
+        try { sc.scrollTo({ top, behavior: 'smooth' }); }
+        catch (_) { sc.scrollTop = top; }
+        return true;
+      }
+      window.AdnotaLog?.event('sticky', 'goto-tier2-miss', {
+        uuid, confidence: cMatch.confidence,
+      });
+    }
+
+    // Tier 3: no resolvable anchor — scroll the window to the note's
+    // stored document-y. Centers the note vertically in the viewport.
+    let docTop;
+    if (placement.position === 'percent') {
+      docTop = placement.yScrollPct * Math.max(document.documentElement.scrollHeight, 1);
+    } else if (placement.position === 'manual') {
+      docTop = placement.top;
+    } else {
+      window.AdnotaLog?.event('sticky', 'goto-tier3-bad-placement', { uuid, placement });
+      return false;
+    }
+    const targetY = Math.max(0, docTop - window.innerHeight / 2);
+    window.AdnotaLog?.event('sticky', 'goto-tier3', {
+      uuid,
+      placementPosition: placement.position,
+      yScrollPct: placement.yScrollPct,
+      docScrollHeight: document.documentElement.scrollHeight,
+      docTop: Math.round(docTop),
+      innerHeight: window.innerHeight,
+      targetY: Math.round(targetY),
+      currentScrollY: Math.round(window.pageYOffset || document.documentElement.scrollTop),
+    });
+    try { window.scrollTo({ top: targetY, behavior: 'smooth' }); }
+    catch (_) { window.scrollTo(0, targetY); }
     return true;
   },
 
