@@ -117,6 +117,25 @@
     try { chrome.storage.local.set(payload).catch(() => {}); } catch (_) {}
   }
 
+  // Strip a CSS selector down to its leaf segment — everything past the final
+  // descendant combinator '>'. For purely structural nth-child paths this
+  // is still gibberish, but a single segment of it instead of the whole 30-
+  // segment chain. The id-tail suffix below disambiguates collisions when
+  // two different elements end up with the same leaf.
+  function leafSelector(sel) {
+    if (!sel) return '(unknown selector)';
+    const idx = sel.lastIndexOf('>');
+    return idx >= 0 ? sel.slice(idx + 1).trim() : sel;
+  }
+
+  // Short id-tail (last 6 chars of the record's _id) — used as a stable
+  // disambiguator on Edits rows, the way Git uses 7-char short SHAs.
+  function shortIdTail(id) {
+    if (id == null) return '';
+    const s = String(id);
+    return s.length <= 6 ? s : s.slice(-6);
+  }
+
   // ── Icons ──────────────────────────────────────────────────────────────────
   const ICON_COPY  = `<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="7" width="10" height="10" rx="2"/><path d="M3 13V5a2 2 0 0 1 2-2h8"/></svg>`;
   const ICON_CHECK = `<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 11 8 15 16 5"/></svg>`;
@@ -137,6 +156,11 @@
   // mode button. The popover's labels carry the actual category semantics;
   // the icon just needs to say "this is a dropdown."
   const ICON_CHEVRON_DOWN = `<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><polyline points="5 8 10 13 15 8"/></svg>`;
+  // Globe — small leading hint on rows whose record is domain-wide
+  // (path === '*'). Tells the user "this rule applies everywhere on the
+  // site, not just this URL," which avoids the confusion of seeing edits
+  // on a fresh page.
+  const ICON_GLOBE = `<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="10" cy="10" r="7"/><line x1="3" y1="10" x2="17" y2="10"/><path d="M10 3 C 6 6 6 14 10 17"/><path d="M10 3 C 14 6 14 14 10 17"/></svg>`;
 
   // ── Snippet derivation ────────────────────────────────────────────────────
   // Projects all four record types into a unified shape so the panel can
@@ -282,6 +306,20 @@
   async function pageSnippetCount() {
     const list = await loadSnippets();
     return list.length;
+  }
+
+  // ── Per-action count for tool-trash badges ───────────────────────────────
+  // Returns the number of records on the current page (path + domain-wide
+  // mixed via getAnchorsForUrl) whose `action` is in the supplied list.
+  // Cheap — one storage read; intended for small badges that refresh on
+  // storage onChanged. Caller passes e.g. ['ERASE'] or ['HIGHLIGHT','MARKER'].
+  async function pageActionCount(actionTypes) {
+    if (!window.AdnotaStorage || !Array.isArray(actionTypes) || !actionTypes.length) return 0;
+    const items = await AdnotaStorage.getAnchorsForUrl(location.href);
+    const wanted = new Set(actionTypes);
+    let n = 0;
+    for (const it of items) if (wanted.has(it.action)) n++;
+    return n;
   }
 
   // ── DOM ──────────────────────────────────────────────────────────────────
@@ -630,21 +668,43 @@
     const text = document.createElement('div');
     text.className = 'adnota-scratchpad-text';
     if (snippet.type === 'erase' || snippet.type === 'resize') {
-      // Edits row: selector primary in monospace, dim text excerpt suffix
-      // (em-dash separator) when meaningful. The row body itself toggles
-      // the inline expanded-detail block on click.
+      // Edits row: leaf segment of the selector (everything past the final
+      // '>') in monospace, plus a short id-tail disambiguator (last 6 chars
+      // of _id, like a Git short SHA). The full selector lives in the
+      // click-to-expand detail. Optional text excerpt suffix follows when
+      // textFingerprint or alt/title is present. Domain-wide records (path
+      // === '*') get a leading globe icon so the user can tell at a glance
+      // which rows are inherited site-wide rules vs page-specific edits.
       text.classList.add('adnota-scratchpad-row-mono');
+      if (snippet.record?.path === '*') {
+        const globe = document.createElement('span');
+        globe.className = 'adnota-scratchpad-row-globe';
+        globe.title = 'Domain-wide — applies across this site';
+        globe.innerHTML = ICON_GLOBE;
+        // Globe is informational only — clicks shouldn't bubble up and
+        // toggle the row's expanded-detail pane.
+        globe.addEventListener('click', (e) => e.stopPropagation());
+        text.appendChild(globe);
+      }
       const sel = document.createElement('span');
       sel.className = 'adnota-scratchpad-row-selector';
-      sel.textContent = snippet.selector || '(unknown selector)';
+      sel.textContent = leafSelector(snippet.selector);
       text.appendChild(sel);
+      const idTail = shortIdTail(snippet.id);
+      if (idTail) {
+        const idSpan = document.createElement('span');
+        idSpan.className = 'adnota-scratchpad-row-suffix';
+        idSpan.textContent = ` · ${idTail}`;
+        text.appendChild(idSpan);
+      }
       if (snippet.excerpt) {
         const suffix = document.createElement('span');
         suffix.className = 'adnota-scratchpad-row-suffix';
         // Quote text-derived excerpts; leave alt/title bare. Heuristic: if
-        // the excerpt looks like text (has a space), quote it.
+        // the excerpt looks like text (has a space), quote it. Same '·'
+        // separator as the id-tail for a uniform suffix rhythm.
         const quoted = /\s/.test(snippet.excerpt) ? `"${snippet.excerpt}"` : snippet.excerpt;
-        suffix.textContent = ` — ${quoted}`;
+        suffix.textContent = ` · ${quoted}`;
         text.appendChild(suffix);
       }
     } else if (snippet.type === 'drawing') {
@@ -666,7 +726,7 @@
       if (snippet.excerpt) {
         const suffix = document.createElement('span');
         suffix.className = 'adnota-scratchpad-row-suffix';
-        suffix.textContent = ` — "${snippet.excerpt}"`;
+        suffix.textContent = ` · "${snippet.excerpt}"`;
         text.appendChild(suffix);
       }
     } else if (isRedaction(snippet)) {
@@ -721,16 +781,25 @@
     copyBtn.addEventListener('click', async (e) => {
       e.stopPropagation();
       e.preventDefault();
-      // Edits-mode copy is the selector — the most useful debug snippet to
-      // paste into a console or bug report. Drawings have no selector, so
-      // copy falls through to the text content (only meaningful for the
-      // 'text' shape type) or the uuid as a last resort. Full record JSON
-      // lives in the expanded detail.
+      // Copy payload mirrors the visible row content — what you see is
+      // what you paste. For ERASE/RESIZE that's leaf · id-tail · excerpt;
+      // for drawings it's label · excerpt; for highlights/notes it's
+      // the prose text. Power-user paths (full selector, full record
+      // JSON) live in the click-to-expand detail.
       let payload;
       if (snippet.type === 'erase' || snippet.type === 'resize') {
-        payload = snippet.selector || '';
+        const parts = [leafSelector(snippet.selector)];
+        const tail = shortIdTail(snippet.id);
+        if (tail) parts.push(tail);
+        if (snippet.excerpt) {
+          const quoted = /\s/.test(snippet.excerpt) ? `"${snippet.excerpt}"` : snippet.excerpt;
+          parts.push(quoted);
+        }
+        payload = parts.join(' · ');
       } else if (snippet.type === 'drawing') {
-        payload = snippet.excerpt || snippet.id;
+        const parts = [snippet.label || 'Drawing'];
+        if (snippet.excerpt) parts.push(`"${snippet.excerpt}"`);
+        payload = parts.join(' · ');
       } else {
         payload = isRedaction(snippet) ? redactionBar(snippet.text) : snippet.text;
       }
@@ -1499,6 +1568,35 @@
     else open();
   }
 
+  // openOn(mode, filter): opens the panel pre-applied to a specific view, or
+  // switches to that view in-place if already open. Used by dock-trash
+  // buttons to route directly to "review the items I'd otherwise nuke."
+  // Mode/filter are persisted so subsequent open()s remember the choice.
+  async function openOn(mode, filter) {
+    if (mode !== 'snippets' && mode !== 'edits') return;
+    const validFilter = isValidFilterForMode(mode, filter)
+      ? filter
+      : defaultFilterForMode(mode);
+    if (!panel) {
+      // Persist first so open()'s storage read picks up the new state.
+      try {
+        await chrome.storage.local.set({ [MODE_KEY]: mode, [FILTER_KEY]: validFilter });
+      } catch (_) {
+        // Fall through to open(); it'll fix activeMode/activeFilter from
+        // the in-memory state we set just below.
+      }
+      activeMode = mode;
+      activeFilter = validFilter;
+      await open();
+      return;
+    }
+    // Already open — switch in-place. setMode handles mode swap (rebuilds
+    // sub-tabs, resets activeFilter to mode default), then setFilter
+    // narrows to the requested sub-tab if different.
+    if (activeMode !== mode) setMode(mode);
+    if (activeFilter !== validFilter) setFilter(validFilter);
+  }
+
   function isOpen() { return !!panel; }
 
   async function refresh() {
@@ -1536,9 +1634,11 @@
   window.AdnotaScratchPad = {
     toggle,
     open,
+    openOn,
     close,
     isOpen,
     refresh,
     pageSnippetCount,
+    pageActionCount,
   };
 })();
