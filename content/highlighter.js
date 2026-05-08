@@ -212,11 +212,16 @@ const strokeGroupDivider = Object.assign(document.createElement('div'), { classN
 highlightToolbar.appendChild(strokeGroupDivider);
 const strokeGroupEls = [...Object.values(strokeBtns), strokeGroupDivider];
 
-// Trash — clears every drawing annotation on this page (highlights + markers)
+// Trash — opens scratch pad on Edits / Drawings for per-shape review/delete.
+// Scoped to MARKER only (drawings) for parity with the other tool trashes
+// (one tool ↔ one action type ↔ one scratch-pad tab). Highlights are
+// individually deletable via Snippets / Highlights or via popup nuke.
 highlightToolbar.appendChild(window.AdnotaUI.createTrashButton({
-  singular: 'highlight or drawing',
-  plural: 'highlights & drawings',
-  actionTypes: ['HIGHLIGHT', 'MARKER'],
+  singular: 'drawing',
+  plural: 'drawings',
+  actionTypes: ['MARKER'],
+  mode: 'edits',
+  filter: 'drawing',
 }));
 
 // Undo

@@ -244,6 +244,55 @@
 .adnota-undo-btn.adnota-undo-btn-red:hover { background: rgba(239, 68, 68, 0.15); }
 .adnota-undo-btn.adnota-undo-btn-red:hover svg { stroke: #fca5a5; }
 
+/* ─── Count badge ─────────────────────────────────────────────────────────── */
+/* Small notification-style pill in the top-right corner of a parent button.
+   Used by the dock's A-icon (page-edit total) and the per-tool dock trashes
+   (per-tool count). Hidden via [hidden] when count = 0 — no chrome on a
+   page that's untouched. The :has() rule below makes any parent that
+   actually contains a badge a positioning context, so the existing button
+   rules don't need to know about it. */
+.adnota-count-badge {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 5px;
+  box-sizing: border-box;
+  border-radius: 999px;
+  background: var(--adnota-accent, #7c3aed);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 16px;
+  text-align: center;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.45);
+  pointer-events: none;
+  z-index: 1;
+  user-select: none;
+}
+.adnota-count-badge[hidden] { display: none; }
+.adnota-undo-btn:has(> .adnota-count-badge) {
+  position: relative;
+}
+
+/* Dock-level badge — anchors its CENTER to the dock's top-right corner
+   via transform, so it sits cleanly on the corner regardless of how wide
+   the count number is ("1" vs "10" vs "99"). Hidden the moment the dock
+   expands — both on hover (tool row slides out) and when a tool is
+   active (.adnota-dock-active) — so it never collides with the dismiss X
+   or the tool palette chrome. */
+.adnota-dock-badge {
+  top: 0;
+  right: 0;
+  transform: translate(50%, -50%);
+}
+#adnota-dock:hover .adnota-dock-badge,
+#adnota-dock.adnota-dock-active .adnota-dock-badge {
+  display: none;
+}
+
 /* ─── Help button + popover ───────────────────────────────────────────────── */
 /* The ? button reuses .adnota-undo-btn sizing/hover so it slots into any HUD.
    When open, the active class locks in the accent tint so it reads as toggled. */

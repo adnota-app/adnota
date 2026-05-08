@@ -92,11 +92,14 @@ resizerBody.appendChild(resizerHelpBtn);
 // Divider
 resizerBody.appendChild(Object.assign(document.createElement('div'), { className: 'adnota-toolbar-divider adnota-toolbar-divider-blue' }));
 
-// Trash — clears all resize rules on this page
+// Trash — opens scratch pad on Edits / Resized for per-row review/delete.
+// Badge auto-managed by createTrashButton when mode/filter are passed.
 resizerBody.appendChild(window.AdnotaUI.createTrashButton({
   singular: 'resize',
   plural: 'resizes',
   actionTypes: ['RESIZE'],
+  mode: 'edits',
+  filter: 'resized',
 }));
 
 // Undo
