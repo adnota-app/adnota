@@ -597,6 +597,33 @@
   color: #f87171;
   background: rgba(248, 113, 113, 0.12);
 }
+
+/* Row-trash teaching blink. Fired by openOn() when a tool dock-trash routes
+   into the pad, so the user discovers per-row deletion lives here. The svg
+   strokes inherit currentColor, so animating `color` paints just the glyph
+   red — the button's background and outline stay quiet. Opacity is forced
+   visible so the lesson lands without requiring hover. */
+@keyframes adnota-rowtrash-blink {
+  0%, 100% { color: rgba(255, 255, 255, 0.35); }
+  50%      { color: #f87171; }
+}
+.adnota-scratchpad-rowtrash.adnota-blink {
+  opacity: 1 !important;
+  animation: adnota-rowtrash-blink 0.42s ease-in-out 3;
+}
+/* While a row's trash is blinking, surface the rest of its action cluster
+   (copy/goto + the dark backdrop pill) so the trash sits in its real home
+   instead of floating alone. Same end state as :hover, no animation on the
+   sibling buttons — only the trash glyph pulses. */
+.adnota-scratchpad-row:has(.adnota-scratchpad-rowtrash.adnota-blink)::before {
+  opacity: 1;
+}
+.adnota-scratchpad-row:has(.adnota-scratchpad-rowtrash.adnota-blink)
+  .adnota-scratchpad-rowcopy,
+.adnota-scratchpad-row:has(.adnota-scratchpad-rowtrash.adnota-blink)
+  .adnota-scratchpad-rowgoto {
+  opacity: 1;
+}
 .adnota-scratchpad-rowcopy.copied {
   opacity: 1;
   color: #86efac;
