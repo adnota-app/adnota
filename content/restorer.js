@@ -178,9 +178,13 @@ async function _performRestoration(trigger) {
       // Older fallback (plain textContent append) is kept for the rare case
       // where resizer.js hasn't loaded yet — extremely unlikely at restore time.
       if (window.AdnotaResizeRules && item._id) {
+        // Carry `kind` through so commitResizeRule's de-dup matches against
+        // restored rules — a stored toggle-stack that survives reload still
+        // gets replaced by a fresh toggle-stack commit instead of stacking.
         window.AdnotaResizeRules.set(item._id, {
           selector: item.selector,
           cssText: item.cssText,
+          kind: item.kind,
         });
         if (window.rebuildResizeStyleTag) window.rebuildResizeStyleTag();
       } else {
