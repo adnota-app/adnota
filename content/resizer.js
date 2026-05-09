@@ -493,7 +493,30 @@ function getStyleTag() {
   return tag;
 }
 
-window.AdnotaResizeRules = new Map(); // id → { selector, cssText }
+window.AdnotaResizeRules = new Map(); // id → { selector, cssText, kind? }
+
+// Parse a cssText fragment into the Set of property names it declares.
+// Used by drag-resize dedup to recognize when a new commit's prop set
+// covers a prior commit's prop set on the same selector.
+function cssTextProps(cssText) {
+  const props = new Set();
+  if (!cssText) return props;
+  for (const decl of cssText.split(';')) {
+    const colon = decl.indexOf(':');
+    if (colon <= 0) continue;
+    const name = decl.slice(0, colon).trim().toLowerCase();
+    if (name) props.add(name);
+  }
+  return props;
+}
+
+function isPropsSuperset(superset, subset) {
+  if (subset.size === 0) return false;   // empty = nothing to subsume
+  for (const p of subset) {
+    if (!superset.has(p)) return false;
+  }
+  return true;
+}
 
 function rebuildResizeStyleTag() {
   const tag = getStyleTag();
@@ -725,10 +748,48 @@ function selectElement(el) {
 // selectedEl. Called from selectElement (initial), the chips' own click
 // handlers, and any path that mutates AdnotaResizeRules for this selector
 // (drag persist via refreshHandles, undo).
+// Does the selectedEl have any rules (CSS or DOM-reorder) that ↺ would
+// actually clear? Drives the dismissBtn's disabled affordance — clicking
+// it on a clean selection just deselects, which is redundant with the
+// corner-X dismiss path and confusing because the icon promises "undo
+// my edits."
+function hasResetableState(el) {
+  if (!el) return false;
+  const selector = generateCSSSelector(el);
+  for (const [, rule] of window.AdnotaResizeRules) {
+    if (rule.selector === selector) return true;
+  }
+  for (const [, rule] of window.AdnotaReorderRules || []) {
+    if (rule.sourceEl === el) return true;
+    if (rule.sourceAnchor?.cssSelector === selector) return true;
+  }
+  return false;
+}
+
 function updateSelectionChip() {
   if (!selectionActionChip || !selectedEl) return;
   const cs = getComputedStyle(selectedEl);
   const selector = generateCSSSelector(selectedEl);
+
+  // ↺ dismiss button — dim when no rules apply. The button stays visible
+  // (so the affordance is discoverable) but pointer-events:none and
+  // dimmed so a click doesn't fire the no-op deselect.
+  if (dismissBtn) {
+    const resetable = hasResetableState(selectedEl);
+    if (resetable) {
+      dismissBtn.dataset.disabled = '0';
+      dismissBtn.style.opacity = '';
+      dismissBtn.style.pointerEvents = '';
+      dismissBtn.style.cursor = '';
+      dismissBtn.setAttribute('data-adnota-tooltip', 'Reset to original');
+    } else {
+      dismissBtn.dataset.disabled = '1';
+      dismissBtn.style.opacity = '0.4';
+      dismissBtn.style.pointerEvents = 'none';
+      dismissBtn.style.cursor = 'default';
+      dismissBtn.setAttribute('data-adnota-tooltip', 'Reset (nothing to undo)');
+    }
+  }
 
   // Parent chip — only when the cached layout context flags this as
   // flex-end-in-fixed-container. Click handler reads the same cached parent.
@@ -1687,16 +1748,33 @@ async function commitResizeRule(el, cssText, kind) {
   // De-dup: kind-bearing commits replace any prior rule with the same
   // selector + same kind. Without this, 17 toggle-stack clicks produce
   // 17 entries when only the last matters — bloating storage,
-  // scratchpad rows, and the undo stack. Drag-resize (no kind) stays
-  // additive: separate axes/handles must accumulate so a width drag
-  // followed by a height drag both stick.
+  // scratchpad rows, and the undo stack.
+  //
+  // Drag-resize (no kind) uses property-superset dedup: drop a prior
+  // no-kind rule on the same selector if the new commit's cssText
+  // covers all of its properties. This collapses repeated drags on the
+  // same axis/handle into one rule, while preserving rules from
+  // *different* axes (drag X then Y stays additive — Y's props don't
+  // cover X's). Corner drags subsume both because their cssText
+  // touches both width-side and height-side props.
   const supersededLive = [];
-  if (kind) {
-    for (const [oldId, oldRule] of window.AdnotaResizeRules) {
-      if (oldRule.selector === selector && oldRule.kind === kind) {
-        supersededLive.push({ id: oldId, ...oldRule });
-        window.AdnotaResizeRules.delete(oldId);
-      }
+  const newProps = !kind ? cssTextProps(cssText) : null;
+  for (const [oldId, oldRule] of window.AdnotaResizeRules) {
+    if (oldRule.selector !== selector) continue;
+    let supersede = false;
+    if (kind) {
+      supersede = oldRule.kind === kind;
+    } else {
+      // No-kind path: only dedup against other no-kind rules. Don't
+      // touch kind-bearing rules (unstick / finite-scroll / reflow:*)
+      // — those have orthogonal lifecycles.
+      if (oldRule.kind) continue;
+      const oldProps = cssTextProps(oldRule.cssText);
+      supersede = isPropsSuperset(newProps, oldProps);
+    }
+    if (supersede) {
+      supersededLive.push({ id: oldId, ...oldRule });
+      window.AdnotaResizeRules.delete(oldId);
     }
   }
 
@@ -1731,13 +1809,37 @@ async function commitResizeRule(el, cssText, kind) {
   if (window.AdnotaStorage) {
     const data = await chrome.storage.local.get(domain);
     const domainData = data[domain] || { items: [] };
-    if (kind && supersededLive.length > 0) {
-      const supersededIds = new Set(supersededLive.map(r => r.id));
-      for (const item of domainData.items) {
-        if (supersededIds.has(item._id)) supersededStorage.push({ ...item });
+    const supersededIds = new Set(supersededLive.map(r => r.id));
+    // Two-tier storage filter:
+    //   1. Drop rows whose _id matches a superseded live rule (the
+    //      authoritative path).
+    //   2. Belt-and-suspenders: also drop rows that this commit
+    //      semantically supersedes by selector + kind / props-superset,
+    //      even if they weren't in our live Map. Catches stale storage
+    //      from before dedup was active and any read-write race in
+    //      chrome.storage. Same logic as the live-Map loop above,
+    //      applied to disk.
+    domainData.items = domainData.items.filter(item => {
+      if (item.action !== 'RESIZE') return true;
+      if (supersededIds.has(item._id)) {
+        supersededStorage.push({ ...item });
+        return false;
       }
-      domainData.items = domainData.items.filter(i => !supersededIds.has(i._id));
-    }
+      if (item.selector !== selector) return true;
+      let supersede = false;
+      if (kind) {
+        supersede = item.kind === kind;
+      } else {
+        if (item.kind) return true;
+        const itemProps = cssTextProps(item.cssText);
+        supersede = isPropsSuperset(newProps, itemProps);
+      }
+      if (supersede) {
+        supersededStorage.push({ ...item });
+        return false;
+      }
+      return true;
+    });
     domainData.items.push(entry);
     await chrome.storage.local.set({ [domain]: domainData });
   }
