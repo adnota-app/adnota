@@ -71,7 +71,7 @@
   z-index: 2147483642;
 }
 
-.adnota-sticky-container {
+#adnota-sticky-overlay .adnota-sticky-container {
   position: absolute;
   /* pointer-events restored: parent overlay disables them so the bare page is
      interactive everywhere outside a note. */
@@ -85,7 +85,7 @@ html.adnota-hidden .adnota-sticky-container {
   pointer-events: none !important;
 }
 
-.adnota-sticky-card {
+#adnota-sticky-overlay .adnota-sticky-card {
   width: 260px;
   height: 140px;
   min-width: 160px;
@@ -104,7 +104,7 @@ html.adnota-hidden .adnota-sticky-container {
 }
 
 /* Custom 3-line slice Resizer for sticky note bottom corner */
-.adnota-sticky-card::-webkit-resizer {
+#adnota-sticky-overlay .adnota-sticky-card::-webkit-resizer {
   background-color: transparent;
   background-image: repeating-linear-gradient(135deg,
       transparent,
@@ -116,7 +116,7 @@ html.adnota-hidden .adnota-sticky-container {
   background-repeat: no-repeat;
 }
 
-.adnota-sticky-header {
+#adnota-sticky-overlay .adnota-sticky-header {
   height: 28px;
   display: flex;
   justify-content: space-between;
@@ -127,11 +127,11 @@ html.adnota-hidden .adnota-sticky-container {
   flex-shrink: 0;
 }
 
-.adnota-sticky-header:active {
+#adnota-sticky-overlay .adnota-sticky-header:active {
   cursor: grabbing;
 }
 
-.adnota-timestamp {
+#adnota-sticky-overlay .adnota-timestamp {
   font-size: 10px;
   font-family: inherit;
   letter-spacing: 0.01em;
@@ -141,7 +141,7 @@ html.adnota-hidden .adnota-sticky-container {
   line-height: 1;
 }
 
-.adnota-trash-btn {
+#adnota-sticky-overlay .adnota-trash-btn {
   background: none;
   border: none;
   cursor: pointer;
@@ -158,7 +158,7 @@ html.adnota-hidden .adnota-sticky-container {
   transition: opacity 0.15s, background 0.15s;
 }
 
-.adnota-trash-btn:hover {
+#adnota-sticky-overlay .adnota-trash-btn:hover {
   background: var(--btn-hover);
   opacity: 0.9;
 }
@@ -168,7 +168,7 @@ html.adnota-hidden .adnota-sticky-container {
    that would otherwise punch through a transparent, borderless card look with
    white backgrounds and rounded borders. `input[type]`/`textarea` also out-
    specifies our class selector (11 vs 10), so we can't rely on source order. */
-.adnota-sticky-textarea {
+#adnota-sticky-overlay .adnota-sticky-textarea {
   flex: 1;
   width: 100% !important;
   box-sizing: border-box !important;
@@ -189,16 +189,16 @@ html.adnota-hidden .adnota-sticky-container {
   font-weight: 500 !important;
 }
 
-.adnota-sticky-textarea:focus,
-.adnota-sticky-textarea:focus-visible,
-.adnota-sticky-textarea:active {
+#adnota-sticky-overlay .adnota-sticky-textarea:focus,
+#adnota-sticky-overlay .adnota-sticky-textarea:focus-visible,
+#adnota-sticky-overlay .adnota-sticky-textarea:active {
   outline: none !important;
   box-shadow: none !important;
   border: none !important;
   background: transparent !important;
 }
 
-.adnota-sticky-textarea::placeholder {
+#adnota-sticky-overlay .adnota-sticky-textarea::placeholder {
   color: var(--text);
   opacity: 0.6;
 }
@@ -207,7 +207,7 @@ html.adnota-hidden .adnota-sticky-container {
    28px height for top/bottom symmetry around the textarea. Autocomplete
    dropdown is positioned by JS (lib/tagIndex.js) and styled by
    lib/adnotaUI.css. */
-.adnota-sticky-tag-row {
+#adnota-sticky-overlay .adnota-sticky-tag-row {
   display: flex;
   align-items: center;
   gap: 4px;
@@ -217,7 +217,7 @@ html.adnota-hidden .adnota-sticky-container {
   height: 28px;
 }
 
-.adnota-sticky-tag-icon {
+#adnota-sticky-overlay .adnota-sticky-tag-icon {
   font-size: 11px;
   font-weight: 700;
   color: var(--text);
@@ -226,7 +226,7 @@ html.adnota-hidden .adnota-sticky-container {
   line-height: 1;
 }
 
-.adnota-sticky-tag-input {
+#adnota-sticky-overlay .adnota-sticky-tag-input {
   flex: 1;
   min-width: 0;
   background: transparent !important;
@@ -247,22 +247,22 @@ html.adnota-hidden .adnota-sticky-container {
 /* Same host-site bleed guard the textarea carries: some sites apply a blue
    focus ring to every input in their stylesheet and it leaks through unless
    we pin these with !important. */
-.adnota-sticky-tag-input:focus,
-.adnota-sticky-tag-input:focus-visible,
-.adnota-sticky-tag-input:active {
+#adnota-sticky-overlay .adnota-sticky-tag-input:focus,
+#adnota-sticky-overlay .adnota-sticky-tag-input:focus-visible,
+#adnota-sticky-overlay .adnota-sticky-tag-input:active {
   outline: none !important;
   box-shadow: none !important;
   border: none !important;
   background: transparent !important;
 }
 
-.adnota-sticky-tag-input::placeholder {
+#adnota-sticky-overlay .adnota-sticky-tag-input::placeholder {
   color: var(--text);
   opacity: 0.4;
 }
 
 /* ─── Sticky note icon swatches ─── */
-.adnota-sticky-swatch {
+#adnota-sticky-overlay .adnota-sticky-swatch {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -275,11 +275,11 @@ html.adnota-hidden .adnota-sticky-container {
   flex-shrink: 0;
 }
 
-.adnota-sticky-swatch:hover {
+#adnota-sticky-overlay .adnota-sticky-swatch:hover {
   background: rgba(245, 158, 11, 0.15);
 }
 
-.adnota-sticky-swatch.active {
+#adnota-sticky-overlay .adnota-sticky-swatch.active {
   background: rgba(245, 158, 11, 0.25);
   box-shadow: 0 0 0 1px rgba(245, 158, 11, 0.5);
 }
