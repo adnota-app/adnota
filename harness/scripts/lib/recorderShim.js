@@ -125,7 +125,43 @@
       x: e.clientX, y: e.clientY, button: e.button,
       sel: selectorFor(e.target),
     });
+    // After every pointerup, snapshot whether the resizer ended up with a
+    // selection — and if so, what element it selected. The 80ms delay gives
+    // the synthesized `click` event time to fire and the resizer's click
+    // handler time to update its DOM. This is what makes Shift+Scroll-traversed
+    // selections record correctly: we don't care HOW the user reached the
+    // selection, only WHAT got selected.
+    setTimeout(snapshotSelection, 80);
   }, { capture: true, passive: true });
+
+  function snapshotSelection() {
+    const box = document.querySelector('.adnota-resizer-selection');
+    if (!box) {
+      send('selectionState', { present: false });
+      return;
+    }
+    const r = box.getBoundingClientRect();
+    if (r.width <= 0 || r.height <= 0) {
+      send('selectionState', { present: false });
+      return;
+    }
+    // The selection box overlays the selected element. elementsFromPoint at
+    // the box's center returns the stacked elements there — the first
+    // non-Adnota-UI one is what the resizer is actually targeting.
+    const cx = r.left + r.width / 2;
+    const cy = r.top + r.height / 2;
+    const stack = document.elementsFromPoint(cx, cy);
+    const target = stack.find(el => !el.closest('[data-adnota-ui]'));
+    send('selectionState', {
+      present: true,
+      target: target ? {
+        sel: selectorFor(target),
+        text: (target.textContent || '').trim().replace(/\s+/g, ' ').slice(0, 80),
+        w: Math.round(r.width),
+        h: Math.round(r.height),
+      } : null,
+    });
+  }
 
   window.addEventListener('keydown', (e) => {
     if (['Shift', 'Control', 'Alt', 'Meta'].includes(e.key)) return;

@@ -138,25 +138,36 @@ async function doStop() {
     console.error('  via bare-key, then hover/click/drag.');
   }
 
-  // Teardown last so any error here can't take ops.json down with it.
-  try { await teardown(session); } catch {}
-
-  if (ops.length === 0) process.exit(1);
+  if (ops.length === 0) {
+    try { await teardown(session); } catch {}
+    process.exit(1);
+  }
 
   if (args['no-capture']) {
+    try { await teardown(session); } catch {}
     console.log('');
     console.log('  ▸ Skipped capture (--no-capture). When ready, run:');
     console.log(`      node scripts/capture.js --site=${siteId}`);
     process.exit(0);
   }
 
+  // Spawn capture BEFORE teardown so a SIGINT-induced exit during the await
+  // can't kill the auto-capture flow. detached:true puts the child in its own
+  // process group — Ctrl+C in the recorder's terminal hits this process's
+  // group, but the detached child stays alive.
   console.log('');
   console.log(`[record:${siteId}] running capture to write outcomes.json baseline`);
   const proc = spawn(process.execPath, [path.join(__dirname, 'capture.js'), `--site=${siteId}`], {
     stdio: 'inherit',
     cwd: HARNESS_DIR,
+    detached: true,
   });
   proc.on('exit', code => process.exit(code ?? 0));
+
+  // Teardown the recorder browser in parallel with the capture child. Either
+  // can finish first; the proc.on('exit') above is what dictates when the
+  // parent exits.
+  teardown(session).catch(() => {});
 }
 
 function parseArgs(argv) {

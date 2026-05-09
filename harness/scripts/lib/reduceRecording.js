@@ -59,15 +59,33 @@ export function reduceEvents(events, { initialUrl, viewport } = {}) {
 
       // Click on a non-Adnota element → hoverElement + clickToSelect.
       if (dist < DRAG_THRESHOLD_PX && gap < CLICK_GAP_MS && downSel && !isAdnotaUiSelector(downSel)) {
-        // Prefer the element selector seen on the latest pre-click hover —
-        // resizer's hoveredEl (which selectElement uses) is set by mousemove,
-        // not by the click target itself.
-        const hoverSel = lastMoveSel || downSel;
+        // Prefer the element the resizer ACTUALLY selected (captured in the
+        // post-click selectionState snapshot) over the cursor's hover target.
+        // This handles Shift+Scroll-traversed selections — the snapshot
+        // records what the resizer ended up with, not what the cursor was over.
+        const selState = findSelectionStateAfter(ev, upIdx);
+
+        let hoverSel = lastMoveSel || downSel;
+        let expectedSelection = undefined;
+        if (selState?.target) {
+          hoverSel = selState.target.sel;
+          expectedSelection = {
+            text: selState.target.text,
+            w: selState.target.w,
+            h: selState.target.h,
+          };
+        } else if (selState && !selState.present) {
+          // Click confirmed deselect-only; replay shouldn't strict-assert.
+          expectedSelection = null;
+        }
+
         const last = ops[ops.length - 1];
         if (!last || last.type !== 'hoverElement' || last.selector !== hoverSel) {
           ops.push({ type: 'hoverElement', selector: hoverSel });
         }
-        ops.push({ type: 'clickToSelect' });
+        const click = { type: 'clickToSelect' };
+        if (expectedSelection !== undefined) click.expectedSelection = expectedSelection;
+        ops.push(click);
         i = upIdx + 1;
         continue;
       }
@@ -137,4 +155,16 @@ function reduceKey(d) {
 function isAdnotaUiSelector(sel) {
   if (!sel) return false;
   return sel.includes('adnota-') || sel.includes('[data-tool-id') || sel.includes('[data-adnota-ui');
+}
+
+// Find the selectionState event that the shim emitted ~80ms after this
+// pointerup. We walk forward through pointermove/keydown noise and stop at
+// any new pointerdown — that means a fresh interaction has begun and the
+// snapshot we wanted has been overwritten.
+function findSelectionStateAfter(ev, upIdx) {
+  for (let j = upIdx + 1; j < ev.length; j++) {
+    if (ev[j].type === 'selectionState') return ev[j].data;
+    if (ev[j].type === 'pointerdown') break;
+  }
+  return null;
 }

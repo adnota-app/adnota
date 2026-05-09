@@ -55,14 +55,69 @@ async function runOne(page, op) {
       // resizer's mousedown listener picks it up.
       await page.mouse.down();
       await page.mouse.up();
-      // Selection should materialize a `.adnota-resizer-selection` box. If it
-      // doesn't, something silently swallowed the click — fail loud now rather
-      // than producing an empty capture.
-      try {
-        await page.locator('.adnota-resizer-selection').waitFor({ state: 'visible', timeout: 5000 });
-      } catch {
-        throw new Error('clickToSelect: no .adnota-resizer-selection appeared. Hovered element may not have been a resize target, or the click was intercepted (cookie banner, modal, etc.)');
+
+      // expectedSelection === null  -> recorded as a deselect-only click.
+      // expectedSelection === {...}  -> recorded with a selection identity to verify.
+      // expectedSelection === undefined (legacy ops.json without snapshot) ->
+      //   best-effort wait, no strict check.
+      if (op.expectedSelection === null) {
+        await page.waitForTimeout(120);
+        return;
       }
+
+      if (op.expectedSelection) {
+        try {
+          await page.locator('.adnota-resizer-selection').waitFor({ state: 'visible', timeout: 3000 });
+        } catch {
+          throw new Error(
+            `clickToSelect: expected a selection (text="${op.expectedSelection.text?.slice(0, 40)}…" ` +
+            `${op.expectedSelection.w}×${op.expectedSelection.h}) but no .adnota-resizer-selection appeared`
+          );
+        }
+
+        const actual = await page.evaluate(() => {
+          const box = document.querySelector('.adnota-resizer-selection');
+          if (!box) return null;
+          const r = box.getBoundingClientRect();
+          const cx = r.left + r.width / 2;
+          const cy = r.top + r.height / 2;
+          const stack = document.elementsFromPoint(cx, cy);
+          const target = stack.find(el => !el.closest('[data-adnota-ui]'));
+          return {
+            text: target ? (target.textContent || '').trim().replace(/\s+/g, ' ').slice(0, 80) : null,
+            w: Math.round(r.width),
+            h: Math.round(r.height),
+          };
+        });
+
+        if (!actual) {
+          throw new Error(`clickToSelect: selection box vanished before identity check`);
+        }
+
+        // Dimensions: ±20% or ±20px, whichever is larger. Permissive enough
+        // for daily layout shifts on rotating content (bing carousel, news
+        // feeds) but tight enough to catch a wrong element.
+        const tolW = Math.max(20, op.expectedSelection.w * 0.2);
+        const tolH = Math.max(20, op.expectedSelection.h * 0.2);
+        const dimOk = Math.abs(actual.w - op.expectedSelection.w) <= tolW
+                   && Math.abs(actual.h - op.expectedSelection.h) <= tolH;
+
+        if (!dimOk) {
+          throw new Error(
+            `clickToSelect: selected the wrong element\n` +
+            `    expected: ${op.expectedSelection.w}×${op.expectedSelection.h}  text="${op.expectedSelection.text?.slice(0, 60)}"\n` +
+            `    actual:   ${actual.w}×${actual.h}  text="${actual.text?.slice(0, 60)}"`
+          );
+        }
+        await page.waitForTimeout(120);
+        return;
+      }
+
+      // Legacy path — best-effort wait, no verification.
+      try {
+        await page.locator('.adnota-resizer-selection').waitFor({ state: 'visible', timeout: 1500 });
+      } catch {}
+      await page.waitForTimeout(120);
       return;
     }
 
