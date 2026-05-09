@@ -28,21 +28,22 @@
   // toggles between them; sub-tabs are mode-dependent.
   // Snippets keeps 'All' because highlights and notes are categorically alike
   // (both prose, both readable as a unified reference list). Edits omits 'All'
-  // — ERASE and RESIZE are different actions, both render as monospace
-  // selectors, and a mixed list reads as undifferentiated noise. The default
-  // tab for each mode is the first entry below.
+  // — ERASE / RESIZE / MARKER are different actions with different row
+  // formats (monospace selectors vs color swatches), and a mixed list reads
+  // as undifferentiated noise. The default tab for each mode is the first
+  // entry below.
   const TABS_BY_MODE = {
     snippets: [['all', 'All'], ['highlights', 'Highlights'], ['notes', 'Notes']],
-    edits:    [['erased', 'Erased'], ['resized', 'Resized']],
+    edits:    [['erased', 'Erased'], ['resized', 'Resized'], ['drawing', 'Drawings']],
   };
   const TYPES_BY_MODE = {
     snippets: new Set(['highlight', 'note']),
-    edits:    new Set(['erase', 'resize']),
+    edits:    new Set(['erase', 'resize', 'drawing']),
   };
-  // Generic delete plumbing — keyed by snippet.type. ID field varies because
-  // NOTE records use `uuid` while everything else uses `_id`.
-  const ACTION_BY_TYPE  = { highlight: 'HIGHLIGHT', note: 'NOTE', erase: 'ERASE', resize: 'RESIZE' };
-  const ID_FIELD_BY_TYPE = { highlight: '_id', note: 'uuid', erase: '_id', resize: '_id' };
+  // Generic delete plumbing — keyed by snippet.type. NOTE and MARKER both
+  // use `uuid` as their identifier; the rest use `_id`.
+  const ACTION_BY_TYPE  = { highlight: 'HIGHLIGHT', note: 'NOTE', erase: 'ERASE', resize: 'RESIZE', drawing: 'MARKER' };
+  const ID_FIELD_BY_TYPE = { highlight: '_id', note: 'uuid', erase: '_id', resize: '_id', drawing: 'uuid' };
 
   let panel        = null;
   let bodyEl       = null;
@@ -116,6 +117,25 @@
     try { chrome.storage.local.set(payload).catch(() => {}); } catch (_) {}
   }
 
+  // Strip a CSS selector down to its leaf segment — everything past the final
+  // descendant combinator '>'. For purely structural nth-child paths this
+  // is still gibberish, but a single segment of it instead of the whole 30-
+  // segment chain. The id-tail suffix below disambiguates collisions when
+  // two different elements end up with the same leaf.
+  function leafSelector(sel) {
+    if (!sel) return '(unknown selector)';
+    const idx = sel.lastIndexOf('>');
+    return idx >= 0 ? sel.slice(idx + 1).trim() : sel;
+  }
+
+  // Short id-tail (last 6 chars of the record's _id) — used as a stable
+  // disambiguator on Edits rows, the way Git uses 7-char short SHAs.
+  function shortIdTail(id) {
+    if (id == null) return '';
+    const s = String(id);
+    return s.length <= 6 ? s : s.slice(-6);
+  }
+
   // ── Icons ──────────────────────────────────────────────────────────────────
   const ICON_COPY  = `<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="7" width="10" height="10" rx="2"/><path d="M3 13V5a2 2 0 0 1 2-2h8"/></svg>`;
   const ICON_CHECK = `<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 11 8 15 16 5"/></svg>`;
@@ -132,10 +152,15 @@
   // Clipboard with list lines — "copy everything" semantics, distinct from
   // ICON_COPY's duplicate-rectangle glyph used for the per-row action.
   const ICON_COPY_ALL = `<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="4" width="10" height="13" rx="1.5"/><path d="M8 3h4v3H8z"/><line x1="7.5" y1="9.5" x2="12.5" y2="9.5"/><line x1="7.5" y1="12" x2="12.5" y2="12"/><line x1="7.5" y1="14.5" x2="11" y2="14.5"/></svg>`;
-  // Two stacked rectangles — "view categories" affordance for the mode
-  // button. Generic enough that it doesn't lock us into a specific shape;
-  // the popover labels carry the actual semantics (Snippets / Edits).
-  const ICON_LAYERS = `<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="14" height="5" rx="1.2"/><rect x="3" y="11" width="14" height="5" rx="1.2"/></svg>`;
+  // Chevron-down — universal "click to open a menu" affordance for the
+  // mode button. The popover's labels carry the actual category semantics;
+  // the icon just needs to say "this is a dropdown."
+  const ICON_CHEVRON_DOWN = `<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><polyline points="5 8 10 13 15 8"/></svg>`;
+  // Globe — small leading hint on rows whose record is domain-wide
+  // (path === '*'). Tells the user "this rule applies everywhere on the
+  // site, not just this URL," which avoids the confusion of seeing edits
+  // on a fresh page.
+  const ICON_GLOBE = `<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="10" cy="10" r="7"/><line x1="3" y1="10" x2="17" y2="10"/><path d="M10 3 C 6 6 6 14 10 17"/><path d="M10 3 C 14 6 14 14 10 17"/></svg>`;
 
   // ── Snippet derivation ────────────────────────────────────────────────────
   // Projects all four record types into a unified shape so the panel can
@@ -206,6 +231,45 @@
           record: item,
           ts: item.timestamp ?? 0,
         });
+      } else if (item.action === 'MARKER') {
+        // Drawings are visual overlays — no text content. The row label
+        // comes from the shape type (Pencil / Arrow / Rectangle / Circle /
+        // Text), with the color surfaced as a leading swatch in buildRow.
+        // Liveness is checked against the marker overlay (each rendered
+        // wrapper carries data-uuid), so a missing wrapper means the
+        // anchor didn't match on this load → stale.
+        const SHAPE_LABELS = {
+          freehand: 'Pencil',
+          arrow:    'Arrow',
+          rect:     'Rectangle',
+          ellipse:  'Circle',
+          text:     'Text',
+        };
+        const shapeType = item.shapeType || (item.isArrow ? 'arrow' : 'freehand');
+        const label = SHAPE_LABELS[shapeType] || 'Shape';
+        let liveEl = null;
+        try {
+          liveEl = document.querySelector(`.adnota-marker-wrapper[data-uuid="${item.uuid}"]`);
+        } catch (_) {}
+        // For text shapes, the actual text content is the most identifying
+        // suffix — surfaces e.g. `● Text — "Sale!"` in the row.
+        let excerpt = '';
+        if (shapeType === 'text' && item.text) {
+          excerpt = String(item.text).trim();
+          if (excerpt.length > 80) excerpt = excerpt.slice(0, 77) + '…';
+        }
+        out.push({
+          id: item.uuid,
+          type: 'drawing',
+          shapeType,
+          label,
+          color: item.color || '#888',
+          excerpt,
+          stale: !liveEl,
+          liveEl,
+          record: item,
+          ts: item.timestamp ?? 0,
+        });
       }
     }
     out.sort((a, b) => b.ts - a.ts);
@@ -224,11 +288,12 @@
       if (activeFilter === 'highlights') list = list.filter(s => s.type === 'highlight');
       else if (activeFilter === 'notes') list = list.filter(s => s.type === 'note');
     } else {
-      // Edits mode has no 'all' tab; activeFilter must be 'erased' or
-      // 'resized'. Anything else (e.g., stale persisted 'all' from before
-      // the tab was removed) gets normalized to the default tab here.
-      if (activeFilter === 'resized') list = list.filter(s => s.type === 'resize');
-      else                            list = list.filter(s => s.type === 'erase');
+      // Edits mode has no 'all' tab; activeFilter is one of the per-type
+      // values. Stale persisted filters (e.g., 'all' from before the tab
+      // was removed) fall through to the default tab (erased).
+      if (activeFilter === 'resized')      list = list.filter(s => s.type === 'resize');
+      else if (activeFilter === 'drawing') list = list.filter(s => s.type === 'drawing');
+      else                                 list = list.filter(s => s.type === 'erase');
     }
     if (activeTag) list = list.filter(s => s.tag === activeTag);
     return list;
@@ -243,6 +308,20 @@
     return list.length;
   }
 
+  // ── Per-action count for tool-trash badges ───────────────────────────────
+  // Returns the number of records on the current page (path + domain-wide
+  // mixed via getAnchorsForUrl) whose `action` is in the supplied list.
+  // Cheap — one storage read; intended for small badges that refresh on
+  // storage onChanged. Caller passes e.g. ['ERASE'] or ['HIGHLIGHT','MARKER'].
+  async function pageActionCount(actionTypes) {
+    if (!window.AdnotaStorage || !Array.isArray(actionTypes) || !actionTypes.length) return 0;
+    const items = await AdnotaStorage.getAnchorsForUrl(location.href);
+    const wanted = new Set(actionTypes);
+    let n = 0;
+    for (const it of items) if (wanted.has(it.action)) n++;
+    return n;
+  }
+
   // ── DOM ──────────────────────────────────────────────────────────────────
   function buildPanel() {
     panel = document.createElement('div');
@@ -252,15 +331,10 @@
     const header = document.createElement('div');
     header.className = 'adnota-scratchpad-header';
 
-    filtersEl = document.createElement('div');
-    filtersEl.className = 'adnota-scratchpad-filters';
-    buildSubTabs();
-    header.appendChild(filtersEl);
-
-    // Mode-switcher icon button in the right cluster (before the funnel).
-    // Click opens a small popover with the two view-category options. Light
-    // chrome — same 22×22 footprint as the other right-cluster buttons.
-    // Accent dot indicates the inactive mode has content waiting.
+    // Mode-switcher icon button — far-left of the header. Outermost-left
+    // reads as the primary category control (Snippets vs Edits); the
+    // sub-tabs that follow are filters within that category. Click opens
+    // a small popover listing both modes with counts.
     modeBtnEl = document.createElement('button');
     modeBtnEl.type = 'button';
     modeBtnEl.className = 'adnota-scratchpad-mode-btn';
@@ -270,6 +344,11 @@
       toggleModeMenu();
     });
     header.appendChild(modeBtnEl);
+
+    filtersEl = document.createElement('div');
+    filtersEl.className = 'adnota-scratchpad-filters';
+    buildSubTabs();
+    header.appendChild(filtersEl);
 
     tagToggleBtn = document.createElement('button');
     tagToggleBtn.type = 'button';
@@ -413,19 +492,17 @@
 
   // ── Mode switcher (isolated render) ──────────────────────────────────────
   // Single point of truth for the Snippets/Edits affordance. The button
-  // sits in the right-side icon cluster; clicking opens a small popover
-  // listing the two modes with counts and a checkmark on the active one.
-  // Active mode is also conveyed by the sub-tabs that follow (Highlights/
-  // Notes vs Erased/Resized), so the icon stays neutral and just opens the
-  // menu — no label or status indicator on the button itself. The popover
-  // is where you see what's in the other mode (full count per item).
+  // sits at the far-left of the header — outermost = primary category,
+  // sub-tabs after it = filter within that category, right cluster = utility.
+  // The icon is a plain chevron-down: "click to open a menu." No data-driven
+  // tinting (the popover's count rows tell you what's in each mode); active
+  // state shows only when the popover is open.
   function renderModeButton() {
     if (!modeBtnEl) return;
-    modeBtnEl.classList.toggle('adnota-scratchpad-mode-btn-edits', activeMode === 'edits');
     while (modeBtnEl.firstChild) modeBtnEl.firstChild.remove();
     const glyph = document.createElement('span');
     glyph.className = 'adnota-scratchpad-mode-btn-glyph';
-    glyph.innerHTML = ICON_LAYERS;
+    glyph.innerHTML = ICON_CHEVRON_DOWN;
     modeBtnEl.appendChild(glyph);
   }
 
@@ -482,13 +559,13 @@
       menu.appendChild(item);
     }
 
-    // Position fixed below the button. Right-aligned so it doesn't extend
-    // past the panel's right edge.
+    // Position fixed below the button. Left-aligned with the icon now that
+    // the button lives at the far-left of the header.
     const r = modeBtnEl.getBoundingClientRect();
     Object.assign(menu.style, {
       position: 'fixed',
       top:  (r.bottom + 4) + 'px',
-      left: (r.right - 152) + 'px',
+      left: r.left + 'px',
       width: '152px',
       zIndex: '2147483646',
     });
@@ -540,6 +617,7 @@
       : {
           erased:  modeList.filter(s => s.type === 'erase').length,
           resized: modeList.filter(s => s.type === 'resize').length,
+          drawing: modeList.filter(s => s.type === 'drawing').length,
         };
     for (const { btn, value, label } of filterEls) {
       btn.classList.toggle('active', value === activeFilter);
@@ -563,6 +641,7 @@
         notes:      'notes',
         erased:     'erased elements',
         resized:    'resized elements',
+        drawing:    'drawings',
       };
       empty.textContent = `No ${EMPTY_LABELS[activeFilter] ?? 'items'} on this page yet.`;
       bodyEl.appendChild(empty);
@@ -580,7 +659,8 @@
   function buildRow(snippet) {
     const row = document.createElement('div');
     row.className = 'adnota-scratchpad-row';
-    if (snippet.type === 'erase' || snippet.type === 'resize') {
+    const isEdit = snippet.type === 'erase' || snippet.type === 'resize' || snippet.type === 'drawing';
+    if (isEdit) {
       row.classList.add('adnota-scratchpad-row-edit');
       if (snippet.stale) row.classList.add('adnota-scratchpad-row-stale');
     }
@@ -588,23 +668,76 @@
     const text = document.createElement('div');
     text.className = 'adnota-scratchpad-text';
     if (snippet.type === 'erase' || snippet.type === 'resize') {
-      // Edits row: selector primary in monospace, dim text excerpt suffix
-      // (em-dash separator) when meaningful. The row body itself toggles
-      // the inline expanded-detail block on click.
+      // Edits row: leaf segment of the selector (everything past the final
+      // '>') in monospace, plus a short id-tail disambiguator (last 6 chars
+      // of _id, like a Git short SHA). The full selector lives in the
+      // click-to-expand detail. Optional text excerpt suffix follows when
+      // textFingerprint or alt/title is present. Domain-wide records (path
+      // === '*') get a leading globe icon so the user can tell at a glance
+      // which rows are inherited site-wide rules vs page-specific edits.
       text.classList.add('adnota-scratchpad-row-mono');
+      if (snippet.record?.path === '*') {
+        const globe = document.createElement('span');
+        globe.className = 'adnota-scratchpad-row-globe';
+        globe.title = 'Domain-wide — applies across this site';
+        globe.innerHTML = ICON_GLOBE;
+        // Globe is informational only — clicks shouldn't bubble up and
+        // toggle the row's expanded-detail pane.
+        globe.addEventListener('click', (e) => e.stopPropagation());
+        text.appendChild(globe);
+      }
       const sel = document.createElement('span');
       sel.className = 'adnota-scratchpad-row-selector';
-      sel.textContent = snippet.selector || '(unknown selector)';
+      sel.textContent = leafSelector(snippet.selector);
       text.appendChild(sel);
+      const idTail = shortIdTail(snippet.id);
+      if (idTail) {
+        const idSpan = document.createElement('span');
+        idSpan.className = 'adnota-scratchpad-row-suffix';
+        idSpan.textContent = ` · ${idTail}`;
+        text.appendChild(idSpan);
+      }
       if (snippet.excerpt) {
         const suffix = document.createElement('span');
         suffix.className = 'adnota-scratchpad-row-suffix';
         // Quote text-derived excerpts; leave alt/title bare. Heuristic: if
-        // the excerpt looks like text (has a space), quote it.
+        // the excerpt looks like text (has a space), quote it. Same '·'
+        // separator as the id-tail for a uniform suffix rhythm.
         const quoted = /\s/.test(snippet.excerpt) ? `"${snippet.excerpt}"` : snippet.excerpt;
-        suffix.textContent = ` — ${quoted}`;
+        suffix.textContent = ` · ${quoted}`;
         text.appendChild(suffix);
       }
+    } else if (snippet.type === 'drawing') {
+      // Drawing row: leading color swatch, shape label, optional text
+      // excerpt suffix (only meaningful for shapeType === 'text'). No
+      // monospace — drawings aren't selector-shaped.
+      text.classList.add('adnota-scratchpad-row-drawing');
+      const swatch = document.createElement('span');
+      swatch.className = 'adnota-scratchpad-row-swatch';
+      swatch.style.background = snippet.color;
+      // Outline a tiny ring so very-light or very-dark colors stay visible
+      // against the dark panel background.
+      swatch.style.boxShadow = '0 0 0 1px rgba(255,255,255,0.18) inset';
+      text.appendChild(swatch);
+      const label = document.createElement('span');
+      label.className = 'adnota-scratchpad-row-label';
+      label.textContent = snippet.label;
+      text.appendChild(label);
+      if (snippet.excerpt) {
+        const suffix = document.createElement('span');
+        suffix.className = 'adnota-scratchpad-row-suffix';
+        suffix.textContent = ` · "${snippet.excerpt}"`;
+        text.appendChild(suffix);
+      }
+    } else if (isRedaction(snippet)) {
+      text.classList.add('adnota-scratchpad-redaction');
+      text.textContent = redactionBar(snippet.text);
+      text.title = 'Redacted';
+    } else {
+      text.textContent = snippet.text;
+    }
+
+    if (isEdit) {
       // Selection guard: clicks that follow a drag-select shouldn't toggle
       // the expansion (the user is trying to copy). Same pattern as the
       // panel's drag handler.
@@ -615,12 +748,6 @@
         toggleExpanded(snippet, row);
       });
       text.style.cursor = 'pointer';
-    } else if (isRedaction(snippet)) {
-      text.classList.add('adnota-scratchpad-redaction');
-      text.textContent = redactionBar(snippet.text);
-      text.title = 'Redacted';
-    } else {
-      text.textContent = snippet.text;
     }
     row.appendChild(text);
 
@@ -629,7 +756,7 @@
 
     // Re-attach the expanded detail block immediately if this row was
     // expanded before a re-render (e.g., storage onChanged tick).
-    if ((snippet.type === 'erase' || snippet.type === 'resize') && expandedIds.has(snippet.id)) {
+    if (isEdit && expandedIds.has(snippet.id)) {
       row.appendChild(buildExpandedDetail(snippet));
       row.classList.add('adnota-scratchpad-row-expanded');
     }
@@ -654,12 +781,25 @@
     copyBtn.addEventListener('click', async (e) => {
       e.stopPropagation();
       e.preventDefault();
-      // Edits-mode copy is the selector — the most useful debug snippet to
-      // paste into a console or bug report. Full record JSON lives in the
-      // expanded detail.
+      // Copy payload mirrors the visible row content — what you see is
+      // what you paste. For ERASE/RESIZE that's leaf · id-tail · excerpt;
+      // for drawings it's label · excerpt; for highlights/notes it's
+      // the prose text. Power-user paths (full selector, full record
+      // JSON) live in the click-to-expand detail.
       let payload;
       if (snippet.type === 'erase' || snippet.type === 'resize') {
-        payload = snippet.selector || '';
+        const parts = [leafSelector(snippet.selector)];
+        const tail = shortIdTail(snippet.id);
+        if (tail) parts.push(tail);
+        if (snippet.excerpt) {
+          const quoted = /\s/.test(snippet.excerpt) ? `"${snippet.excerpt}"` : snippet.excerpt;
+          parts.push(quoted);
+        }
+        payload = parts.join(' · ');
+      } else if (snippet.type === 'drawing') {
+        const parts = [snippet.label || 'Drawing'];
+        if (snippet.excerpt) parts.push(`"${snippet.excerpt}"`);
+        payload = parts.join(' · ');
       } else {
         payload = isRedaction(snippet) ? redactionBar(snippet.text) : snippet.text;
       }
@@ -685,6 +825,7 @@
       snippet.type === 'note'      ? 'Delete this note' :
       snippet.type === 'erase'     ? 'Restore this element' :
       snippet.type === 'resize'    ? 'Revert this resize' :
+      snippet.type === 'drawing'   ? 'Delete this drawing' :
       'Delete';
     trashBtn.innerHTML = ICON_TRASH;
     trashBtn.addEventListener('click', (e) => {
@@ -701,7 +842,7 @@
   // Toggles the inline expansion below an Edits-mode row. Tracks state in
   // expandedIds so re-renders (storage onChanged) preserve the open state.
   function toggleExpanded(snippet, row) {
-    if (snippet.type !== 'erase' && snippet.type !== 'resize') return;
+    if (snippet.type !== 'erase' && snippet.type !== 'resize' && snippet.type !== 'drawing') return;
     if (expandedIds.has(snippet.id)) {
       expandedIds.delete(snippet.id);
       row.classList.remove('adnota-scratchpad-row-expanded');
@@ -727,7 +868,19 @@
     const rec = snippet.record || {};
     const rows = [];
     rows.push(['ID', String(snippet.id)]);
-    rows.push(['Selector', snippet.selector || '(unknown)']);
+    if (snippet.type === 'erase' || snippet.type === 'resize') {
+      rows.push(['Selector', snippet.selector || '(unknown)']);
+    }
+    if (snippet.type === 'drawing') {
+      rows.push(['Shape', rec.shapeType || '(unknown)']);
+      if (rec.color) rows.push(['Color', rec.color]);
+      if (rec.strokeWidth != null) rows.push(['Stroke', String(rec.strokeWidth)]);
+      if (rec.shapeType === 'freehand' && Array.isArray(rec.drawing)) {
+        rows.push(['Points', String(rec.drawing.length)]);
+      }
+      if (rec.text) rows.push(['Text', rec.text]);
+      if (rec.fontSize != null) rows.push(['Font', String(rec.fontSize)]);
+    }
     if (snippet.type === 'resize' && rec.cssText) rows.push(['CSS', rec.cssText]);
     if (snippet.type === 'resize' && rec.kind)    rows.push(['Kind', rec.kind]);
     if (rec.path) rows.push(['Path', rec.path]);
@@ -735,7 +888,11 @@
       try { rows.push(['When', new Date(rec.timestamp).toISOString()]); }
       catch (_) {}
     }
-    if (snippet.stale) rows.push(['Status', 'stale (selector did not match)']);
+    if (snippet.stale) {
+      rows.push(['Status', snippet.type === 'drawing'
+        ? 'stale (anchor not on this page)'
+        : 'stale (selector did not match)']);
+    }
 
     for (const [k, v] of rows) {
       const row = document.createElement('div');
@@ -807,13 +964,15 @@
     }
 
     // Live-state revert. Highlights/notes are managed by their own engines
-    // observing storage changes, but ERASE/RESIZE keep an in-memory rules Map
-    // and (for ERASE) inline display:none — those need explicit cleanup so
-    // the page reflects the deletion immediately, not on next refresh.
+    // observing storage changes, but ERASE/RESIZE/MARKER need explicit
+    // cleanup so the page reflects the deletion immediately, not on next
+    // refresh. Each tool exposes a removeOne(id) symmetric with applyOne.
     if (snippet.type === 'erase') {
       try { window.AdnotaEraser?.removeOne?.(snippet.id); } catch (_) {}
     } else if (snippet.type === 'resize') {
       try { window.AdnotaResizer?.removeOne?.(snippet.id); } catch (_) {}
+    } else if (snippet.type === 'drawing') {
+      try { window.AdnotaMarker?.removeOne?.(snippet.id); } catch (_) {}
     }
 
     expandedIds.delete(snippet.id);
@@ -824,21 +983,24 @@
       snippet.type === 'highlight' ? 'Snippet deleted' :
       snippet.type === 'note'      ? 'Note deleted' :
       snippet.type === 'erase'     ? 'Erase reverted' :
-      snippet.type === 'resize'    ? 'Resize reverted' : 'Item deleted';
+      snippet.type === 'resize'    ? 'Resize reverted' :
+      snippet.type === 'drawing'   ? 'Drawing deleted' : 'Item deleted';
     showUndoToast(message, async () => {
       try {
         const again = await chrome.storage.local.get(hostname);
         const rec = again[hostname] || { items: [] };
         rec.items = (rec.items || []).concat([snapshot]);
         await chrome.storage.local.set({ [hostname]: rec });
-        // For ERASE/RESIZE, putting the record back into storage isn't
-        // enough — the live rules Map and inline state were cleared by
-        // removeOne(). Call applyOne() to re-apply the edit live so the
-        // page reflects the undo without a refresh.
+        // For ERASE/RESIZE/MARKER, putting the record back into storage
+        // isn't enough — the live state was cleared by removeOne(). Call
+        // applyOne() to re-apply the edit live so the page reflects the
+        // undo without a refresh.
         if (snippet.type === 'erase') {
           try { window.AdnotaEraser?.applyOne?.(snapshot); } catch (_) {}
         } else if (snippet.type === 'resize') {
           try { window.AdnotaResizer?.applyOne?.(snapshot); } catch (_) {}
+        } else if (snippet.type === 'drawing') {
+          try { window.AdnotaMarker?.applyOne?.(snapshot); } catch (_) {}
         }
         window.AdnotaLog?.event('scratchpad', 'delete-undo', { type: snippet.type });
       } catch (err) {
@@ -885,11 +1047,14 @@
   async function copyAll() {
     const list = filtered();
     if (!list.length) return;
-    // Snippets mode: prose join (the original behavior). Edits mode: one
-    // selector per line — useful as a quick "what did I change here" digest
-    // for bug reports or moving rules into a stylesheet.
+    // Snippets mode: prose join (the original behavior). Edits mode: a
+    // line per item — selector for erase/resize, "Label · uuid" for
+    // drawings (no selector, but still useful for cross-referencing).
     const payload = activeMode === 'edits'
-      ? list.map(s => s.selector || '').filter(Boolean).join('\n')
+      ? list.map(s => {
+          if (s.type === 'drawing') return `${s.label} · ${s.id}`;
+          return s.selector || '';
+        }).filter(Boolean).join('\n')
       : list.map(s => isRedaction(s) ? redactionBar(s.text) : s.text).join('\n\n');
     if (!payload) return;
     try { await navigator.clipboard.writeText(payload); }
@@ -917,6 +1082,8 @@
       ok = !!window.StickyEngine?.scrollTo?.(snippet.id);
     } else if (snippet.type === 'erase' || snippet.type === 'resize') {
       ok = scrollToEditElement(snippet);
+    } else if (snippet.type === 'drawing') {
+      ok = scrollToDrawing(snippet);
     }
     if (!ok) {
       showScratchToast("Couldn't locate this on the page.");
@@ -949,6 +1116,19 @@
     } else {
       spawnEditPulse(target, accent);
     }
+    return true;
+  }
+
+  // Locate logic for DRAWING rows. The marker engine exposes scrollTo, and
+  // the pulse animates the wrapper's bounding rect — drawings are visible
+  // on the page already, so no reveal-and-pulse hack is needed.
+  function scrollToDrawing(snippet) {
+    if (!window.AdnotaMarker?.scrollTo?.(snippet.id)) return false;
+    let wrapper = null;
+    try {
+      wrapper = document.querySelector(`.adnota-marker-wrapper[data-uuid="${snippet.id}"]`);
+    } catch (_) {}
+    if (wrapper) spawnEditPulse(wrapper, snippet.color || '#a78bfa');
     return true;
   }
 
@@ -1388,6 +1568,35 @@
     else open();
   }
 
+  // openOn(mode, filter): opens the panel pre-applied to a specific view, or
+  // switches to that view in-place if already open. Used by dock-trash
+  // buttons to route directly to "review the items I'd otherwise nuke."
+  // Mode/filter are persisted so subsequent open()s remember the choice.
+  async function openOn(mode, filter) {
+    if (mode !== 'snippets' && mode !== 'edits') return;
+    const validFilter = isValidFilterForMode(mode, filter)
+      ? filter
+      : defaultFilterForMode(mode);
+    if (!panel) {
+      // Persist first so open()'s storage read picks up the new state.
+      try {
+        await chrome.storage.local.set({ [MODE_KEY]: mode, [FILTER_KEY]: validFilter });
+      } catch (_) {
+        // Fall through to open(); it'll fix activeMode/activeFilter from
+        // the in-memory state we set just below.
+      }
+      activeMode = mode;
+      activeFilter = validFilter;
+      await open();
+      return;
+    }
+    // Already open — switch in-place. setMode handles mode swap (rebuilds
+    // sub-tabs, resets activeFilter to mode default), then setFilter
+    // narrows to the requested sub-tab if different.
+    if (activeMode !== mode) setMode(mode);
+    if (activeFilter !== validFilter) setFilter(validFilter);
+  }
+
   function isOpen() { return !!panel; }
 
   async function refresh() {
@@ -1425,9 +1634,11 @@
   window.AdnotaScratchPad = {
     toggle,
     open,
+    openOn,
     close,
     isOpen,
     refresh,
     pageSnippetCount,
+    pageActionCount,
   };
 })();

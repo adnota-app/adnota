@@ -131,6 +131,16 @@
   dismissBtn.setAttribute('data-adnota-tooltip', 'Hide on this site (Alt+A restores)');
   dock.appendChild(dismissBtn);
 
+  // Page-edit count badge — small notification pill anchored to the OUTER
+  // dock element (not the A logo) so it sits at the top-right of the entire
+  // floating mascot square. Visible only in idle/collapsed state; CSS hides
+  // it when the dock has the `adnota-dock-active` class so it doesn't
+  // clutter the expanded tool palette. Refreshed by refreshDockBadge below.
+  const dockBadge = document.createElement('span');
+  dockBadge.className = 'adnota-count-badge adnota-dock-badge';
+  dockBadge.hidden = true;
+  dock.appendChild(dockBadge);
+
   document.documentElement.appendChild(dock);
 
   // ── Position persistence ──────────────────────────────────────────────────
@@ -553,13 +563,29 @@
     }).catch(() => {});
   }
 
+  // Update the page-edit count badge on the A-icon. Pulls the same total
+  // the scratch pad would show across both modes (highlights + notes +
+  // erases + resizes + drawings); hides at 0 to keep the dock untouched
+  // on virgin pages.
+  function refreshDockBadge() {
+    if (!dockBadge || !window.AdnotaScratchPad?.pageSnippetCount) return;
+    window.AdnotaScratchPad.pageSnippetCount().then((count) => {
+      dockBadge.textContent = String(count);
+      dockBadge.hidden = count === 0;
+    }).catch(() => {});
+  }
+
   // Initial check + every time storage for this domain changes (the only
   // path that creates/removes snippets). Cheap — getAnchorsForUrl reads one
   // domain key.
   refreshScratchEnabled();
+  refreshDockBadge();
   chrome.storage.onChanged.addListener((changes, area) => {
     if (area !== 'local') return;
-    if (changes[location.hostname]) refreshScratchEnabled();
+    if (changes[location.hostname]) {
+      refreshScratchEnabled();
+      refreshDockBadge();
+    }
   });
 
   // SPA URL changes (claude.ai, ChatGPT, etc.) don't touch storage but do
@@ -569,12 +595,12 @@
   if (typeof window.navigation?.addEventListener === 'function') {
     try {
       window.navigation.addEventListener('navigate', () => {
-        setTimeout(refreshScratchEnabled, 50);
+        setTimeout(() => { refreshScratchEnabled(); refreshDockBadge(); }, 50);
       });
     } catch (_) {}
   } else {
     window.addEventListener('popstate', () => {
-      setTimeout(refreshScratchEnabled, 50);
+      setTimeout(() => { refreshScratchEnabled(); refreshDockBadge(); }, 50);
     });
   }
 

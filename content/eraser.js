@@ -96,11 +96,16 @@ eraserBody.appendChild(Object.assign(document.createElement('div'), {
   className: 'adnota-toolbar-divider adnota-toolbar-divider-red',
 }));
 
-// Trash — clears all erasures on this page
+// Trash — opens scratch pad on Edits / Erased so the user can review and
+// delete individual erasures (instead of nuking all of them). Badge shows
+// the per-page count and refreshes on storage / SPA-nav events; the helper
+// in adnotaUI.js handles all the wiring once mode/filter are passed.
 const eraserTrashBtn = window.AdnotaUI.createTrashButton({
   singular: 'erasure',
   plural: 'erasures',
   actionTypes: ['ERASE'],
+  mode: 'edits',
+  filter: 'erased',
 });
 eraserTrashBtn.classList.add('adnota-undo-btn-red');
 eraserBody.appendChild(eraserTrashBtn);
