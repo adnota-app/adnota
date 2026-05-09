@@ -177,6 +177,33 @@
   filter: brightness(1.1);
 }
 
+/* ─── Clip / size-cap warning chip ───────────────────────────────────────
+   Surfaces during a drag when growth is being silently masked by a clipping
+   ancestor (overflow:hidden|clip) or capped by the element's own
+   max-width/max-height. Red-toned to read as "something's wrong" rather than
+   amber's "action available." Inherits sizing/typography from the action
+   chip; only the colors and the warn-icon prefix differ. */
+
+.adnota-resizer-clip-chip {
+  background: #dc2626;
+  border-color: #fff;
+}
+
+.adnota-resizer-clip-chip::before {
+  content: '⚠ ';
+}
+
+/* Warn-only variant (size-cap kind): same color, default cursor, no
+   hover lift — communicates "no action available, just informing you." */
+.adnota-resizer-clip-chip[data-warn-only="1"] {
+  cursor: default;
+}
+
+.adnota-resizer-clip-chip[data-warn-only="1"]:hover {
+  transform: none;
+  filter: none;
+}
+
 /* ─── Drag overlay (captures mouse during drag) ──────────────────────────── */
 
 #adnota-resizer-drag-overlay {
