@@ -56,7 +56,7 @@
 }
 
 /* ── Header ──────────────────────────────────────────────────────────────── */
-[data-role~="adnota-scratchpad-header"] {
+#adnota-scratchpad [data-role~="adnota-scratchpad-header"] {
   flex: 0 0 auto;
   display: flex;
   align-items: center;
@@ -76,9 +76,9 @@
      too. The visible chip text inside the header is sized large enough
      to remain legible at that alpha. */
 }
-[data-role~="adnota-scratchpad-header"]:active { cursor: grabbing; }
+#adnota-scratchpad [data-role~="adnota-scratchpad-header"]:active { cursor: grabbing; }
 
-[data-role~="adnota-scratchpad-filters"] {
+#adnota-scratchpad [data-role~="adnota-scratchpad-filters"] {
   display: inline-flex;
   align-items: center;
   gap: 4px;
@@ -93,7 +93,7 @@
    Plain neutral color always; counts live in the popover, not on the icon.
    Active state (popover open) borrows the brand purple, matching the
    funnel's open-state styling. */
-[data-role~="adnota-scratchpad-mode-btn"] {
+#adnota-scratchpad [data-role~="adnota-scratchpad-mode-btn"] {
   appearance: none;
   position: relative;
   border: none;
@@ -111,17 +111,17 @@
   cursor: pointer;
   transition: color 0.15s ease, background 0.15s ease;
 }
-[data-role~="adnota-scratchpad-mode-btn-glyph"] {
+#adnota-scratchpad [data-role~="adnota-scratchpad-mode-btn-glyph"] {
   display: inline-flex;
   align-items: center;
   justify-content: center;
 }
-[data-role~="adnota-scratchpad-mode-btn"] svg { width: 14px !important; height: 14px !important; }
-[data-role~="adnota-scratchpad-mode-btn"]:hover {
+#adnota-scratchpad [data-role~="adnota-scratchpad-mode-btn"] svg { width: 14px !important; height: 14px !important; }
+#adnota-scratchpad [data-role~="adnota-scratchpad-mode-btn"]:hover {
   color: #e9d5ff;
   background: rgba(124, 58, 237, 0.18);
 }
-[data-role~="adnota-scratchpad-mode-btn"][data-role~="active"] {
+#adnota-scratchpad [data-role~="adnota-scratchpad-mode-btn"][data-role~="active"] {
   color: var(--adnota-accent, #c084fc);
   background: rgba(124, 58, 237, 0.18);
 }
@@ -129,7 +129,7 @@
 /* Popover — frosted-glass panel matching the scratch pad surface. Two rows,
    each clickable, with a leading checkmark on the active mode. Pure CSS;
    no portal needed. Position is set inline at open() time. */
-[data-role~="adnota-scratchpad-modemenu"] {
+#adnota-scratchpad-modemenu {
   background: var(--adnota-hud-bg, rgba(20, 20, 20, 0.94));
   -webkit-backdrop-filter: blur(8px);
   backdrop-filter: blur(8px);
@@ -143,7 +143,7 @@
   flex-direction: column;
   gap: 1px;
 }
-[data-role~="adnota-scratchpad-modemenu-item"] {
+#adnota-scratchpad-modemenu [data-role~="adnota-scratchpad-modemenu-item"] {
   appearance: none;
   border: none;
   background: transparent;
@@ -159,14 +159,14 @@
   cursor: pointer;
   transition: background 0.12s, color 0.12s;
 }
-[data-role~="adnota-scratchpad-modemenu-item"]:hover {
+#adnota-scratchpad-modemenu [data-role~="adnota-scratchpad-modemenu-item"]:hover {
   background: rgba(124, 58, 237, 0.18);
   color: #ffffff;
 }
-[data-role~="adnota-scratchpad-modemenu-item"][data-role~="active"] {
+#adnota-scratchpad-modemenu [data-role~="adnota-scratchpad-modemenu-item"][data-role~="active"] {
   color: var(--adnota-accent, #c084fc);
 }
-[data-role~="adnota-scratchpad-modemenu-check"] {
+#adnota-scratchpad-modemenu [data-role~="adnota-scratchpad-modemenu-check"] {
   width: 14px;
   height: 14px;
   display: inline-flex;
@@ -175,24 +175,24 @@
   flex: 0 0 14px;
   color: var(--adnota-accent, #c084fc);
 }
-[data-role~="adnota-scratchpad-modemenu-check"] svg {
+#adnota-scratchpad-modemenu [data-role~="adnota-scratchpad-modemenu-check"] svg {
   width: 12px !important;
   height: 12px !important;
 }
-[data-role~="adnota-scratchpad-modemenu-label"] {
+#adnota-scratchpad-modemenu [data-role~="adnota-scratchpad-modemenu-label"] {
   flex: 1 1 auto;
   font-weight: 500;
 }
-[data-role~="adnota-scratchpad-modemenu-count"] {
+#adnota-scratchpad-modemenu [data-role~="adnota-scratchpad-modemenu-count"] {
   color: rgba(255, 255, 255, 0.45);
   font-variant-numeric: tabular-nums;
   font-size: 11.5px;
 }
-[data-role~="adnota-scratchpad-modemenu-item"][data-role~="active"] [data-role~="adnota-scratchpad-modemenu-count"] {
+#adnota-scratchpad-modemenu [data-role~="adnota-scratchpad-modemenu-item"][data-role~="active"] [data-role~="adnota-scratchpad-modemenu-count"] {
   color: rgba(192, 132, 252, 0.65);
 }
 
-[data-role~="adnota-scratchpad-filter"] {
+#adnota-scratchpad [data-role~="adnota-scratchpad-filter"] {
   appearance: none;
   border: none;
   background: transparent;
@@ -205,26 +205,26 @@
   cursor: pointer;
   transition: color 0.15s ease, background 0.15s ease;
 }
-[data-role~="adnota-scratchpad-filter"]:hover {
+#adnota-scratchpad [data-role~="adnota-scratchpad-filter"]:hover {
   color: rgba(255, 255, 255, 0.85);
   background: rgba(255, 255, 255, 0.04);
 }
-[data-role~="adnota-scratchpad-filter"][data-role~="active"] {
+#adnota-scratchpad [data-role~="adnota-scratchpad-filter"][data-role~="active"] {
   color: var(--adnota-accent, #c084fc);
   border-bottom: 1px solid var(--adnota-accent, #7c3aed);
   border-radius: 0;
   padding-bottom: 2px;
 }
-[data-role~="adnota-scratchpad-filter-count"] {
+#adnota-scratchpad [data-role~="adnota-scratchpad-filter-count"] {
   color: rgba(255, 255, 255, 0.4);
   font-variant-numeric: tabular-nums;
   margin-left: 1px;
 }
-[data-role~="adnota-scratchpad-filter"][data-role~="active"] [data-role~="adnota-scratchpad-filter-count"] {
+#adnota-scratchpad [data-role~="adnota-scratchpad-filter"][data-role~="active"] [data-role~="adnota-scratchpad-filter-count"] {
   color: rgba(192, 132, 252, 0.65);
 }
 
-[data-role~="adnota-scratchpad-copyall"] {
+#adnota-scratchpad [data-role~="adnota-scratchpad-copyall"] {
   appearance: none;
   border: none;
   background: transparent;
@@ -239,21 +239,21 @@
   cursor: pointer;
   transition: color 0.15s ease, background 0.15s ease;
 }
-[data-role~="adnota-scratchpad-copyall"] svg { width: 14px !important; height: 14px !important; }
-[data-role~="adnota-scratchpad-copyall"]:hover:not(:disabled) {
+#adnota-scratchpad [data-role~="adnota-scratchpad-copyall"] svg { width: 14px !important; height: 14px !important; }
+#adnota-scratchpad [data-role~="adnota-scratchpad-copyall"]:hover:not(:disabled) {
   color: #e9d5ff;
   background: rgba(124, 58, 237, 0.18);
 }
-[data-role~="adnota-scratchpad-copyall"]:disabled {
+#adnota-scratchpad [data-role~="adnota-scratchpad-copyall"]:disabled {
   opacity: 0.35;
   cursor: default;
 }
-[data-role~="adnota-scratchpad-copyall"][data-role~="copied"] {
+#adnota-scratchpad [data-role~="adnota-scratchpad-copyall"][data-role~="copied"] {
   color: #86efac;
   background: rgba(134, 239, 172, 0.12);
 }
 
-[data-role~="adnota-scratchpad-close"] {
+#adnota-scratchpad [data-role~="adnota-scratchpad-close"] {
   appearance: none;
   border: none;
   background: transparent;
@@ -268,8 +268,8 @@
   cursor: pointer;
   transition: color 0.15s ease, background 0.15s ease;
 }
-[data-role~="adnota-scratchpad-close"] svg { width: 14px !important; height: 14px !important; }
-[data-role~="adnota-scratchpad-close"]:hover {
+#adnota-scratchpad [data-role~="adnota-scratchpad-close"] svg { width: 14px !important; height: 14px !important; }
+#adnota-scratchpad [data-role~="adnota-scratchpad-close"]:hover {
   color: #fca5a5;
   background: rgba(239, 68, 68, 0.12);
 }
@@ -277,7 +277,7 @@
 /* Funnel toggle: same 22×22 footprint as the close button so the right-side
    header trio reads as a row. Active state borrows brand purple to mirror
    the active type-filter pill. */
-[data-role~="adnota-scratchpad-filterbtn"] {
+#adnota-scratchpad [data-role~="adnota-scratchpad-filterbtn"] {
   appearance: none;
   border: none;
   background: transparent;
@@ -292,12 +292,12 @@
   cursor: pointer;
   transition: color 0.15s ease, background 0.15s ease;
 }
-[data-role~="adnota-scratchpad-filterbtn"] svg { width: 14px !important; height: 14px !important; }
-[data-role~="adnota-scratchpad-filterbtn"]:hover {
+#adnota-scratchpad [data-role~="adnota-scratchpad-filterbtn"] svg { width: 14px !important; height: 14px !important; }
+#adnota-scratchpad [data-role~="adnota-scratchpad-filterbtn"]:hover {
   color: #e9d5ff;
   background: rgba(124, 58, 237, 0.18);
 }
-[data-role~="adnota-scratchpad-filterbtn"][data-role~="active"] {
+#adnota-scratchpad [data-role~="adnota-scratchpad-filterbtn"][data-role~="active"] {
   color: var(--adnota-accent, #c084fc);
   background: rgba(124, 58, 237, 0.18);
 }
@@ -306,7 +306,7 @@
 /* Hidden by default (controlled by the funnel toggle). When visible, sits
    between the header and body so the chip row scrolls with neither — same
    layout as the home page tag bar but scaled to the panel width. */
-[data-role~="adnota-scratchpad-tagbar"] {
+#adnota-scratchpad [data-role~="adnota-scratchpad-tagbar"] {
   flex: 0 0 auto;
   display: flex;
   align-items: center;
@@ -316,15 +316,15 @@
   border-bottom: 1px solid rgba(255, 255, 255, 0.06);
   background: rgba(0, 0, 0, 0.18);
 }
-[data-role~="adnota-scratchpad-tagbar"][hidden] { display: none; }
+#adnota-scratchpad [data-role~="adnota-scratchpad-tagbar"][hidden] { display: none; }
 
-[data-role~="adnota-scratchpad-tagbar-empty"] {
+#adnota-scratchpad [data-role~="adnota-scratchpad-tagbar-empty"] {
   font-size: 11.5px;
   color: rgba(255, 255, 255, 0.4);
   font-style: italic;
 }
 
-[data-role~="adnota-scratchpad-tagchip"] {
+#adnota-scratchpad [data-role~="adnota-scratchpad-tagchip"] {
   appearance: none;
   display: inline-flex;
   align-items: center;
@@ -341,22 +341,22 @@
   line-height: 1.2;
   transition: background 0.12s, color 0.12s, border-color 0.12s;
 }
-[data-role~="adnota-scratchpad-tagchip"]:hover {
+#adnota-scratchpad [data-role~="adnota-scratchpad-tagchip"]:hover {
   background: rgba(124, 58, 237, 0.16);
   border-color: rgba(124, 58, 237, 0.4);
   color: #ffffff;
 }
-[data-role~="adnota-scratchpad-tagchip"][data-role~="active"] {
+#adnota-scratchpad [data-role~="adnota-scratchpad-tagchip"][data-role~="active"] {
   background: #7c3aed;
   border-color: #7c3aed;
   color: #ffffff;
   font-weight: 600;
 }
-[data-role~="adnota-scratchpad-tagchip-hash"] {
+#adnota-scratchpad [data-role~="adnota-scratchpad-tagchip-hash"] {
   opacity: 0.7;
   font-weight: 700;
 }
-[data-role~="adnota-scratchpad-tagchip-count"] {
+#adnota-scratchpad [data-role~="adnota-scratchpad-tagchip-count"] {
   font-size: 10px;
   font-weight: 600;
   padding: 0 5px;
@@ -366,27 +366,27 @@
   margin-left: 2px;
   font-variant-numeric: tabular-nums;
 }
-[data-role~="adnota-scratchpad-tagchip"][data-role~="active"] [data-role~="adnota-scratchpad-tagchip-count"] {
+#adnota-scratchpad [data-role~="adnota-scratchpad-tagchip"][data-role~="active"] [data-role~="adnota-scratchpad-tagchip-count"] {
   background: rgba(255, 255, 255, 0.22);
   color: #ffffff;
 }
 
 /* ── Body ────────────────────────────────────────────────────────────────── */
-[data-role~="adnota-scratchpad-body"] {
+#adnota-scratchpad [data-role~="adnota-scratchpad-body"] {
   flex: 1 1 auto;
   overflow-y: auto;
   padding: 14px 16px;
   scrollbar-width: thin;
   scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
 }
-[data-role~="adnota-scratchpad-body"]::-webkit-scrollbar { width: 8px; }
-[data-role~="adnota-scratchpad-body"]::-webkit-scrollbar-track { background: transparent; }
-[data-role~="adnota-scratchpad-body"]::-webkit-scrollbar-thumb {
+#adnota-scratchpad [data-role~="adnota-scratchpad-body"]::-webkit-scrollbar { width: 8px; }
+#adnota-scratchpad [data-role~="adnota-scratchpad-body"]::-webkit-scrollbar-track { background: transparent; }
+#adnota-scratchpad [data-role~="adnota-scratchpad-body"]::-webkit-scrollbar-thumb {
   background: rgba(255, 255, 255, 0.15);
   border-radius: 4px;
 }
 
-[data-role~="adnota-scratchpad-empty"] {
+#adnota-scratchpad [data-role~="adnota-scratchpad-empty"] {
   text-align: center;
   color: rgba(255, 255, 255, 0.35);
   font-size: 13px;
@@ -394,7 +394,7 @@
   font-style: italic;
 }
 
-[data-role~="adnota-scratchpad-row"] {
+#adnota-scratchpad [data-role~="adnota-scratchpad-row"] {
   position: relative;
   padding: 6px 0;
   /* Action buttons (goto/copy/trash) overlay the top-right corner via
@@ -405,7 +405,7 @@
    read through the icons. Pseudo-element to avoid restructuring the row
    DOM; sized to cover all three 22px buttons + the 26px gaps between them
    plus a small halo. */
-[data-role~="adnota-scratchpad-row"]::before {
+#adnota-scratchpad [data-role~="adnota-scratchpad-row"]::before {
   content: '';
   position: absolute;
   top: 4px;
@@ -419,22 +419,22 @@
   transition: opacity 0.15s ease;
   z-index: 0;
 }
-[data-role~="adnota-scratchpad-row"]:hover::before {
+#adnota-scratchpad [data-role~="adnota-scratchpad-row"]:hover::before {
   opacity: 1;
 }
 /* Hairline between rows — replaces the standalone .sep div for a tighter
    list rhythm. ~13px total between consecutive snippet baselines. */
-[data-role~="adnota-scratchpad-row"] + [data-role~="adnota-scratchpad-row"] {
+#adnota-scratchpad [data-role~="adnota-scratchpad-row"] + [data-role~="adnota-scratchpad-row"] {
   border-top: 1px solid rgba(255, 255, 255, 0.08);
 }
 
-[data-role~="adnota-scratchpad-text"] {
+#adnota-scratchpad [data-role~="adnota-scratchpad-text"] {
   white-space: pre-wrap;
   word-wrap: break-word;
   color: rgba(255, 255, 255, 0.92);
 }
 
-[data-role~="adnota-scratchpad-redaction"] {
+#adnota-scratchpad [data-role~="adnota-scratchpad-redaction"] {
   font-family: monospace;
   letter-spacing: -1px;
   color: rgba(255, 255, 255, 0.55);
@@ -445,16 +445,16 @@
    Click the row body to toggle the inline expanded-detail block. Stale rows
    (selector no longer matches the page) dim to ~50% opacity — the visual
    state itself signals "couldn't find this anymore." */
-[data-role~="adnota-scratchpad-row-mono"] {
+#adnota-scratchpad [data-role~="adnota-scratchpad-row-mono"] {
   font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   font-size: 12.5px;
   white-space: normal;
   word-break: break-all;
 }
-[data-role~="adnota-scratchpad-row-selector"] {
+#adnota-scratchpad [data-role~="adnota-scratchpad-row-selector"] {
   color: rgba(255, 255, 255, 0.92);
 }
-[data-role~="adnota-scratchpad-row-suffix"] {
+#adnota-scratchpad [data-role~="adnota-scratchpad-row-suffix"] {
   color: rgba(255, 255, 255, 0.50);
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   font-size: 12.5px;
@@ -464,7 +464,7 @@
    match the monospace x-height; nudged down a hair so it sits on the
    text baseline rather than floating above it. Native title attribute
    handles the "Domain-wide..." tooltip without needing a custom system. */
-[data-role~="adnota-scratchpad-row-globe"] {
+#adnota-scratchpad [data-role~="adnota-scratchpad-row-globe"] {
   display: inline-flex;
   align-items: center;
   width: 13px;
@@ -473,18 +473,18 @@
   vertical-align: -2px;
   color: rgba(192, 132, 252, 0.65); /* dim accent so the icon reads as metadata */
 }
-[data-role~="adnota-scratchpad-row-globe"] svg {
+#adnota-scratchpad [data-role~="adnota-scratchpad-row-globe"] svg {
   width: 13px !important;
   height: 13px !important;
 }
-[data-role~="adnota-scratchpad-row-stale"] {
+#adnota-scratchpad [data-role~="adnota-scratchpad-row-stale"] {
   opacity: 0.5;
 }
-[data-role~="adnota-scratchpad-row-stale"] [data-role~="adnota-scratchpad-row-selector"] {
+#adnota-scratchpad [data-role~="adnota-scratchpad-row-stale"] [data-role~="adnota-scratchpad-row-selector"] {
   text-decoration: line-through;
   text-decoration-color: rgba(255, 255, 255, 0.3);
 }
-[data-role~="adnota-scratchpad-row-edit"][data-role~="adnota-scratchpad-row-expanded"] {
+#adnota-scratchpad [data-role~="adnota-scratchpad-row-edit"][data-role~="adnota-scratchpad-row-expanded"] {
   /* Slightly darker backing when expanded so the inline detail reads as a
      subordinate region of the same row. */
   background: rgba(255, 255, 255, 0.02);
@@ -496,7 +496,7 @@
    shapes. Sits visually distinct from the monospace selector rows above —
    the swatch is the primary identifier, color encodes which drawing is
    which, the label disambiguates when colors collide. */
-[data-role~="adnota-scratchpad-row-drawing"] {
+#adnota-scratchpad [data-role~="adnota-scratchpad-row-drawing"] {
   display: inline-flex;
   align-items: baseline;
   gap: 6px;
@@ -504,7 +504,7 @@
   font-size: 13px;
   color: rgba(255, 255, 255, 0.92);
 }
-[data-role~="adnota-scratchpad-row-swatch"] {
+#adnota-scratchpad [data-role~="adnota-scratchpad-row-swatch"] {
   display: inline-block;
   width: 9px;
   height: 9px;
@@ -514,14 +514,14 @@
   transform: translateY(1px);
   flex: 0 0 auto;
 }
-[data-role~="adnota-scratchpad-row-label"] {
+#adnota-scratchpad [data-role~="adnota-scratchpad-row-label"] {
   font-weight: 500;
 }
 
 /* Inline expanded-detail block — only used in Edits mode. Monospace key/value
    list + a small "Copy as JSON" button. Indented one step so the visual
    relationship to the row above is obvious. */
-[data-role~="adnota-scratchpad-detail"] {
+#adnota-scratchpad [data-role~="adnota-scratchpad-detail"] {
   margin-top: 6px;
   padding: 8px 10px;
   border-top: 1px solid rgba(255, 255, 255, 0.08);
@@ -531,13 +531,13 @@
   font-size: 11.5px;
   color: rgba(255, 255, 255, 0.78);
 }
-[data-role~="adnota-scratchpad-detail-row"] {
+#adnota-scratchpad [data-role~="adnota-scratchpad-detail-row"] {
   display: flex;
   gap: 8px;
   padding: 1px 0;
   word-break: break-all;
 }
-[data-role~="adnota-scratchpad-detail-key"] {
+#adnota-scratchpad [data-role~="adnota-scratchpad-detail-key"] {
   flex: 0 0 60px;
   color: rgba(255, 255, 255, 0.45);
   text-transform: uppercase;
@@ -545,11 +545,11 @@
   letter-spacing: 0.5px;
   padding-top: 2px;
 }
-[data-role~="adnota-scratchpad-detail-val"] {
+#adnota-scratchpad [data-role~="adnota-scratchpad-detail-val"] {
   flex: 1 1 auto;
   color: rgba(255, 255, 255, 0.85);
 }
-[data-role~="adnota-scratchpad-detail-copyjson"] {
+#adnota-scratchpad [data-role~="adnota-scratchpad-detail-copyjson"] {
   appearance: none;
   margin-top: 8px;
   padding: 3px 8px;
@@ -563,15 +563,15 @@
   cursor: pointer;
   transition: color 0.15s, background 0.15s, border-color 0.15s;
 }
-[data-role~="adnota-scratchpad-detail-copyjson"]:hover {
+#adnota-scratchpad [data-role~="adnota-scratchpad-detail-copyjson"]:hover {
   color: #ffffff;
   background: rgba(124, 58, 237, 0.18);
   border-color: rgba(124, 58, 237, 0.45);
 }
 
-[data-role~="adnota-scratchpad-rowcopy"],
-[data-role~="adnota-scratchpad-rowgoto"],
-[data-role~="adnota-scratchpad-rowtrash"] {
+#adnota-scratchpad [data-role~="adnota-scratchpad-rowcopy"],
+#adnota-scratchpad [data-role~="adnota-scratchpad-rowgoto"],
+#adnota-scratchpad [data-role~="adnota-scratchpad-rowtrash"] {
   position: absolute;
   top: 6px;
   z-index: 1;       /* above the .row::before backdrop */
@@ -590,24 +590,24 @@
   opacity: 0;
   transition: opacity 0.15s ease, color 0.15s ease, background 0.15s ease;
 }
-[data-role~="adnota-scratchpad-rowtrash"] { right: 0; }
-[data-role~="adnota-scratchpad-rowcopy"]  { right: 26px; }
-[data-role~="adnota-scratchpad-rowgoto"]  { right: 52px; }
+#adnota-scratchpad [data-role~="adnota-scratchpad-rowtrash"] { right: 0; }
+#adnota-scratchpad [data-role~="adnota-scratchpad-rowcopy"]  { right: 26px; }
+#adnota-scratchpad [data-role~="adnota-scratchpad-rowgoto"]  { right: 52px; }
 
-[data-role~="adnota-scratchpad-rowcopy"] svg,
-[data-role~="adnota-scratchpad-rowgoto"] svg,
-[data-role~="adnota-scratchpad-rowtrash"] svg { width: 14px !important; height: 14px !important; }
+#adnota-scratchpad [data-role~="adnota-scratchpad-rowcopy"] svg,
+#adnota-scratchpad [data-role~="adnota-scratchpad-rowgoto"] svg,
+#adnota-scratchpad [data-role~="adnota-scratchpad-rowtrash"] svg { width: 14px !important; height: 14px !important; }
 
-[data-role~="adnota-scratchpad-row"]:hover [data-role~="adnota-scratchpad-rowcopy"],
-[data-role~="adnota-scratchpad-row"]:hover [data-role~="adnota-scratchpad-rowgoto"],
-[data-role~="adnota-scratchpad-row"]:hover [data-role~="adnota-scratchpad-rowtrash"] { opacity: 1; }
+#adnota-scratchpad [data-role~="adnota-scratchpad-row"]:hover [data-role~="adnota-scratchpad-rowcopy"],
+#adnota-scratchpad [data-role~="adnota-scratchpad-row"]:hover [data-role~="adnota-scratchpad-rowgoto"],
+#adnota-scratchpad [data-role~="adnota-scratchpad-row"]:hover [data-role~="adnota-scratchpad-rowtrash"] { opacity: 1; }
 
-[data-role~="adnota-scratchpad-rowcopy"]:hover,
-[data-role~="adnota-scratchpad-rowgoto"]:hover {
+#adnota-scratchpad [data-role~="adnota-scratchpad-rowcopy"]:hover,
+#adnota-scratchpad [data-role~="adnota-scratchpad-rowgoto"]:hover {
   color: #c084fc;
   background: rgba(124, 58, 237, 0.12);
 }
-[data-role~="adnota-scratchpad-rowtrash"]:hover {
+#adnota-scratchpad [data-role~="adnota-scratchpad-rowtrash"]:hover {
   color: #f87171;
   background: rgba(248, 113, 113, 0.12);
 }
@@ -621,7 +621,7 @@
   0%, 100% { color: rgba(255, 255, 255, 0.35); }
   50%      { color: #f87171; }
 }
-[data-role~="adnota-scratchpad-rowtrash"][data-role~="adnota-blink"] {
+#adnota-scratchpad [data-role~="adnota-scratchpad-rowtrash"][data-role~="adnota-blink"] {
   opacity: 1 !important;
   animation: adnota-rowtrash-blink 0.42s ease-in-out 3;
 }
@@ -629,16 +629,16 @@
    (copy/goto + the dark backdrop pill) so the trash sits in its real home
    instead of floating alone. Same end state as :hover, no animation on the
    sibling buttons — only the trash glyph pulses. */
-[data-role~="adnota-scratchpad-row"]:has([data-role~="adnota-scratchpad-rowtrash"][data-role~="adnota-blink"])::before {
+#adnota-scratchpad [data-role~="adnota-scratchpad-row"]:has([data-role~="adnota-scratchpad-rowtrash"][data-role~="adnota-blink"])::before {
   opacity: 1;
 }
-[data-role~="adnota-scratchpad-row"]:has([data-role~="adnota-scratchpad-rowtrash"][data-role~="adnota-blink"])
+#adnota-scratchpad [data-role~="adnota-scratchpad-row"]:has([data-role~="adnota-scratchpad-rowtrash"][data-role~="adnota-blink"])
   [data-role~="adnota-scratchpad-rowcopy"],
-[data-role~="adnota-scratchpad-row"]:has([data-role~="adnota-scratchpad-rowtrash"][data-role~="adnota-blink"])
+#adnota-scratchpad [data-role~="adnota-scratchpad-row"]:has([data-role~="adnota-scratchpad-rowtrash"][data-role~="adnota-blink"])
   [data-role~="adnota-scratchpad-rowgoto"] {
   opacity: 1;
 }
-[data-role~="adnota-scratchpad-rowcopy"][data-role~="copied"] {
+#adnota-scratchpad [data-role~="adnota-scratchpad-rowcopy"][data-role~="copied"] {
   opacity: 1;
   color: #86efac;
   background: rgba(134, 239, 172, 0.12);
@@ -647,7 +647,7 @@
 /* Inline toast — anchored to the panel bottom. Both the passive goto-miss
    notice and the per-item delete-with-undo use this surface. The [data-role~="has-undo"]
    variant flips pointer-events back on so the Undo button is clickable. */
-[data-role~="adnota-scratchpad-toast"] {
+#adnota-scratchpad [data-role~="adnota-scratchpad-toast"] {
   position: absolute;
   left: 50%;
   bottom: 12px;
@@ -668,15 +668,15 @@
   white-space: nowrap;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
 }
-[data-role~="adnota-scratchpad-toast"][data-role~="visible"] {
+#adnota-scratchpad [data-role~="adnota-scratchpad-toast"][data-role~="visible"] {
   opacity: 1;
   transform: translateX(-50%) translateY(0);
 }
-[data-role~="adnota-scratchpad-toast"][data-role~="has-undo"] {
+#adnota-scratchpad [data-role~="adnota-scratchpad-toast"][data-role~="has-undo"] {
   pointer-events: auto;
 }
-[data-role~="adnota-scratchpad-toast-msg"] { color: #f3f4f6; }
-[data-role~="adnota-scratchpad-toast-undo"] {
+#adnota-scratchpad [data-role~="adnota-scratchpad-toast-msg"] { color: #f3f4f6; }
+#adnota-scratchpad [data-role~="adnota-scratchpad-toast-undo"] {
   appearance: none;
   border: none;
   background: transparent;
@@ -688,7 +688,7 @@
   border-radius: 4px;
   cursor: pointer;
 }
-[data-role~="adnota-scratchpad-toast-undo"]:hover {
+#adnota-scratchpad [data-role~="adnota-scratchpad-toast-undo"]:hover {
   background: rgba(124, 58, 237, 0.18);
   color: #e9d5ff;
 }

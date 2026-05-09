@@ -564,6 +564,11 @@
     if (modeMenuEl || !modeBtnEl) return;
     const menu = document.createElement('div');
     setClass(menu, 'adnota-scratchpad-modemenu');
+    // Mirror the class as ID — the menu is appended to documentElement
+    // (it can't live inside the panel because the panel has overflow:hidden
+    // for the resize handle). Its CSS rules scope off this ID rather than
+    // the panel root, so they keep specificity-winning against host CSS.
+    menu.id = 'adnota-scratchpad-modemenu';
     menu.setAttribute('data-adnota-ui', '1');
 
     const allowedSnippets = TYPES_BY_MODE.snippets;
