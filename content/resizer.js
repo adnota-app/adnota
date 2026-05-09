@@ -214,6 +214,24 @@ function isLayoutSignificant(el) {
   return rect.width >= MIN_WIDTH && rect.height >= MIN_HEIGHT;
 }
 
+// CSS display values whose width/height are governed by their parent's
+// layout rather than by their own style. Setting CSS `width` on a
+// `display: table-row` has no visual effect — the table's column layout
+// decides the row's dimensions. `display: contents` has no layout box at
+// all. None of these are valid resize targets; a bubble-up that lands on
+// one needs to walk back down to a normal block descendant.
+function isUnresizableDisplay(el) {
+  const display = getComputedStyle(el).display;
+  return display === 'contents'
+      || display === 'table-row'
+      || display === 'table-cell'
+      || display === 'table-row-group'
+      || display === 'table-header-group'
+      || display === 'table-footer-group'
+      || display === 'table-column'
+      || display === 'table-column-group';
+}
+
 function findLayoutTarget(raw, extraLevels = 0) {
   if (!raw || isAdnotaElement(raw)) return null;
 
@@ -229,8 +247,23 @@ function findLayoutTarget(raw, extraLevels = 0) {
   // Step 2: bubble past visually-identical wrappers, seeded from the layout-
   // significant ancestor (not the raw hover). This is the key fix for the
   // "hovering a menu link returns the UL instead of the NAV" case.
-  const baseline = window.AdnotaUI.bubbleToVisualRoot(layoutSig);
+  let baseline = window.AdnotaUI.bubbleToVisualRoot(layoutSig);
   if (isAdnotaElement(baseline)) return null;
+
+  // Step 2.5: walk back down past layout-special display values. Without
+  // this, a target hovered inside a CSS table (display: table) — e.g.
+  // GitHub's BorderGrid sidebar — bubbles to the table-row level. Setting
+  // CSS width on a table-row is ignored by table layout, so the persisted
+  // resize rule has zero visual effect and the user thinks resize is broken.
+  // Walk down toward layoutSig until we land on a resizable block.
+  while (isUnresizableDisplay(baseline) && baseline !== layoutSig) {
+    let child = layoutSig;
+    while (child && child.parentElement !== baseline) {
+      child = child.parentElement;
+    }
+    if (!child || child === baseline) break;
+    baseline = child;
+  }
 
   // Step 3a (positive extraLevels): scroll-wheel walk up — each level up must
   // also be layout-significant.
@@ -490,7 +523,7 @@ function selectElement(el) {
   selectionChipCluster.setAttribute('data-adnota-ui', '1');
   Object.assign(selectionChipCluster.style, {
     position: 'absolute',
-    top: '4px',
+    top: `${chipClusterTopOffset(rect)}px`,
     right: '32px',
     display: 'flex',
     gap: '4px',
@@ -603,6 +636,18 @@ function clampToViewport(idealTop, idealLeft, handleW, handleH, sx, sy) {
   };
 }
 
+// Pin the hover/selection chip cluster to the visible top edge of its
+// element. When the element's own top is above the viewport (the user has
+// scrolled into a tall element), slide the chip down so it stays in view —
+// capped so it doesn't push past the element's bottom. Returns the desired
+// `top` offset within the cluster's parent (overlay / selection box).
+function chipClusterTopOffset(rect) {
+  const CHIP_H = 32;  // approximate cluster height; safety cap, not exact
+  const ideal = Math.max(4, 4 - rect.top);
+  const cap   = Math.max(4, rect.height - CHIP_H);
+  return Math.min(ideal, cap);
+}
+
 function positionHandleLeft(h, rect, sx, sy) {
   const idealTop  = rect.top + sy + rect.height / 2 - 14;
   const idealLeft = rect.left + sx - 4;
@@ -677,6 +722,11 @@ function refreshHandles() {
   if (dismissBtn)   positionDismiss(dismissBtn, rect, scrollX, scrollY);
   if (selectionDimBadge) {
     selectionDimBadge.textContent = `${Math.round(rect.width)}×${Math.round(rect.height)}`;
+  }
+  // Pin chip cluster to the visible top edge — keeps it in view when the
+  // selection extends above the viewport.
+  if (selectionChipCluster) {
+    selectionChipCluster.style.top = `${chipClusterTopOffset(rect)}px`;
   }
   // Re-evaluate chip state in case an undo/restick happened while selection
   // is still active (e.g., user hits Ctrl+Z mid-selection).
@@ -1263,6 +1313,9 @@ function updateHoverTarget() {
       width:  `${rect.width}px`,
       height: `${rect.height}px`,
     });
+    // Pin chip cluster to the visible top edge — keeps it in view when the
+    // hovered element extends above the viewport.
+    chipCluster.style.top = `${chipClusterTopOffset(rect)}px`;
     dimensionBadge.textContent = `${Math.round(rect.width)}×${Math.round(rect.height)}`;
 
     const cs = getComputedStyle(target);
@@ -1388,9 +1441,20 @@ document.addEventListener('click', (e) => {
 // the high-frequency scroll firings into one layout read+write per frame.
 let scrollSyncPending = false;
 window.addEventListener('scroll', () => {
-  if (!selectedEl || dragAxis || scrollSyncPending) return;
+  if (dragAxis || scrollSyncPending) return;
+  if (!selectedEl && !hoveredEl) return;
   scrollSyncPending = true;
-  requestAnimationFrame(() => { scrollSyncPending = false; refreshHandles(); });
+  requestAnimationFrame(() => {
+    scrollSyncPending = false;
+    if (selectedEl) {
+      refreshHandles();
+    } else if (hoveredEl) {
+      // Hover overlay is in document coords and doesn't move on scroll —
+      // we only need to reposition the chip cluster within it.
+      const rect = hoveredEl.getBoundingClientRect();
+      chipCluster.style.top = `${chipClusterTopOffset(rect)}px`;
+    }
+  });
 }, { passive: true, capture: true });
 
 // ─── Public API ──────────────────────────────────────────────────────────────
