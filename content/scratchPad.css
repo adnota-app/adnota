@@ -410,6 +410,8 @@
   position: absolute;
   top: 4px;
   right: -2px;
+  /* Default cluster: 3 22px buttons (goto/copy/trash) at 26px stride +
+     a small halo. Snippets-mode rows + stale Edit-mode rows get this. */
   width: 80px;
   height: 26px;
   background: rgba(20, 20, 20, 0.9);
@@ -418,6 +420,12 @@
   pointer-events: none;
   transition: opacity 0.15s ease;
   z-index: 0;
+}
+/* When the row has the eye button (live Edit-mode rows), widen the pill
+   by one button stride so it covers the 4-button cluster cleanly. */
+#adnota-scratchpad
+  [data-role~="adnota-scratchpad-row"]:has([data-role~="adnota-scratchpad-roweye"])::before {
+  width: 106px;
 }
 #adnota-scratchpad [data-role~="adnota-scratchpad-row"]:hover::before {
   opacity: 1;
@@ -569,6 +577,7 @@
   border-color: rgba(124, 58, 237, 0.45);
 }
 
+#adnota-scratchpad [data-role~="adnota-scratchpad-roweye"],
 #adnota-scratchpad [data-role~="adnota-scratchpad-rowcopy"],
 #adnota-scratchpad [data-role~="adnota-scratchpad-rowgoto"],
 #adnota-scratchpad [data-role~="adnota-scratchpad-rowtrash"] {
@@ -593,15 +602,19 @@
 #adnota-scratchpad [data-role~="adnota-scratchpad-rowtrash"] { right: 0; }
 #adnota-scratchpad [data-role~="adnota-scratchpad-rowcopy"]  { right: 26px; }
 #adnota-scratchpad [data-role~="adnota-scratchpad-rowgoto"]  { right: 52px; }
+#adnota-scratchpad [data-role~="adnota-scratchpad-roweye"]   { right: 78px; }
 
+#adnota-scratchpad [data-role~="adnota-scratchpad-roweye"] svg,
 #adnota-scratchpad [data-role~="adnota-scratchpad-rowcopy"] svg,
 #adnota-scratchpad [data-role~="adnota-scratchpad-rowgoto"] svg,
 #adnota-scratchpad [data-role~="adnota-scratchpad-rowtrash"] svg { width: 14px !important; height: 14px !important; }
 
+#adnota-scratchpad [data-role~="adnota-scratchpad-row"]:hover [data-role~="adnota-scratchpad-roweye"],
 #adnota-scratchpad [data-role~="adnota-scratchpad-row"]:hover [data-role~="adnota-scratchpad-rowcopy"],
 #adnota-scratchpad [data-role~="adnota-scratchpad-row"]:hover [data-role~="adnota-scratchpad-rowgoto"],
 #adnota-scratchpad [data-role~="adnota-scratchpad-row"]:hover [data-role~="adnota-scratchpad-rowtrash"] { opacity: 1; }
 
+#adnota-scratchpad [data-role~="adnota-scratchpad-roweye"]:hover,
 #adnota-scratchpad [data-role~="adnota-scratchpad-rowcopy"]:hover,
 #adnota-scratchpad [data-role~="adnota-scratchpad-rowgoto"]:hover {
   color: #c084fc;
@@ -610,6 +623,13 @@
 #adnota-scratchpad [data-role~="adnota-scratchpad-rowtrash"]:hover {
   color: #f87171;
   background: rgba(248, 113, 113, 0.12);
+}
+
+/* Muted (live effect un-applied) — dim the row content but keep the action
+   cluster crisp so the user can find the eye to toggle back. Non-action
+   children fade; the row::before backdrop and the buttons are unaffected. */
+#adnota-scratchpad [data-role~="adnota-scratchpad-row-muted"] > :not(button) {
+  opacity: 0.4;
 }
 
 /* Row-trash teaching blink. Fired by openOn() when a tool dock-trash routes
@@ -632,6 +652,8 @@
 #adnota-scratchpad [data-role~="adnota-scratchpad-row"]:has([data-role~="adnota-scratchpad-rowtrash"][data-role~="adnota-blink"])::before {
   opacity: 1;
 }
+#adnota-scratchpad [data-role~="adnota-scratchpad-row"]:has([data-role~="adnota-scratchpad-rowtrash"][data-role~="adnota-blink"])
+  [data-role~="adnota-scratchpad-roweye"],
 #adnota-scratchpad [data-role~="adnota-scratchpad-row"]:has([data-role~="adnota-scratchpad-rowtrash"][data-role~="adnota-blink"])
   [data-role~="adnota-scratchpad-rowcopy"],
 #adnota-scratchpad [data-role~="adnota-scratchpad-row"]:has([data-role~="adnota-scratchpad-rowtrash"][data-role~="adnota-blink"])
