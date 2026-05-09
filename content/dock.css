@@ -60,7 +60,7 @@
 }
 
 /* ── Home slot: V logo (idle) OR back arrow (active) ───────────────────── */
-.adnota-dock-home {
+#adnota-dock .adnota-dock-home {
   display: inline-flex;
   align-items: center;
   flex-shrink: 0;
@@ -75,7 +75,7 @@
    No `cursor: pointer` here — the logo inherits `cursor: grab` from the
    dock so the whole idle surface signals "draggable." Click still fires
    (cursor doesn't suppress click handlers) and opens Sites History. */
-.adnota-dock-logo {
+#adnota-dock .adnota-dock-logo {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -98,7 +98,7 @@
   color: #c084fc;
 }
 
-.adnota-dock-back {
+#adnota-dock .adnota-dock-back {
   display: none;
   align-items: center;
   justify-content: center;
@@ -115,7 +115,7 @@
   transition: background 0.2s ease, color 0.2s ease;
 }
 
-.adnota-dock-back svg {
+#adnota-dock .adnota-dock-back svg {
   width: 16px;
   height: 16px;
   fill: none;
@@ -128,7 +128,7 @@
   transform: translateX(-1px);
 }
 
-.adnota-dock-back:hover {
+#adnota-dock .adnota-dock-back:hover {
   background: rgba(124, 58, 237, 0.45);
 }
 
@@ -141,7 +141,7 @@
    the row using the same max-width / overflow-x:clip pattern the body slot
    uses below. Tool-active state still hides the row entirely (rule below):
    the tool body owns the slot, so the collapse animation isn't relevant. */
-.adnota-dock-tools {
+#adnota-dock .adnota-dock-tools {
   display: inline-flex;
   align-items: center;
   gap: 4px;
@@ -164,7 +164,7 @@
   display: none;
 }
 
-.adnota-dock-tool {
+#adnota-dock .adnota-dock-tool {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -180,7 +180,7 @@
   transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
-.adnota-dock-tool svg {
+#adnota-dock .adnota-dock-tool svg {
   width: 14px;
   height: 14px;
   fill: none;
@@ -191,36 +191,36 @@
   transition: stroke 0.15s ease;
 }
 
-.adnota-dock-tool:hover {
+#adnota-dock .adnota-dock-tool:hover {
   background: rgba(255, 255, 255, 0.06);
   border-color: var(--tool-color, rgba(124, 58, 237, 0.6));
 }
-.adnota-dock-tool:hover svg {
+#adnota-dock .adnota-dock-tool:hover svg {
   stroke: var(--tool-color, #c084fc);
 }
 
-.adnota-dock-tool.active {
+#adnota-dock .adnota-dock-tool.active {
   border-color: var(--tool-color, rgba(124, 58, 237, 0.7));
   box-shadow: 0 0 8px var(--tool-glow, rgba(124, 58, 237, 0.25));
 }
-.adnota-dock-tool.active svg {
+#adnota-dock .adnota-dock-tool.active svg {
   stroke: var(--tool-color, #c084fc);
 }
 
 /* Per-tool accent for the idle row buttons */
-.adnota-dock-tool[data-accent="eraser"]    { --tool-color: #ef4444; --tool-glow: rgba(239, 68, 68, 0.3); }
-.adnota-dock-tool[data-accent="sticky"]    { --tool-color: #f59e0b; --tool-glow: rgba(245, 158, 11, 0.3); }
-.adnota-dock-tool[data-accent="highlight"] { --tool-color: var(--adnota-accent); --tool-glow: rgba(124, 58, 237, 0.3); }
-.adnota-dock-tool[data-accent="resizer"]   { --tool-color: #3b82f6; --tool-glow: rgba(59, 130, 246, 0.3); }
+#adnota-dock .adnota-dock-tool[data-accent="eraser"]    { --tool-color: #ef4444; --tool-glow: rgba(239, 68, 68, 0.3); }
+#adnota-dock .adnota-dock-tool[data-accent="sticky"]    { --tool-color: #f59e0b; --tool-glow: rgba(245, 158, 11, 0.3); }
+#adnota-dock .adnota-dock-tool[data-accent="highlight"] { --tool-color: var(--adnota-accent); --tool-glow: rgba(124, 58, 237, 0.3); }
+#adnota-dock .adnota-dock-tool[data-accent="resizer"]   { --tool-color: #3b82f6; --tool-glow: rgba(59, 130, 246, 0.3); }
 
 /* Tool buttons need position:relative so the shared [data-adnota-tooltip]::after
    rule from adnotaUI.css positions correctly. */
-.adnota-dock-tool { position: relative; }
+#adnota-dock .adnota-dock-tool { position: relative; }
 
 /* Disabled affordance for utility buttons (currently the scratch pad when
    the page has no snippets). Kept visible so the feature is discoverable —
    the user adds a highlight or note and the button enables itself. */
-.adnota-dock-tool[data-disabled="1"] {
+#adnota-dock .adnota-dock-tool[data-disabled="1"] {
   opacity: 0.3;
   pointer-events: none;
   cursor: default;
@@ -230,7 +230,7 @@
 /* Grows left-to-right from width 0 when a tool mounts. The min-height gives
    child shadows (active swatch rings, button glows) a few px of vertical
    breathing room so they don't clip against the body's overflow. */
-.adnota-dock-body {
+#adnota-dock .adnota-dock-body {
   display: inline-flex;
   align-items: center;
   min-height: 30px;
@@ -258,20 +258,13 @@
 /* ── Dismiss X — "get off my screen" ──────────────────────────────────────
    Reuses .adnota-select-delete from marker.css (same red circle as the
    select-tool delete affordance). This rule only adds dock-specific
-   behavior: top-right corner positioning and hover-reveal while idle.
+   behavior: hover-reveal while idle, animation timing, and z-index.
+   Sizing/positioning inherits the canonical 20×20 / -10/-10 from
+   .adnota-select-delete — every dismiss X across the extension shares
+   one hit-target size for ergonomics + visual consistency.
    Hidden when a tool is active — the dock IS the HUD then, so the user
    needs the back arrow, not an escape hatch that strands them. */
-/* Scoped to #adnota-dock to beat .adnota-select-delete on specificity —
-   marker.css loads after dock.css per the manifest, so a bare class wouldn't
-   override the shared 20px sizing. */
 #adnota-dock .adnota-dock-dismiss {
-  /* Shrink the shared .adnota-select-delete (sized for annotation shapes)
-     down to something proportionate to the compact dock. */
-  width: 16px;
-  height: 16px;
-  font-size: 8px;
-  top: -7px;
-  right: -7px;
   opacity: 0;
   pointer-events: none;
   /* Match the tool row: instant fade-in on hover, delayed fade-out so the X
