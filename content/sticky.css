@@ -411,24 +411,9 @@ html.adnota-hidden .adnota-sticky-container {
 
 /* Dismiss X — every Adnota surface gets one ("we never get in your way").
    Reuses .adnota-select-delete from marker.css (same red circle as the
-   marker delete and dock dismiss). Overhangs the top-right corner exactly
-   like #adnota-dock .adnota-dock-dismiss does — same shape, same
-   affordance, instantly recognizable. Always visible (no hover reveal) —
-   the toast is itself ephemeral, so an always-on X is more honest than
-   hiding the dismiss path until hover.
-
-   Scoped with the parent .adnota-toast class to bump specificity to (0,2,0)
-   so it wins on specificity alone over .adnota-select-delete (0,1,0) in
-   marker.css. With the descendant selector, source order doesn't matter —
-   specificity is the only thing that does. */
-.adnota-toast .adnota-toast-dismiss {
-  /* Match the dock's compact dismiss exactly — same dimensions, same
-     overhang. .adnota-select-delete's base top:-10px / right:-10px would
-     overhang too far for a small ephemeral surface; -7px is the sweet
-     spot the dock has already converged on. */
-  width: 16px;
-  height: 16px;
-  font-size: 8px;
-  top: -7px;
-  right: -7px;
-}
+   marker delete and dock dismiss). Inherits the canonical 20×20 / -10/-10
+   sizing — every dismiss X across the extension shares one hit-target
+   size for ergonomics + consistency. No overrides needed.
+   Always visible on the toast (no hover reveal) — the toast is itself
+   ephemeral, so an always-on X is more honest than hiding the dismiss
+   path until hover. */
