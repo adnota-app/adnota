@@ -1987,6 +1987,15 @@ async function commitDomReorder(source, container, direction) {
   // restores the prior state, not the natural DOM order. Mirrors the
   // selector+kind dedup in commitResizeRule but keyed on FuzzyAnchor since
   // reorder entries don't have a top-level `selector` field.
+  // Storage dedup: drop only the rows whose `_id` is in supersededLive
+  // (keyed by live sourceEl ref, the authoritative identity). An earlier
+  // version also matched on sourceAnchor.cssSelector for cross-session
+  // stale-row cleanup, but FuzzyAnchor can produce identical structural
+  // selectors for genuinely different elements (sibling articles with
+  // class-only selectors), so selector-based dedup risks erasing a valid
+  // rule for element A when committing a new rule for element B. Stale
+  // storage rows that failed to restore are silent dead weight, not
+  // active harm — they can be cleared via scratchpad trash.
   const supersededStorage = [];
   if (window.AdnotaStorage) {
     const data = await chrome.storage.local.get(domain);
@@ -1994,12 +2003,6 @@ async function commitDomReorder(source, container, direction) {
     const supersededIds = new Set(supersededLive.map(r => r.id));
     domainData.items = domainData.items.filter(item => {
       if (supersededIds.has(item._id)) {
-        supersededStorage.push({ ...item });
-        return false;
-      }
-      const sameByAnchor = item.kind === 'reflow:dom-reorder'
-        && item.sourceAnchor?.cssSelector === sourceAnchor?.cssSelector;
-      if (sameByAnchor && !supersededIds.has(item._id)) {
         supersededStorage.push({ ...item });
         return false;
       }
@@ -2046,6 +2049,7 @@ async function commitDomReorder(source, container, direction) {
       for (const r of supersededLive) {
         try {
           const restored = {
+            id: r.id,                            // so a future give-up can revert by id
             sourceEl: r.sourceEl, parentEl: r.parentEl,
             sourceAnchor: r.sourceAnchor, parentAnchor: r.parentAnchor,
             originalPrevAnchor: r.originalPrevAnchor,
