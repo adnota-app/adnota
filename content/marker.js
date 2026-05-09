@@ -928,6 +928,53 @@ window.AdnotaMarker = {
     return true;
   },
 
+  // removeOne(uuid): naming-symmetric alias for tearDownById, paired with
+  // applyOne(record) below so all three Edits-mode tools (Eraser, Resizer,
+  // Marker) expose the same shape for the scratch pad's per-row trash.
+  removeOne: function (uuid) {
+    return this.tearDownById(uuid);
+  },
+
+  // applyOne(record): inverse of removeOne — re-renders a single marker
+  // from its storage record. Used when scratch pad undo restores a trashed
+  // entry. Resolves the anchor via FuzzyAnchor (same path the restorer
+  // uses on page load) and hands off to renderMarker. Returns true if the
+  // shape was rendered, false if the anchor couldn't be matched.
+  applyOne: function (record) {
+    if (!record || !record.uuid || !window.FuzzyAnchor) return false;
+    const match = window.FuzzyAnchor.findMatch(record.anchor);
+    if (!match || match.confidence < 40 || !match.element) {
+      window.AdnotaLog?.event('marker', 'apply-one-miss', {
+        uuid: record.uuid, score: match?.confidence ?? null,
+      });
+      return false;
+    }
+    this.renderMarker(match.element, record);
+    window.AdnotaLog?.event('marker', 'apply-one', {
+      uuid: record.uuid, shapeType: record.shapeType,
+    });
+    return true;
+  },
+
+  // scrollTo(uuid): scroll the rendered marker into view. Returns false
+  // when the wrapper isn't currently in the DOM — scratch pad surfaces
+  // that as a "couldn't locate" toast.
+  scrollTo: function (uuid) {
+    const overlay = document.getElementById('adnota-marker-overlay');
+    if (!overlay) return false;
+    const wrapper = overlay.querySelector(`.adnota-marker-wrapper[data-uuid="${uuid}"]`);
+    if (!wrapper) return false;
+    // The wrapper's own bounding rect tracks the rendered shape. Scroll
+    // its anchor element if available (more stable when the wrapper sits
+    // in fixed-position overlay coords); otherwise scroll the wrapper
+    // itself.
+    const anchor = wrapper._adnotaAnchorElement;
+    const target = (anchor && anchor.isConnected) ? anchor : wrapper;
+    try { target.scrollIntoView({ block: 'center', behavior: 'smooth' }); }
+    catch (_) { try { target.scrollIntoView(); } catch (_) {} }
+    return true;
+  },
+
   renderMarker: function (anchorElement, payload) {
     const shapeType = payload.shapeType || (payload.isArrow ? 'arrow' : 'freehand');
 
