@@ -1,5 +1,5 @@
 {
-  "url": "https://www.bing.com",
+  "url": "https://www.bing.com/",
   "viewport": {
     "width": 1280,
     "height": 900
@@ -24,21 +24,16 @@
     {
       "type": "dragHandle",
       "handle": "top",
-      "dx": -5,
-      "dy": 44
+      "dx": -6,
+      "dy": -77
     },
     {
       "type": "hoverElement",
-      "selector": "#trending_now_tile > li:nth-child(3) > a:nth-child(1) > span:nth-child(1) > h2:nth-child(1)"
+      "selector": "div.bottom_row.widget.msnpeek.nomvs"
     },
     {
-      "type": "clickToSelect"
-    },
-    {
-      "type": "dragHandle",
-      "handle": "right",
-      "dx": -37,
-      "dy": 5
+      "type": "clickToSelect",
+      "expectedSelection": null
     },
     {
       "type": "hoverElement",
@@ -50,15 +45,8 @@
     {
       "type": "dragHandle",
       "handle": "top",
-      "dx": 6,
-      "dy": -148
-    },
-    {
-      "type": "hoverElement",
-      "selector": "div.bottom_row.widget.msnpeek.nomvs"
-    },
-    {
-      "type": "clickToSelect"
+      "dx": 13,
+      "dy": 125
     }
   ],
   "domInvariants": []

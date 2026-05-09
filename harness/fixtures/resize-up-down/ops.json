@@ -1,5 +1,5 @@
 {
-  "url": "https://www.bing.com/",
+  "url": "fixture://resize-up-down",
   "viewport": {
     "width": 1280,
     "height": 900
@@ -19,13 +19,18 @@
       "selector": "div.mc_caro.five_col"
     },
     {
-      "type": "clickToSelect"
+      "type": "clickToSelect",
+      "expectedSelection": {
+        "text": "",
+        "w": 1289,
+        "h": 246
+      }
     },
     {
       "type": "dragHandle",
       "handle": "top",
-      "dx": 11,
-      "dy": -135
+      "dx": -2,
+      "dy": -111
     },
     {
       "type": "hoverElement",
@@ -37,7 +42,7 @@
     },
     {
       "type": "hoverElement",
-      "selector": "svg.mappin"
+      "selector": "#vs_cont > div:nth-child(1) > div:nth-child(3) > div:nth-child(2) > div:nth-child(1) > a:nth-child(1) > div:nth-child(1)"
     },
     {
       "type": "wheelTraverse",
@@ -59,8 +64,14 @@
     {
       "type": "dragHandle",
       "handle": "left",
-      "dx": -69,
-      "dy": 7
+      "dx": -16,
+      "dy": 0
+    },
+    {
+      "type": "dragHandle",
+      "handle": "left",
+      "dx": -45,
+      "dy": 2
     },
     {
       "type": "hoverElement",
@@ -75,13 +86,18 @@
       "selector": "div.mc_caro.five_col"
     },
     {
-      "type": "clickToSelect"
+      "type": "clickToSelect",
+      "expectedSelection": {
+        "text": "",
+        "w": 1289,
+        "h": 246
+      }
     },
     {
       "type": "dragHandle",
       "handle": "top",
-      "dx": 24,
-      "dy": 146
+      "dx": -8,
+      "dy": 197
     },
     {
       "type": "hoverElement",
@@ -93,12 +109,12 @@
     },
     {
       "type": "hoverElement",
-      "selector": "#headline"
+      "selector": "svg.mappin"
     },
     {
       "type": "wheelTraverse",
       "deltaY": 100,
-      "count": 4,
+      "count": 3,
       "shift": true,
       "alt": false,
       "ctrl": false,
@@ -108,15 +124,15 @@
       "type": "clickToSelect",
       "expectedSelection": {
         "text": "More than a hee-haw",
-        "w": 346,
+        "w": 336,
         "h": 44
       }
     },
     {
       "type": "dragHandle",
       "handle": "left",
-      "dx": 65,
-      "dy": 7
+      "dx": 62,
+      "dy": 4
     }
   ],
   "domInvariants": []

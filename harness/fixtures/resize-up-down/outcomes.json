@@ -1,0 +1,69 @@
+{
+  "$schema": "1",
+  "site": "resize-up-down",
+  "pinnedAt": "2026-05-09",
+  "storage": {
+    "127.0.0.1": {
+      "items": [
+        {
+          "_id": "<id>",
+          "action": "RESIZE",
+          "cssText": "min-height: 353px !important; max-height: none !important; margin-top: -111px !important",
+          "path": "*",
+          "selector": "#scroll_cont",
+          "timestamp": "<ts>",
+          "version": 1
+        },
+        {
+          "_id": "<id>",
+          "action": "RESIZE",
+          "cssText": "width: 288.5390625px !important; min-width: 0 !important; max-width: none !important; margin-left: -16px !important",
+          "path": "*",
+          "selector": "#vs_cont > div:nth-child(1) > div:nth-child(3)",
+          "timestamp": "<ts>",
+          "version": 1
+        },
+        {
+          "_id": "<id>",
+          "action": "RESIZE",
+          "cssText": "width: 333.5390625px !important; min-width: 0 !important; max-width: none !important; margin-left: -61px !important",
+          "path": "*",
+          "selector": "#vs_cont > div:nth-child(1) > div:nth-child(3)",
+          "timestamp": "<ts>",
+          "version": 1
+        },
+        {
+          "_id": "<id>",
+          "action": "RESIZE",
+          "cssText": "max-height: 45px !important; min-height: 0 !important; margin-top: 197px !important",
+          "path": "*",
+          "selector": "#vs_cont",
+          "timestamp": "<ts>",
+          "version": 1
+        },
+        {
+          "_id": "<id>",
+          "action": "RESIZE",
+          "cssText": "width: 271.5390625px !important; min-width: 0 !important; max-width: none !important; margin-left: 1px !important",
+          "path": "*",
+          "selector": "#vs_cont > div:nth-child(1) > div:nth-child(3)",
+          "timestamp": "<ts>",
+          "version": 1
+        }
+      ]
+    },
+    "adnotaActiveMode": "resizer",
+    "adnotaToolEscTutorialShown": true,
+    "adnota_stats": {
+      "http://127.0.0.1:57569/": {
+        "broken": 0,
+        "notes": 0,
+        "resizes": 1,
+        "success": 0
+      }
+    }
+  },
+  "styleOverrides": "#scroll_cont { min-height: 353px !important; max-height: none !important; margin-top: -111px !important }\n#vs_cont > div:nth-child(1) > div:nth-child(3) { width: 288.5390625px !important; min-width: 0 !important; max-width: none !important; margin-left: -16px !important }\n#vs_cont > div:nth-child(1) > div:nth-child(3) { width: 333.5390625px !important; min-width: 0 !important; max-width: none !important; margin-left: -61px !important }\n#vs_cont { max-height: 45px !important; min-height: 0 !important; margin-top: 197px !important }\n#vs_cont > div:nth-child(1) > div:nth-child(3) { width: 271.5390625px !important; min-width: 0 !important; max-width: none !important; margin-left: 1px !important }",
+  "eraseOverrides": "",
+  "domInvariants": []
+}

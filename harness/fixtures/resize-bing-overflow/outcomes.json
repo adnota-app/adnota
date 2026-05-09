@@ -1,0 +1,42 @@
+{
+  "$schema": "1",
+  "site": "resize-bing-overflow",
+  "pinnedAt": "2026-05-09",
+  "storage": {
+    "adnotaActiveMode": "resizer",
+    "adnotaToolEscTutorialShown": true,
+    "adnota_stats": {
+      "https://www.bing.com/": {
+        "broken": 0,
+        "notes": 0,
+        "resizes": 1,
+        "success": 0
+      }
+    },
+    "www.bing.com": {
+      "items": [
+        {
+          "_id": "<id>",
+          "action": "RESIZE",
+          "cssText": "min-height: 2929px !important; max-height: none !important; margin-top: -77px !important",
+          "path": "*",
+          "selector": "#scroll_cont",
+          "timestamp": "<ts>",
+          "version": 1
+        },
+        {
+          "_id": "<id>",
+          "action": "RESIZE",
+          "cssText": "max-height: 2804px !important; min-height: 0 !important; margin-top: 48px !important",
+          "path": "*",
+          "selector": "#scroll_cont",
+          "timestamp": "<ts>",
+          "version": 1
+        }
+      ]
+    }
+  },
+  "styleOverrides": "#scroll_cont { min-height: 2929px !important; max-height: none !important; margin-top: -77px !important }\n#scroll_cont { max-height: 2804px !important; min-height: 0 !important; margin-top: 48px !important }",
+  "eraseOverrides": "",
+  "domInvariants": []
+}
