@@ -298,11 +298,19 @@ function isLayoutSignificant(el) {
 // layout rather than by their own style. Setting CSS `width` on a
 // `display: table-row` has no visual effect — the table's column layout
 // decides the row's dimensions. `display: contents` has no layout box at
-// all. None of these are valid resize targets; a bubble-up that lands on
-// one needs to walk back down to a normal block descendant.
+// all. `display: inline` ignores explicit width/height entirely (the
+// canonical case being `<picture>` wrapping an `<img>` — the bubble-up
+// IoU=1.0 climbs to picture, but resizing picture changes nothing
+// because inline elements take their content's intrinsic size). None of
+// these are valid resize targets; a bubble-up that lands on one needs
+// to walk back down to a normal block descendant.
+//
+// `inline-block`, `inline-flex`, `inline-grid` all DO respect width and
+// stay valid — they're not in this list.
 function isUnresizableDisplay(el) {
   const display = getComputedStyle(el).display;
   return display === 'contents'
+      || display === 'inline'
       || display === 'table-row'
       || display === 'table-cell'
       || display === 'table-row-group'
@@ -1598,9 +1606,27 @@ function startDrag(e, axis) {
   });
   document.documentElement.appendChild(dragOverlay);
 
+  // Shift+drag on the corner handle constrains to aspect ratio (Photoshop /
+  // Figma / Sketch convention). Only applies to the corner ('xy') axis —
+  // single-axis drags don't have a ratio to maintain. Snapshot the start
+  // ratio once so the constraint stays stable even if intermediate strategy
+  // applies subtly drift the live rect.
+  const startAspect = snapshot.startHeight > 0
+    ? snapshot.startWidth / snapshot.startHeight
+    : 1;
+  function constrainToAspect(dx, dy) {
+    if (Math.abs(dx) / startAspect > Math.abs(dy)) {
+      return [dx, Math.sign(dy || 1) * Math.abs(dx) / startAspect];
+    }
+    return [Math.sign(dx || 1) * Math.abs(dy) * startAspect, dy];
+  }
+
   function onMove(ev) {
-    const dx = ev.clientX - dragStartX;
-    const dy = ev.clientY - dragStartY;
+    let dx = ev.clientX - dragStartX;
+    let dy = ev.clientY - dragStartY;
+    if (axis === 'xy' && ev.shiftKey) {
+      [dx, dy] = constrainToAspect(dx, dy);
+    }
     strategy.applyDuringDrag(selectedEl, axis, dx, dy, snapshot);
     refreshHandles();
   }
@@ -1610,8 +1636,11 @@ function startDrag(e, axis) {
     document.removeEventListener('mouseup', onUp);
     dragOverlay.remove();
 
-    const dx = ev.clientX - dragStartX;
-    const dy = ev.clientY - dragStartY;
+    let dx = ev.clientX - dragStartX;
+    let dy = ev.clientY - dragStartY;
+    if (axis === 'xy' && ev.shiftKey) {
+      [dx, dy] = constrainToAspect(dx, dy);
+    }
 
     // Only persist if the user actually dragged (not just a click on a handle)
     if (Math.abs(dx) < 3 && Math.abs(dy) < 3) {
