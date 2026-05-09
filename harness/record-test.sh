@@ -27,16 +27,19 @@ if [ -f "fixtures/$test_name/page.html" ]; then
   if [ "$resnap" = "y" ] || [ "$resnap" = "Y" ]; then
     read -p "URL [$DEFAULT_URL]: " url
     url="${url:-$DEFAULT_URL}"
+    url=$(printf '%s' "$url" | sed -E 's/^[[:space:]]+|[[:space:]]+$//g')
     echo
-    echo "→ Re-snapshotting $url ..."
+    echo "→ Re-snapshotting: $url"
     node scripts/snapshot.js --site="$test_name" --url="$url"
   fi
 else
   echo
   read -p "URL [$DEFAULT_URL]: " url
   url="${url:-$DEFAULT_URL}"
+  url=$(printf '%s' "$url" | sed -E 's/^[[:space:]]+|[[:space:]]+$//g')
   echo
-  echo "→ Step 1/2: Snapshotting $url so the test runs against a stable copy ..."
+  echo "→ Step 1/2: Snapshotting: $url"
+  echo "  (if that URL looks wrong, Ctrl+C now and re-run)"
   node scripts/snapshot.js --site="$test_name" --url="$url"
 fi
 

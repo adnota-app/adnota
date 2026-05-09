@@ -201,6 +201,15 @@ async function runOne(page, op) {
       return;
     }
 
+    case 'undo': {
+      // Equivalent to clicking the dock's undo button — Adnota binds Ctrl+Z
+      // to the same AdnotaUndo.undo() entry point as the button. Pressing
+      // the chord avoids depending on dock layout.
+      await page.keyboard.press('Control+z');
+      await page.waitForTimeout(300);
+      return;
+    }
+
     case 'pressKey': {
       // Translate our recorder's pressKey shape into Playwright's keyboard.press
       // syntax (e.g., "Alt+a", "Control+z", "Escape").

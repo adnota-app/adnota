@@ -66,7 +66,30 @@ try {
   console.log(`[snapshot:${siteId}] inlined ${inlineCount} stylesheets`);
 
   await page.evaluate(() => {
+    // <script>: already-rendered DOM is preserved, but inline script bodies
+    // would re-run on page load and fight the snapshot.
     document.querySelectorAll('script').forEach(s => s.remove());
+
+    // <meta http-equiv="refresh">: redirects with no JS needed. Bing's
+    // search/identity pages embed these and they fire the moment our
+    // localhost page loads, navigating away to live login.live.com / bing.
+    document.querySelectorAll('meta').forEach(m => {
+      const eq = m.getAttribute('http-equiv') || '';
+      if (eq.toLowerCase() === 'refresh') m.remove();
+    });
+
+    // <iframe>: often loads OAuth/identity pings (login.live.com etc.) the
+    // moment the page renders. Stripping keeps the snapshot self-contained.
+    document.querySelectorAll('iframe').forEach(f => f.remove());
+
+    // Inline event handlers (on*). Without scripts they mostly can't reach
+    // app code, but onload/onerror handlers on body/img can still trigger
+    // redirects via location assignment.
+    for (const el of document.querySelectorAll('*')) {
+      for (const attr of [...el.attributes]) {
+        if (attr.name.startsWith('on')) el.removeAttribute(attr.name);
+      }
+    }
   });
 
   // Inject <base href> so relative asset URLs (images, fonts, background-image

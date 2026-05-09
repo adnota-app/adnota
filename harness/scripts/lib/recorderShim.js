@@ -61,6 +61,12 @@
     const dockBtn = el.closest('[data-tool-id]');
     if (dockBtn) return `[data-tool-id="${dockBtn.dataset.toolId}"]`;
 
+    // Adnota's shared HUD buttons. The reducer recognizes these by selector
+    // and translates clicks into dedicated ops (undo -> pressKey Ctrl+Z, etc.)
+    // so they don't get dropped as "unrecognized Adnota UI".
+    if (el.closest('.adnota-undo-btn')) return '.adnota-undo-btn';
+    if (el.closest('.adnota-trash-btn')) return '.adnota-trash-btn';
+
     const handle = el.closest('[class^="adnota-resizer-handle-"], [class*=" adnota-resizer-handle-"]');
     if (handle) {
       const m = handle.className.match(/adnota-resizer-handle-(left|right|top|bottom|corner)/);

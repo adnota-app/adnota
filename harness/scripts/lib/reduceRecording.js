@@ -84,10 +84,27 @@ export function reduceEvents(events, { initialUrl, viewport } = {}) {
         continue;
       }
 
-      // Resizer handle drag → dragHandle.
+      // Undo button click → translate to undo op (equivalent to Ctrl+Z, same
+      // code path inside the extension). Without this, undo presses between
+      // drags get silently dropped as Adnota-UI noise and the replay does
+      // every drag back-to-back without undoing in between — totally
+      // different cumulative effect.
+      if (downSel === '.adnota-undo-btn' && dist < DRAG_THRESHOLD_PX) {
+        ops.push({ type: 'undo' });
+        lastMoveSel = null;
+        i = upIdx + 1;
+        continue;
+      }
+
+      // Resizer handle drag → dragHandle. Only emit if there was real
+      // movement — a tap-on-handle (down + up at same point) is almost
+      // always accidental, and a zero-delta replay throws our drag-committed
+      // assertion downstream.
       const handleMatch = downSel && downSel.match(/^\.adnota-resizer-handle-(left|right|top|bottom|corner)$/);
       if (handleMatch) {
-        ops.push({ type: 'dragHandle', handle: handleMatch[1], dx: Math.round(dx), dy: Math.round(dy) });
+        if (dist >= DRAG_THRESHOLD_PX) {
+          ops.push({ type: 'dragHandle', handle: handleMatch[1], dx: Math.round(dx), dy: Math.round(dy) });
+        }
         lastMoveSel = null;
         i = upIdx + 1;
         continue;
