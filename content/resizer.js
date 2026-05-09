@@ -1738,40 +1738,45 @@ function startPositionDrag(e) {
   dragStartX = e.clientX;
   dragStartY = e.clientY;
 
-  const inlineSnapshot = {
-    top:      selectedEl.style.top,
-    left:     selectedEl.style.left,
-    right:    selectedEl.style.right,
-    bottom:   selectedEl.style.bottom,
-    position: selectedEl.style.position,
-  };
+  // Snapshot inline state with priority. After the first commit, a persisted
+  // `<style>` rule exists for this selector with top/left/position/right/
+  // bottom all at !important. To override that during the drag we must write
+  // inline with !important too — non-!important writes silently lose to the
+  // rule, leaving the element glued to its persisted position while the
+  // cursor moves (felt as lag). Snapshot priority so we can restore exactly.
+  const POS_PROPS = ['top', 'left', 'right', 'bottom', 'position'];
+  const inlineSnapshot = {};
+  for (const p of POS_PROPS) {
+    inlineSnapshot[p] = {
+      value:    selectedEl.style.getPropertyValue(p),
+      priority: selectedEl.style.getPropertyPriority(p),
+    };
+  }
 
   // Capture the visual position the user grabbed.
   const grabbedRect = selectedEl.getBoundingClientRect();
 
   // Force position: relative + clear all offsets so we can measure the
-  // element's natural in-flow position. Load-bearing for sticky/fixed:
-  // their cs.top is a threshold/viewport-offset, not a usable start offset.
-  // By clearing to 'auto' and re-measuring, we get a clean baseline
-  // regardless of what the page authored.
-  selectedEl.style.position = 'relative';
-  selectedEl.style.top      = 'auto';
-  selectedEl.style.left     = 'auto';
-  selectedEl.style.right    = 'auto';
-  selectedEl.style.bottom   = 'auto';
+  // element's natural in-flow position. Load-bearing for sticky/fixed AND
+  // for any selector that already has a persisted position rule — `auto`
+  // alone wouldn't beat the rule's `Xpx !important`.
+  selectedEl.style.setProperty('position', 'relative', 'important');
+  selectedEl.style.setProperty('top',      'auto',     'important');
+  selectedEl.style.setProperty('left',     'auto',     'important');
+  selectedEl.style.setProperty('right',    'auto',     'important');
+  selectedEl.style.setProperty('bottom',   'auto',     'important');
 
   const naturalRect = selectedEl.getBoundingClientRect();
 
   // Compensating offset so the element stays at the grabbed position visually.
-  // For static / relative-no-offset: 0,0. For relative-with-offset:
-  // re-establishes it. For sticky / fixed: bridges threshold/viewport coords
-  // to in-flow + offset. For absolute: preserves visual; siblings may have
-  // reflowed when we yanked the element back into flow (rare v1 limitation).
+  // For static / relative-no-offset: 0,0. For relative-with-offset (including
+  // a previously-persisted position rule): re-establishes the active offset.
+  // For sticky / fixed: bridges threshold/viewport coords to in-flow + offset.
   const startLeft = grabbedRect.left - naturalRect.left;
   const startTop  = grabbedRect.top  - naturalRect.top;
 
-  selectedEl.style.left = startLeft + 'px';
-  selectedEl.style.top  = startTop  + 'px';
+  selectedEl.style.setProperty('left', startLeft + 'px', 'important');
+  selectedEl.style.setProperty('top',  startTop  + 'px', 'important');
 
   // Fullscreen capture overlay so the mouse can travel anywhere without
   // hitting page event handlers mid-drag (mirrors resize drag's pattern).
@@ -1787,19 +1792,60 @@ function startPositionDrag(e) {
   document.documentElement.appendChild(dragOverlay);
 
   function restoreInlineSnapshot() {
-    selectedEl.style.top      = inlineSnapshot.top;
-    selectedEl.style.left     = inlineSnapshot.left;
-    selectedEl.style.right    = inlineSnapshot.right;
-    selectedEl.style.bottom   = inlineSnapshot.bottom;
-    selectedEl.style.position = inlineSnapshot.position;
+    for (const p of POS_PROPS) {
+      const snap = inlineSnapshot[p];
+      if (snap.value) {
+        selectedEl.style.setProperty(p, snap.value, snap.priority);
+      } else {
+        selectedEl.style.removeProperty(p);
+      }
+    }
   }
 
+  // rAF-throttle the drag to coalesce mousemove events into one paint per
+  // frame. Without this, each mousemove triggered layout invalidation (style
+  // write) plus sync layout reads (getBoundingClientRect + getComputedStyle
+  // inside the chip/HUD/reflow updaters fired by refreshHandles). On heavy
+  // pages — especially long floated ancestors — that cascade made the drag
+  // preview feel jumpy. We sample the latest pointer position on every
+  // mousemove but only commit visual updates on rAF.
+  //
+  // Geometry-only refresh: chip/HUD/reflow state is invariant during a
+  // position drag (selection didn't change, sticky/finite/parent-flex status
+  // didn't change, dimensions didn't change). Skip the full refreshHandles
+  // and do them once on release in onUp.
+  let rafPending = false;
+  let pendingDx = 0;
+  let pendingDy = 0;
+
   function onMove(ev) {
-    const dx = ev.clientX - dragStartX;
-    const dy = ev.clientY - dragStartY;
-    selectedEl.style.left = (startLeft + dx) + 'px';
-    selectedEl.style.top  = (startTop  + dy) + 'px';
-    refreshHandles();
+    pendingDx = ev.clientX - dragStartX;
+    pendingDy = ev.clientY - dragStartY;
+    if (rafPending) return;
+    rafPending = true;
+    requestAnimationFrame(() => {
+      rafPending = false;
+      if (dragAxis !== 'position') return;   // drag ended before this rAF
+      // !important required to beat the persisted rule once one exists
+      // (after first commit). Non-!important writes lose silently and the
+      // element appears glued to its persisted position while the cursor
+      // moves — that's the "second drag is laggy" failure mode.
+      selectedEl.style.setProperty('left', (startLeft + pendingDx) + 'px', 'important');
+      selectedEl.style.setProperty('top',  (startTop  + pendingDy) + 'px', 'important');
+      const rect = selectedEl.getBoundingClientRect();
+      const sy = window.pageYOffset || document.documentElement.scrollTop;
+      const sx = window.pageXOffset || document.documentElement.scrollLeft;
+      if (selectionBox) positionBox(selectionBox, rect, sx, sy);
+      if (handleLeft)   positionHandleLeft(handleLeft, rect, sx, sy);
+      if (handleRight)  positionHandleRight(handleRight, rect, sx, sy);
+      if (handleTop)    positionHandleTop(handleTop, rect, sx, sy);
+      if (handleBottom) positionHandleBottom(handleBottom, rect, sx, sy);
+      if (handleCorner) positionHandleCorner(handleCorner, rect, sx, sy);
+      if (dismissBtn)   positionDismiss(dismissBtn, rect, sx, sy);
+      if (selectionChipCluster) {
+        selectionChipCluster.style.top = `${chipClusterTopOffset(rect)}px`;
+      }
+    });
   }
 
   function onUp(ev) {
@@ -1827,7 +1873,7 @@ function startPositionDrag(e) {
     restoreInlineSnapshot();
 
     dragAxis = null;
-    refreshHandles();
+    refreshHandles();   // full refresh on release: chip/HUD/reflow re-sync
   }
 
   document.addEventListener('mousemove', onMove);
@@ -1864,11 +1910,13 @@ window.addEventListener('keydown', (e) => {
 
   if (!positionNudgeActive) {
     const grabbedRect = selectedEl.getBoundingClientRect();
-    selectedEl.style.position = 'relative';
-    selectedEl.style.top      = 'auto';
-    selectedEl.style.left     = 'auto';
-    selectedEl.style.right    = 'auto';
-    selectedEl.style.bottom   = 'auto';
+    // !important needed to override any persisted position rule from a
+    // prior drag/nudge — same reason as startPositionDrag.
+    selectedEl.style.setProperty('position', 'relative', 'important');
+    selectedEl.style.setProperty('top',      'auto',     'important');
+    selectedEl.style.setProperty('left',     'auto',     'important');
+    selectedEl.style.setProperty('right',    'auto',     'important');
+    selectedEl.style.setProperty('bottom',   'auto',     'important');
     const naturalRect = selectedEl.getBoundingClientRect();
     positionNudgeStartLeft = grabbedRect.left - naturalRect.left;
     positionNudgeStartTop  = grabbedRect.top  - naturalRect.top;
@@ -1877,8 +1925,8 @@ window.addEventListener('keydown', (e) => {
 
   positionNudgeStartLeft += delta[0] * step;
   positionNudgeStartTop  += delta[1] * step;
-  selectedEl.style.left = positionNudgeStartLeft + 'px';
-  selectedEl.style.top  = positionNudgeStartTop  + 'px';
+  selectedEl.style.setProperty('left', positionNudgeStartLeft + 'px', 'important');
+  selectedEl.style.setProperty('top',  positionNudgeStartTop  + 'px', 'important');
   refreshHandles();
 
   // Capture el + final values now — selectedEl could be cleared during the
