@@ -1568,6 +1568,28 @@
     else open();
   }
 
+  // Pulse every visible row's trash glyph red 3× to teach "this is where
+  // per-item delete lives." Fired by openOn() so a tool dock-trash click
+  // routes here AND points at the row affordance instead of silently
+  // landing on a list. No-op when the view is empty (the empty-state copy
+  // already explains "nothing to delete here").
+  function blinkAllRows() {
+    if (!bodyEl) return;
+    const trashes = bodyEl.querySelectorAll('.adnota-scratchpad-rowtrash');
+    if (!trashes.length) return;
+    for (const t of trashes) {
+      t.classList.remove('adnota-blink');
+    }
+    // Force reflow so re-adding the class restarts the animation when a
+    // user clicks a tool-trash twice in quick succession.
+    void bodyEl.offsetWidth;
+    for (const t of trashes) {
+      t.classList.add('adnota-blink');
+      // 3 pulses × 0.42s = 1.26s; clean up just after.
+      setTimeout(() => t.classList.remove('adnota-blink'), 1300);
+    }
+  }
+
   // openOn(mode, filter): opens the panel pre-applied to a specific view, or
   // switches to that view in-place if already open. Used by dock-trash
   // buttons to route directly to "review the items I'd otherwise nuke."
@@ -1588,13 +1610,16 @@
       activeMode = mode;
       activeFilter = validFilter;
       await open();
+      blinkAllRows();
       return;
     }
     // Already open — switch in-place. setMode handles mode swap (rebuilds
     // sub-tabs, resets activeFilter to mode default), then setFilter
-    // narrows to the requested sub-tab if different.
+    // narrows to the requested sub-tab if different. Both call render()
+    // synchronously, so rows are present before the blink fires.
     if (activeMode !== mode) setMode(mode);
     if (activeFilter !== validFilter) setFilter(validFilter);
+    blinkAllRows();
   }
 
   function isOpen() { return !!panel; }
