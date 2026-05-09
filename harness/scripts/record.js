@@ -16,6 +16,7 @@ import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { launchWithExtension, teardown } from './lib/loadExtension.js';
 import { reduceEvents } from './lib/reduceRecording.js';
+import { resolveOpsUrl } from './lib/resolveUrl.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -74,9 +75,14 @@ process.on('SIGINT', () => requestStop('Ctrl+C'));
 // Inject the shim at every navigation in this context.
 await session.context.addInitScript({ content: shimSource });
 
+// Resolve fixture://<id> URLs to a localhost server so the recording uses the
+// same stable target replay will see. The recording's ops.json keeps the
+// logical URL (fixture://<id>) so the replay can re-resolve it.
+const resolved = await resolveOpsUrl(startUrl, HARNESS_DIR);
+
 const page = await session.context.newPage();
-console.log(`[record:${siteId}] navigating to ${startUrl}`);
-await page.goto(startUrl, { waitUntil: 'domcontentloaded' });
+console.log(`[record:${siteId}] navigating to ${startUrl}${resolved.url !== startUrl ? ` (served from ${resolved.url})` : ''}`);
+await page.goto(resolved.url, { waitUntil: 'domcontentloaded' });
 
 console.log('');
 console.log('  ▸ Recording. Perform the workflow you want to lock in.');
@@ -162,12 +168,24 @@ async function doStop() {
     cwd: HARNESS_DIR,
     detached: true,
   });
-  proc.on('exit', code => process.exit(code ?? 0));
 
-  // Teardown the recorder browser in parallel with the capture child. Either
-  // can finish first; the proc.on('exit') above is what dictates when the
-  // parent exits.
+  // Watchdog: if the capture child hangs (Chromium teardown can deadlock with
+  // --load-extension), force-exit the parent after 90s. The spawn is
+  // detached so the child can keep running in the background if it's still
+  // making progress.
+  const watchdog = setTimeout(() => {
+    console.warn(`[record:${siteId}] capture child still running after 90s — releasing terminal. Ctrl+C any leftover Chromium if needed.`);
+    process.exit(0);
+  }, 90000);
+  proc.on('exit', code => {
+    clearTimeout(watchdog);
+    process.exit(code ?? 0);
+  });
+
+  // Teardown the recorder browser and fixture server in parallel with the
+  // capture child.
   teardown(session).catch(() => {});
+  resolved.stop().catch(() => {});
 }
 
 function parseArgs(argv) {

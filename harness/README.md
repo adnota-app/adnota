@@ -7,21 +7,41 @@ the current extension code and diff against the pinned outcome.
 
 ## Quick start
 
+Two interactive wrappers cover almost everything:
+
 ```
-# 1. CREATE a fixture by recording yourself reproducing the (now-fixed) bug.
-#    Browser opens; do the workflow; stop with Alt+Shift+S in the browser
-#    (or Ctrl+C in the terminal). Writes ops.json + outcomes.json.
-node scripts/record.js --site=<id> --url='<url>'
+# CREATE a test (snapshot + record + auto-capture)
+./record-test.sh
 
-# 2. WATCH a fixture replay (visual confirmation that ops still pass).
-node scripts/replay.js --site=<id>
-
-# 3. RUN the whole regression suite (every fixture in sites.json).
-#    Exits 0 if all pass, 1 on any drift, 2 on setup error.
-node scripts/replay.js
+# WATCH or RUN tests (single fixture or full suite)
+./replay-test.sh
 ```
 
-Quote the URL — zsh treats `?` and `&` as special.
+`record-test.sh` prompts for a test name and (first time only) a URL with
+`https://www.bing.com/` as the default. It snapshots the page so the test
+runs against a bit-stable copy, then opens the browser for you to perform
+the workflow. Stop with Alt+Shift+S in the browser. ops.json and
+outcomes.json are pinned in one go.
+
+`replay-test.sh` lists what's available, prompts for a name, and runs.
+Hitting Enter at the prompt runs the full suite.
+
+If you want the underlying scripts directly:
+
+```
+node scripts/snapshot.js --site=<id> --url='<live-url>'
+node scripts/record.js   --site=<id> --url='fixture://<id>'   # against snapshot
+node scripts/record.js   --site=<id> --url='<live-url>'       # against live site
+node scripts/capture.js  --site=<id>                          # re-pin baseline
+node scripts/replay.js   --site=<id>                          # one fixture
+node scripts/replay.js                                        # full suite
+```
+
+Quote URLs — zsh treats `?` and `&` as special.
+
+The `fixture://<id>` URL scheme tells the harness to spawn a localhost
+HTTP server serving the saved `fixtures/<id>/page.html` and use that for
+navigation. Live URLs (`http(s)://...`) work as before.
 
 ## Layout
 

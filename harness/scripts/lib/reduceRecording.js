@@ -15,7 +15,43 @@ export function reduceEvents(events, { initialUrl, viewport } = {}) {
 
   const ops = [];
   let lastMoveSel = null; // last hovered selector (for hoverElement pairing)
+  let pendingWheels = []; // wheel events seen since last hover, consumed at next click
   let i = 0;
+
+  function consumeWheels() {
+    if (!pendingWheels.length) return [];
+    // Collapse consecutive wheels with same direction + modifiers into a
+    // single wheelTraverse op with a count. The OS fires many small wheel
+    // events per "tick"; the resizer's traversal logic treats each as one
+    // step, so we record per-event count and replay the same number of
+    // discrete wheel events.
+    const out = [];
+    let cur = null;
+    for (const w of pendingWheels) {
+      // Browsers swap deltaY → deltaX when Shift is held; read the axis with
+      // signal. Mirrors the resizer's wheel handler in content/resizer.js.
+      const delta = w.deltaY || w.deltaX || 0;
+      const direction = delta < 0 ? -1 : 1;
+      const same = cur && cur._direction === direction
+        && cur.shift === !!w.shift && cur.alt === !!w.alt
+        && cur.ctrl === !!w.ctrl && cur.meta === !!w.meta;
+      if (same) {
+        cur.count++;
+      } else {
+        cur = {
+          type: 'wheelTraverse',
+          deltaY: direction * 100,
+          count: 1,
+          shift: !!w.shift, alt: !!w.alt, ctrl: !!w.ctrl, meta: !!w.meta,
+          _direction: direction,
+        };
+        out.push(cur);
+      }
+    }
+    pendingWheels = [];
+    // Strip private _direction field
+    return out.map(({ _direction, ...op }) => op);
+  }
 
   while (i < ev.length) {
     const e = ev[i];
@@ -57,25 +93,24 @@ export function reduceEvents(events, { initialUrl, viewport } = {}) {
         continue;
       }
 
-      // Click on a non-Adnota element → hoverElement + clickToSelect.
+      // Click on a non-Adnota element → hoverElement + (wheelTraverse?) + clickToSelect.
       if (dist < DRAG_THRESHOLD_PX && gap < CLICK_GAP_MS && downSel && !isAdnotaUiSelector(downSel)) {
-        // Prefer the element the resizer ACTUALLY selected (captured in the
-        // post-click selectionState snapshot) over the cursor's hover target.
-        // This handles Shift+Scroll-traversed selections — the snapshot
-        // records what the resizer ended up with, not what the cursor was over.
+        // Hover the cursor's actual target — wheelTraverse ops below replay
+        // any Shift+Scroll the user did to climb past auto-bubble. The
+        // snapshot below is used only for verification, not as the hover
+        // target (verifying-via-snapshot fails when the user reached a
+        // sub-layout-significant element via traversal).
         const selState = findSelectionStateAfter(ev, upIdx);
+        const hoverSel = lastMoveSel || downSel;
 
-        let hoverSel = lastMoveSel || downSel;
         let expectedSelection = undefined;
         if (selState?.target) {
-          hoverSel = selState.target.sel;
           expectedSelection = {
             text: selState.target.text,
             w: selState.target.w,
             h: selState.target.h,
           };
         } else if (selState && !selState.present) {
-          // Click confirmed deselect-only; replay shouldn't strict-assert.
           expectedSelection = null;
         }
 
@@ -83,6 +118,8 @@ export function reduceEvents(events, { initialUrl, viewport } = {}) {
         if (!last || last.type !== 'hoverElement' || last.selector !== hoverSel) {
           ops.push({ type: 'hoverElement', selector: hoverSel });
         }
+        // Replay any modifier-wheel traversal that happened during this hover.
+        for (const w of consumeWheels()) ops.push(w);
         const click = { type: 'clickToSelect' };
         if (expectedSelection !== undefined) click.expectedSelection = expectedSelection;
         ops.push(click);
@@ -99,7 +136,20 @@ export function reduceEvents(events, { initialUrl, viewport } = {}) {
     // ── pointermove: track most-recent hovered non-Adnota selector ──────────
     if (e.type === 'pointermove') {
       const sel = e.data.sel;
-      if (sel && !isAdnotaUiSelector(sel)) lastMoveSel = sel;
+      if (sel && !isAdnotaUiSelector(sel)) {
+        // A new hover target resets pending wheels — they belong to the
+        // previous hover. Wheels that fire DURING a hover (no movement
+        // between) accumulate and get consumed at the next click.
+        if (sel !== lastMoveSel) pendingWheels = [];
+        lastMoveSel = sel;
+      }
+      i++;
+      continue;
+    }
+
+    // ── wheel: accumulate modifier-bearing wheels for next click ────────────
+    if (e.type === 'wheel') {
+      pendingWheels.push(e.data);
       i++;
       continue;
     }

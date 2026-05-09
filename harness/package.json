@@ -5,9 +5,10 @@
   "type": "module",
   "engines": { "node": ">=18" },
   "scripts": {
-    "record":  "node scripts/record.js",
-    "capture": "node scripts/capture.js",
-    "replay":  "node scripts/replay.js"
+    "snapshot": "node scripts/snapshot.js",
+    "record":   "node scripts/record.js",
+    "capture":  "node scripts/capture.js",
+    "replay":   "node scripts/replay.js"
   },
   "dependencies": {
     "playwright": "^1.49.0"

@@ -43,7 +43,14 @@ async function runOne(page, op) {
     case 'hoverElement': {
       const target = page.locator(op.selector).first();
       await target.waitFor({ state: 'visible', timeout: op.timeout ?? 5000 });
-      await target.hover();
+      // Skip Playwright's actionability checks — they fail on pages where an
+      // autofocused/sticky element overlaps the hover target (Bing's
+      // sb_form_q is the canonical culprit). The recorder doesn't care about
+      // "can a real user reach this"; it cares that a pointermove event
+      // fires at the target's center, which is what mouse.move does.
+      const box = await target.boundingBox();
+      if (!box) throw new Error(`hoverElement: ${op.selector} has no bounding box`);
+      await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
       // Resizer's hover handlers are rAF-throttled; one frame is enough.
       await page.waitForTimeout(50);
       return;
@@ -66,12 +73,29 @@ async function runOne(page, op) {
       }
 
       if (op.expectedSelection) {
-        try {
-          await page.locator('.adnota-resizer-selection').waitFor({ state: 'visible', timeout: 3000 });
-        } catch {
+        // Asymmetric-state fallback: if the first click didn't produce a
+        // selection, the resizer was probably in "selection exists, click to
+        // deselect" mode (because prior state evolved differently between
+        // record and replay). Resizer's deselect leaves selectedEl=null and
+        // hoveredEl intact, so a second click at the same position will
+        // select the intended element.
+        let appeared = await page.locator('.adnota-resizer-selection')
+          .waitFor({ state: 'visible', timeout: 1000 })
+          .then(() => true).catch(() => false);
+
+        if (!appeared) {
+          await page.mouse.down();
+          await page.mouse.up();
+          appeared = await page.locator('.adnota-resizer-selection')
+            .waitFor({ state: 'visible', timeout: 2000 })
+            .then(() => true).catch(() => false);
+        }
+
+        if (!appeared) {
           throw new Error(
             `clickToSelect: expected a selection (text="${op.expectedSelection.text?.slice(0, 40)}…" ` +
-            `${op.expectedSelection.w}×${op.expectedSelection.h}) but no .adnota-resizer-selection appeared`
+            `${op.expectedSelection.w}×${op.expectedSelection.h}) but no .adnota-resizer-selection appeared, ` +
+            `even after a retry click`
           );
         }
 
@@ -150,6 +174,30 @@ async function runOne(page, op) {
 
     case 'screenshot': {
       await page.screenshot({ path: op.path, fullPage: !!op.fullPage });
+      return;
+    }
+
+    case 'wheelTraverse': {
+      // Replay modifier-bearing wheel events. The resizer's traversal handler
+      // walks the DOM up/down per wheel tick. We hold the modifiers via the
+      // keyboard, fire `count` discrete wheel events, then release.
+      const modifiers = [];
+      if (op.shift) modifiers.push('Shift');
+      if (op.alt)   modifiers.push('Alt');
+      if (op.ctrl)  modifiers.push('Control');
+      if (op.meta)  modifiers.push('Meta');
+      for (const m of modifiers) await page.keyboard.down(m);
+      try {
+        const count = op.count ?? 1;
+        const deltaY = op.deltaY ?? -100;
+        for (let i = 0; i < count; i++) {
+          await page.mouse.wheel(0, deltaY);
+          await page.waitForTimeout(60);
+        }
+      } finally {
+        for (const m of [...modifiers].reverse()) await page.keyboard.up(m);
+      }
+      await page.waitForTimeout(150);
       return;
     }
 

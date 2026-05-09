@@ -12,6 +12,7 @@ import { fileURLToPath } from 'node:url';
 import { launchWithExtension, teardown, getWorker } from './lib/loadExtension.js';
 import { runOps } from './lib/runOps.js';
 import { captureState } from './lib/captureState.js';
+import { resolveOpsUrl } from './lib/resolveUrl.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -34,15 +35,23 @@ if (!site) {
 const fixtureDir = path.join(HARNESS_DIR, site.fixture);
 const ops = JSON.parse(await fs.readFile(path.join(fixtureDir, 'ops.json'), 'utf8'));
 
+// Resolve fixture://<id> to a localhost server, or pass live URL through.
+const resolved = await resolveOpsUrl(ops.url, HARNESS_DIR);
+
 console.log(`[capture:${siteId}] launching browser with extension`);
 const session = await launchWithExtension({ viewport: ops.viewport });
 let exitCode = 0;
 try {
   const page = await session.context.newPage();
-  console.log(`[capture:${siteId}] navigating to ${ops.url}`);
-  await page.goto(ops.url, { waitUntil: 'domcontentloaded' });
+  console.log(`[capture:${siteId}] navigating to ${ops.url}${resolved.url !== ops.url ? ` (served from ${resolved.url})` : ''}`);
+  await page.goto(resolved.url, { waitUntil: 'domcontentloaded' });
 
   if (ops.settleMs) await page.waitForTimeout(ops.settleMs);
+
+  // Sites like Bing autofocus a search input on load that intercepts pointer
+  // events and prevents hovers on content below. Blur whatever has focus so
+  // hover ops reach their targets.
+  await page.evaluate(() => document.activeElement?.blur?.()).catch(() => {});
 
   console.log(`[capture:${siteId}] running ${ops.ops.length} ops`);
   await runOps(page, ops.ops);
@@ -83,6 +92,7 @@ try {
   exitCode = 1;
 } finally {
   await teardown(session);
+  await resolved.stop();
 }
 
 process.exit(exitCode);

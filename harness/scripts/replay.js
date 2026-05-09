@@ -13,6 +13,7 @@ import { launchWithExtension, teardown, getWorker } from './lib/loadExtension.js
 import { runOps } from './lib/runOps.js';
 import { captureState } from './lib/captureState.js';
 import { diffState, formatDiffs } from './lib/diff.js';
+import { resolveOpsUrl } from './lib/resolveUrl.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -94,15 +95,21 @@ async function replayOne(site) {
     throw err;
   }
 
+  const resolved = await resolveOpsUrl(ops.url, HARNESS_DIR);
+
   console.log(`[replay:${siteId}] launching browser with extension`);
   const session = await launchWithExtension({ viewport: ops.viewport });
 
   try {
     const page = await session.context.newPage();
-    console.log(`[replay:${siteId}] navigating to ${ops.url}`);
-    await page.goto(ops.url, { waitUntil: 'domcontentloaded' });
+    console.log(`[replay:${siteId}] navigating to ${ops.url}${resolved.url !== ops.url ? ` (served from ${resolved.url})` : ''}`);
+    await page.goto(resolved.url, { waitUntil: 'domcontentloaded' });
 
     if (ops.settleMs) await page.waitForTimeout(ops.settleMs);
+
+    // Same anti-autofocus blur as capture.js — keeps hovers reaching their
+    // targets on pages with autofocused search boxes (Bing) etc.
+    await page.evaluate(() => document.activeElement?.blur?.()).catch(() => {});
 
     console.log(`[replay:${siteId}] running ${ops.ops.length} ops`);
     await runOps(page, ops.ops);
@@ -150,6 +157,7 @@ async function replayOne(site) {
     return { siteId, status: 'error' };
   } finally {
     await teardown(session);
+    await resolved.stop();
   }
 }
 

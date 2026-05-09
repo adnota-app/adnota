@@ -174,6 +174,23 @@
     });
   }, { capture: true, passive: true });
 
+  // Modifier-bearing wheel events. The resizer interprets Shift+wheel as
+  // explicit DOM-traversal ("walk to parent / child"), used to reach elements
+  // that would otherwise be skipped by findLayoutTarget's auto-bubble (small
+  // sub-120×60 elements, etc.). Plain wheels are page scroll and not recorded.
+  //
+  // Capture BOTH deltaY and deltaX: browsers swap the two axes when Shift is
+  // held, so the actual signal is in whichever is non-zero. The reducer reads
+  // `deltaY || deltaX` to compute the user's intended direction.
+  window.addEventListener('wheel', (e) => {
+    if (!e.shiftKey && !e.altKey && !e.ctrlKey && !e.metaKey) return;
+    send('wheel', {
+      deltaY: e.deltaY,
+      deltaX: e.deltaX,
+      shift: e.shiftKey, alt: e.altKey, ctrl: e.ctrlKey, meta: e.metaKey,
+    });
+  }, { capture: true, passive: true });
+
   // ─── Stop sentinel (Alt+Shift+S) ──────────────────────────────────────────
   // Provides a stop signal that doesn't fight Node's SIGINT handlers. We use a
   // non-passive listener so we can preventDefault and keep the host page from

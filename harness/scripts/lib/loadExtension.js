@@ -61,6 +61,15 @@ export async function getWorker(context, page, timeout = 15000) {
 }
 
 export async function teardown({ context, userDataDir }) {
-  try { await context.close(); } catch {}
-  try { await fs.rm(userDataDir, { recursive: true, force: true }); } catch {}
+  // Bound teardown: Chromium launched with --load-extension can hang on close
+  // for minutes when the extension's service worker is still running. Race
+  // each step against a timeout so the process exits in a bounded time even
+  // if the browser refuses to die cleanly.
+  const withTimeout = (p, ms) => Promise.race([
+    p,
+    new Promise(r => setTimeout(r, ms)),
+  ]);
+
+  try { await withTimeout(context.close(), 3000); } catch {}
+  try { await withTimeout(fs.rm(userDataDir, { recursive: true, force: true }), 2000); } catch {}
 }
