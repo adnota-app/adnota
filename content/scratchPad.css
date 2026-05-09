@@ -2,6 +2,20 @@
    Frosted-glass surface, austere body. The Sites/Snippets feed is the
    counter-example: no per-item color borders, no source chips, no card. */
 
+/* ── Host-CSS bleed defense ──────────────────────────────────────────────────
+   Recipe blogs and content-CMS themes routinely apply
+       img, svg { max-width: 100% !important; height: auto !important; }
+   so article photos go responsive. Our SVG icons get caught by the same rule
+   and stretch to row width — we've seen the row-globe render at ~600px on
+   mamagourmand.com. Specificity isn't enough vs host !important; every svg
+   sizing rule below also uses !important to win the cascade.
+   This blanket neutralizes the max-* overrides so the per-icon px sizes
+   below set the actual dimensions. */
+#adnota-scratchpad svg {
+  max-width: none !important;
+  max-height: none !important;
+}
+
 #adnota-scratchpad {
   position: fixed;
   right: 20px;
@@ -102,7 +116,7 @@
   align-items: center;
   justify-content: center;
 }
-.adnota-scratchpad-mode-btn svg { width: 14px; height: 14px; }
+.adnota-scratchpad-mode-btn svg { width: 14px !important; height: 14px !important; }
 .adnota-scratchpad-mode-btn:hover {
   color: #e9d5ff;
   background: rgba(124, 58, 237, 0.18);
@@ -162,8 +176,8 @@
   color: var(--adnota-accent, #c084fc);
 }
 .adnota-scratchpad-modemenu-check svg {
-  width: 12px;
-  height: 12px;
+  width: 12px !important;
+  height: 12px !important;
 }
 .adnota-scratchpad-modemenu-label {
   flex: 1 1 auto;
@@ -225,7 +239,7 @@
   cursor: pointer;
   transition: color 0.15s ease, background 0.15s ease;
 }
-.adnota-scratchpad-copyall svg { width: 14px; height: 14px; }
+.adnota-scratchpad-copyall svg { width: 14px !important; height: 14px !important; }
 .adnota-scratchpad-copyall:hover:not(:disabled) {
   color: #e9d5ff;
   background: rgba(124, 58, 237, 0.18);
@@ -254,7 +268,7 @@
   cursor: pointer;
   transition: color 0.15s ease, background 0.15s ease;
 }
-.adnota-scratchpad-close svg { width: 14px; height: 14px; }
+.adnota-scratchpad-close svg { width: 14px !important; height: 14px !important; }
 .adnota-scratchpad-close:hover {
   color: #fca5a5;
   background: rgba(239, 68, 68, 0.12);
@@ -278,7 +292,7 @@
   cursor: pointer;
   transition: color 0.15s ease, background 0.15s ease;
 }
-.adnota-scratchpad-filterbtn svg { width: 14px; height: 14px; }
+.adnota-scratchpad-filterbtn svg { width: 14px !important; height: 14px !important; }
 .adnota-scratchpad-filterbtn:hover {
   color: #e9d5ff;
   background: rgba(124, 58, 237, 0.18);
@@ -460,8 +474,8 @@
   color: rgba(192, 132, 252, 0.65); /* dim accent so the icon reads as metadata */
 }
 .adnota-scratchpad-row-globe svg {
-  width: 13px;
-  height: 13px;
+  width: 13px !important;
+  height: 13px !important;
 }
 .adnota-scratchpad-row-stale {
   opacity: 0.5;
@@ -582,7 +596,7 @@
 
 .adnota-scratchpad-rowcopy svg,
 .adnota-scratchpad-rowgoto svg,
-.adnota-scratchpad-rowtrash svg { width: 14px; height: 14px; }
+.adnota-scratchpad-rowtrash svg { width: 14px !important; height: 14px !important; }
 
 .adnota-scratchpad-row:hover .adnota-scratchpad-rowcopy,
 .adnota-scratchpad-row:hover .adnota-scratchpad-rowgoto,
