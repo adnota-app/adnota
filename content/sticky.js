@@ -145,11 +145,14 @@ updateStickySwatches();
 // Divider
 stickyBody.appendChild(Object.assign(document.createElement('div'), { className: 'adnota-toolbar-divider adnota-toolbar-divider-orange' }));
 
-// Trash — clears all sticky notes on this page
+// Trash — opens scratch pad on Snippets / Notes for per-row review/delete.
+// Badge auto-managed by createTrashButton when mode/filter are passed.
 const stickyTrashBtn = window.AdnotaUI.createTrashButton({
   singular: 'sticky note',
   plural: 'sticky notes',
   actionTypes: ['NOTE'],
+  mode: 'snippets',
+  filter: 'notes',
 });
 stickyTrashBtn.classList.add('adnota-undo-btn-orange');
 stickyBody.appendChild(stickyTrashBtn);
