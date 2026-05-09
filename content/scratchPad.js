@@ -97,6 +97,13 @@
   // Per-row expansion state (Edits mode only). Keyed by snippet.id so it
   // survives re-renders triggered by storage onChanged. Cleared on close().
   const expandedIds = new Set();
+  // Per-row mute state (Edits mode only). Ephemeral — never persisted to
+  // chrome.storage. Resets on page reload, same model as Alt+S global
+  // show/hide-all. Keyed by snippet.id. A muted row stays in the scratchpad
+  // (just dimmed) and the underlying storage row is untouched; only the
+  // live effect on the page is removed via tool.removeOne(). Click again
+  // to re-apply via tool.applyOne(). Cleared on close().
+  const mutedIds = new Set();
   // Tag filter is in-memory only — resets when the panel closes. The bar's
   // visibility persists globally so opening the panel restores the user's
   // chrome preference, but the active chip clears so a stale tag doesn't
@@ -194,6 +201,11 @@
   // mode button. The popover's labels carry the actual category semantics;
   // the icon just needs to say "this is a dropdown."
   const ICON_CHEVRON_DOWN = `<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><polyline points="5 8 10 13 15 8"/></svg>`;
+  // Eye / eye-off — per-row mute toggle on Edit-mode rows. Eye = currently
+  // applied, click to mute. Eye-off = currently muted, click to re-apply.
+  // Ephemeral (resets on page reload), same model as global Alt+S show/hide.
+  const ICON_EYE     = `<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 10s3-6 8-6 8 6 8 6-3 6-8 6-8-6-8-6z"/><circle cx="10" cy="10" r="2.5"/></svg>`;
+  const ICON_EYE_OFF = `<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 14.5A8 8 0 0 1 10 16c-5 0-8-6-8-6a14 14 0 0 1 3.5-4"/><path d="M8 4.2A8 8 0 0 1 10 4c5 0 8 6 8 6a14 14 0 0 1-1.5 2.2"/><line x1="2" y1="2" x2="18" y2="18"/></svg>`;
   // Globe — small leading hint on rows whose record is domain-wide
   // (path === '*'). Tells the user "this rule applies everywhere on the
   // site, not just this URL," which avoids the confusion of seeing edits
@@ -717,6 +729,37 @@
     });
   }
 
+  // Per-row mute dispatcher. Routes to the right tool's removeOne/applyOne
+  // based on the snippet type — same dispatch shape as lib/adnotaUI.js's
+  // softDeleteItems uses for restore. Only handles Edit-mode types
+  // (erase / resize / drawing). Returns true on success so the caller can
+  // gate the icon swap. RESIZE has two sub-paths because REFLOW v1.5
+  // dom-reorder rules live in a separate Map and need their own apply.
+  function setEditMuted(snippet, mute) {
+    const rec = snippet.record;
+    if (!rec) return false;
+    try {
+      if (snippet.type === 'erase') {
+        if (mute) window.AdnotaEraser?.removeOne?.(snippet.id);
+        else      window.AdnotaEraser?.applyOne?.(rec);
+      } else if (snippet.type === 'resize') {
+        if (rec.kind === 'reflow:dom-reorder') {
+          if (mute) window.AdnotaResizer?.removeOneReorder?.(snippet.id);
+          else      window.AdnotaResizer?.applyOneReorder?.(rec);
+        } else {
+          if (mute) window.AdnotaResizer?.removeOne?.(snippet.id);
+          else      window.AdnotaResizer?.applyOne?.(rec);
+        }
+      } else if (snippet.type === 'drawing') {
+        if (mute) window.AdnotaMarker?.removeOne?.(snippet.id);
+        else      window.AdnotaMarker?.applyOne?.(rec);
+      } else {
+        return false;
+      }
+    } catch (_) { return false; }
+    return true;
+  }
+
   function buildRow(snippet) {
     const row = document.createElement('div');
     setClass(row, 'adnota-scratchpad-row');
@@ -820,6 +863,48 @@
     if (isEdit && expandedIds.has(snippet.id)) {
       row.appendChild(buildExpandedDetail(snippet));
       addClass(row, 'adnota-scratchpad-row-expanded');
+    }
+
+    // Eye toggle — Edit-mode rows only, and skip stale rows (nothing to
+    // toggle if the edit didn't apply in the first place). Order in the
+    // row's action cluster: [eye] [goto] [copy] [trash] = preview →
+    // navigate → copy → destroy intensity gradient.
+    //
+    // Tooltip is just "Show" / "Hide" regardless of edit type — the eye
+    // icon does the cognitive work, and the verb describes the gesture's
+    // effect on the edit (Hide = mute the edit, Show = re-apply it).
+    // Consistent across erase / resize / drawing avoids 5-different-verbs
+    // tooltip noise that earlier framings produced.
+    if (isEdit && !snippet.stale) {
+      const eyeBtn = document.createElement('button');
+      eyeBtn.type = 'button';
+      setClass(eyeBtn, 'adnota-scratchpad-roweye');
+      const muted = mutedIds.has(snippet.id);
+      eyeBtn.innerHTML = muted ? ICON_EYE_OFF : ICON_EYE;
+      eyeBtn.title = muted ? 'Show' : 'Hide';
+      if (muted) addClass(row, 'adnota-scratchpad-row-muted');
+      eyeBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        e.preventDefault();
+        const wasMuted = mutedIds.has(snippet.id);
+        const ok = setEditMuted(snippet, !wasMuted);
+        if (!ok) return;
+        if (wasMuted) {
+          mutedIds.delete(snippet.id);
+          eyeBtn.innerHTML = ICON_EYE;
+          eyeBtn.title = 'Hide';
+          removeClass(row, 'adnota-scratchpad-row-muted');
+        } else {
+          mutedIds.add(snippet.id);
+          eyeBtn.innerHTML = ICON_EYE_OFF;
+          eyeBtn.title = 'Show';
+          addClass(row, 'adnota-scratchpad-row-muted');
+        }
+        window.AdnotaLog?.event('scratchpad', 'mute-toggle', {
+          type: snippet.type, muted: !wasMuted,
+        });
+      });
+      row.appendChild(eyeBtn);
     }
 
     const gotoBtn = document.createElement('button');
@@ -1041,6 +1126,11 @@
     }
 
     expandedIds.delete(snippet.id);
+    // Clear any mute entry too — if this was a muted row, the live effect
+    // was already removed; deleting the storage row makes the mute moot.
+    // If user undoes the delete, the row comes back un-muted (applyOne in
+    // the undo handler re-applies, and mutedIds no longer claims it's off).
+    mutedIds.delete(snippet.id);
 
     window.AdnotaLog?.event('scratchpad', 'delete', { type: snippet.type });
 
