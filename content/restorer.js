@@ -174,6 +174,71 @@ async function _performRestoration(trigger) {
 
     // ── Resize overrides: inject via <style> tag — no DOM anchoring needed. ────
     if (item.action === 'RESIZE') {
+      // REFLOW v1.5 fork: dom-reorder rules don't produce CSS — they need a
+      // physical DOM move re-applied via FuzzyAnchor + a guard observer.
+      // Higher confidence on parent (60) than source (40) because parents
+      // are often structural wrappers with weaker text/structure signals,
+      // and a false-positive parent match plants the source inside a
+      // wrong-but-similar container (silent visual bug). If anchors fail,
+      // leave the item out of processedItems so the next MutationObserver
+      // pass retries against the now-loaded DOM.
+      if (item.kind === 'reflow:dom-reorder' && item._id) {
+        // Resolve the SOURCE only — parent comes from source.parentElement.
+        // Generic structural parents (`<div class="article-content">`) often
+        // score low on FuzzyAnchor because their class alone isn't unique
+        // enough for full CSS points. But once the source resolves, its
+        // current DOM parent is authoritative — moving the source to the
+        // end of *its own parent* doesn't need fuzzy matching, just a ref.
+        // parentAnchor is kept on the storage entry for validateReorderRules
+        // (the parent-unmount fallback path), but not consulted here.
+        // Keep in sync with REORDER_SOURCE_CONFIDENCE_MIN in resizer.js —
+        // a number small enough that exporting it would be heavier than
+        // grepping if either drifts.
+        const SOURCE_MIN = 40;
+        const sm = window.FuzzyAnchor?.findMatch?.(item.sourceAnchor);
+        if (!sm?.element || sm.confidence < SOURCE_MIN) {
+          window.AdnotaLog?.event('restorer', 'reorder-anchor-fail', {
+            id, sourceConf: sm?.confidence ?? null,
+            sourceSel: item.sourceAnchor?.cssSelector,
+          });
+          continue;  // skip; retry on next pass
+        }
+        const source = sm.element;
+        const parent = source.parentElement;
+        if (!parent) {
+          window.AdnotaLog?.event('restorer', 'reorder-no-parent', { id });
+          continue;
+        }
+        if (!window.AdnotaResizer?.applyReorderMove || !window.AdnotaResizer?.attachReorderGuard) {
+          window.AdnotaLog?.event('restorer', 'reorder-resizer-missing', { id });
+          continue;
+        }
+        // Detach-before-overwrite: SPA route change re-runs restorer. The
+        // prior liveRule (with its now-stale parentEl + observer attached
+        // to detached DOM) is about to be replaced; disconnect first.
+        const prior = window.AdnotaReorderRules?.get(item._id);
+        if (prior) window.AdnotaResizer.detachReorderGuard(prior);
+        window.AdnotaResizer.applyReorderMove(source, parent, item.toPosition);
+        const liveRule = {
+          id: item._id,
+          sourceEl: source, parentEl: parent,
+          sourceAnchor: item.sourceAnchor,
+          parentAnchor: item.parentAnchor,
+          originalPrevAnchor: item.originalPrevAnchor,
+          toPosition: item.toPosition,
+          observer: null, fights: 0,
+        };
+        window.AdnotaReorderRules?.set(item._id, liveRule);
+        window.AdnotaResizer.attachReorderGuard(liveRule);
+        window.AdnotaLog?.event('restorer', 'reorder-applied', {
+          id, sourceConf: sm.confidence,
+          toPosition: item.toPosition,
+        });
+        processedItems.add(id);
+        resizeCount++;
+        continue;
+      }
+
       // Go through the shared Map so rebuild is the single source of truth.
       // Older fallback (plain textContent append) is kept for the rare case
       // where resizer.js hasn't loaded yet — extremely unlikely at restore time.
@@ -426,6 +491,17 @@ async function _performRestoration(trigger) {
       brokenThisPass++;
     }
   }
+
+  // Reorder validation: catches the parent-unmount case the per-rule
+  // observers can't see. The per-rule observer is bound to parentEl with
+  // subtree:false, so when a framework component above the reorder target
+  // re-renders and replaces parentEl entirely, the observer is stuck on a
+  // detached node and our move silently disappears. This pass walks the
+  // live Map, finds rules whose parentEl is no longer connected, re-resolves
+  // via parentAnchor, and re-attaches a fresh observer. Cheap (O(rules) +
+  // O(1) isConnected per rule) and piggybacks on this existing debounced
+  // mutation pass — no separate page-wide observer needed.
+  try { window.AdnotaResizer?.validateReorderRules?.(); } catch (_) {}
 
   // Steady-state guard: on heavy SPAs the MutationObserver wakes us every
   // ~2.5s for the lifetime of the tab. If nothing was newly processed and

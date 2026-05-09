@@ -195,7 +195,13 @@
         });
       } else if (item.action === 'ERASE' || item.action === 'RESIZE') {
         const type = item.action === 'ERASE' ? 'erase' : 'resize';
-        const selector = item.selector || item.anchor?.cssSelector || '';
+        // REFLOW v1.5 dom-reorder rows have no top-level selector or anchor;
+        // their identity lives in sourceAnchor. Fall back to that so the row
+        // gets a usable selector for liveness + display.
+        const selector = item.selector
+          || item.anchor?.cssSelector
+          || item.sourceAnchor?.cssSelector
+          || '';
         // Resolve the live element once. For ERASEs the element is still in
         // the DOM (just display:none'd), so querySelector finds it. Stash it
         // so buildRow can compute the snippet text fallback and the stale
@@ -207,7 +213,7 @@
         // Snippet text ladder: textFingerprint excerpt → alt/title/aria-label
         // → empty (selector becomes the only identifier in buildRow).
         let excerpt = '';
-        const fp = item.anchor?.textFingerprint;
+        const fp = item.anchor?.textFingerprint || item.sourceAnchor?.textFingerprint;
         if (fp) {
           if (typeof fp === 'string') excerpt = fp;
           else if (typeof fp === 'object') {
@@ -882,6 +888,10 @@
       if (rec.fontSize != null) rows.push(['Font', String(rec.fontSize)]);
     }
     if (snippet.type === 'resize' && rec.cssText) rows.push(['CSS', rec.cssText]);
+    // DOM-reorder rules (kind === 'reflow:dom-reorder') have no cssText —
+    // they store a human-readable `label` instead, e.g. "→ moved to end of
+    // parent". Fall back to that so the detail view is non-empty.
+    if (snippet.type === 'resize' && !rec.cssText && rec.label) rows.push(['Move', rec.label]);
     if (snippet.type === 'resize' && rec.kind)    rows.push(['Kind', rec.kind]);
     if (rec.path) rows.push(['Path', rec.path]);
     if (rec.timestamp) {
