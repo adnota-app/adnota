@@ -211,6 +211,24 @@ function isLayoutSignificant(el) {
   return rect.width >= MIN_WIDTH && rect.height >= MIN_HEIGHT;
 }
 
+// CSS display values whose width/height are governed by their parent's
+// layout rather than by their own style. Setting CSS `width` on a
+// `display: table-row` has no visual effect — the table's column layout
+// decides the row's dimensions. `display: contents` has no layout box at
+// all. None of these are valid resize targets; a bubble-up that lands on
+// one needs to walk back down to a normal block descendant.
+function isUnresizableDisplay(el) {
+  const display = getComputedStyle(el).display;
+  return display === 'contents'
+      || display === 'table-row'
+      || display === 'table-cell'
+      || display === 'table-row-group'
+      || display === 'table-header-group'
+      || display === 'table-footer-group'
+      || display === 'table-column'
+      || display === 'table-column-group';
+}
+
 function findLayoutTarget(raw, extraLevels = 0) {
   if (!raw || isAdnotaElement(raw)) return null;
 
@@ -226,8 +244,23 @@ function findLayoutTarget(raw, extraLevels = 0) {
   // Step 2: bubble past visually-identical wrappers, seeded from the layout-
   // significant ancestor (not the raw hover). This is the key fix for the
   // "hovering a menu link returns the UL instead of the NAV" case.
-  const baseline = window.AdnotaUI.bubbleToVisualRoot(layoutSig);
+  let baseline = window.AdnotaUI.bubbleToVisualRoot(layoutSig);
   if (isAdnotaElement(baseline)) return null;
+
+  // Step 2.5: walk back down past layout-special display values. Without
+  // this, a target hovered inside a CSS table (display: table) — e.g.
+  // GitHub's BorderGrid sidebar — bubbles to the table-row level. Setting
+  // CSS width on a table-row is ignored by table layout, so the persisted
+  // resize rule has zero visual effect and the user thinks resize is broken.
+  // Walk down toward layoutSig until we land on a resizable block.
+  while (isUnresizableDisplay(baseline) && baseline !== layoutSig) {
+    let child = layoutSig;
+    while (child && child.parentElement !== baseline) {
+      child = child.parentElement;
+    }
+    if (!child || child === baseline) break;
+    baseline = child;
+  }
 
   // Step 3a (positive extraLevels): scroll-wheel walk up — each level up must
   // also be layout-significant.
