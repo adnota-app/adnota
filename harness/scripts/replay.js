@@ -154,6 +154,14 @@ async function replayOne(site) {
     return { siteId, status: 'fail' };
   } catch (err) {
     console.error(`[replay:${siteId}] ERROR:`, err);
+    try {
+      const pages = session.context.pages();
+      if (pages.length) {
+        const debugPath = path.join(fixtureDir, 'replay-debug.png');
+        await pages[0].screenshot({ path: debugPath, fullPage: true });
+        console.error(`[replay:${siteId}] debug screenshot: ${path.relative(HARNESS_DIR, debugPath)}`);
+      }
+    } catch {}
     return { siteId, status: 'error' };
   } finally {
     await teardown(session);

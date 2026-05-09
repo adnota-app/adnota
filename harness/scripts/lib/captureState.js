@@ -71,6 +71,12 @@ function normalizeUrlKey(key) {
     for (const p of [...u.searchParams.keys()]) {
       if (VOLATILE_URL_PARAMS.has(p)) u.searchParams.delete(p);
     }
+    // Fixture servers bind to a random port each run, which shows up in
+    // adnota_stats keys. Strip the port for localhost/127.0.0.1 so
+    // record/replay match.
+    if (u.hostname === '127.0.0.1' || u.hostname === 'localhost') {
+      u.port = '';
+    }
     return u.toString();
   } catch {
     return key;

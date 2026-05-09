@@ -55,7 +55,7 @@
     "adnotaActiveMode": "resizer",
     "adnotaToolEscTutorialShown": true,
     "adnota_stats": {
-      "http://127.0.0.1:57569/": {
+      "http://127.0.0.1/": {
         "broken": 0,
         "notes": 0,
         "resizes": 1,
