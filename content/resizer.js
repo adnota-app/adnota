@@ -128,10 +128,19 @@ function updateHUD() {
   if (selectedEl) {
     // Selected state: dimensions live on the selection box itself (the
     // top-right chip next to the reset button), so the HUD just carries
-    // the action hint here.
+    // the action hint here. When the layout context flags structural
+    // gesture inversion (flex-end pinned in a fixed container), surface
+    // the warning + a hint to use the parent chip.
     html += `<span style="color:#6ee7b7">Selected</span>`;
     html += dot;
-    html += `<span style="color:#94a3b8">Drag a handle to resize · <span style="color:#93c5fd">↺</span> to reset</span>`;
+    const ctx = selectedEl._adnotaLayoutContext;
+    if (ctx?.isFlexEndInFixedContainer) {
+      html += `<span style="color:#fbbf24">right handle grows leftward (flex pinned)</span>`;
+      html += dot;
+      html += `<span style="color:#94a3b8">try resize parent · <span style="color:#93c5fd">↺</span> to reset</span>`;
+    } else {
+      html += `<span style="color:#94a3b8">Drag a handle to resize · <span style="color:#93c5fd">↺</span> to reset</span>`;
+    }
     resizerHudInfo.innerHTML = html;
     return;
   }
@@ -166,6 +175,7 @@ let dismissBtn = null;
 let selectionDimBadge = null;
 let selectionActionChip = null;
 let selectionInfiniteChip = null;
+let selectionParentChip = null;
 let selectionChipCluster = null;
 
 // ─── Drag state ──────────────────────────────────────────────────────────────
@@ -230,6 +240,71 @@ function isUnresizableDisplay(el) {
       || display === 'table-footer-group'
       || display === 'table-column'
       || display === 'table-column-group';
+}
+
+// Layout context detection — runs once at drag-start so the strategy stays
+// stable for the duration of one drag. Returns:
+//   { kind, parent, flexDirection?, isFlexEndInFixedContainer? }
+//   kind: 'block' (default) | 'flex-item' | 'grid-item' | 'positioned' | 'table-component'
+//
+// Detection order matters: position: absolute/fixed wins over flex/grid
+// because abs/fixed elements are pulled out of flow and don't participate
+// in their parent's layout algorithm.
+function getLayoutContext(el) {
+  const cs = getComputedStyle(el);
+  if (cs.position === 'absolute' || cs.position === 'fixed') {
+    return { kind: 'positioned', parent: el.parentElement };
+  }
+  if (isUnresizableDisplay(el)) {
+    return { kind: 'table-component', parent: el.parentElement };
+  }
+  const parent = el.parentElement;
+  if (!parent) return { kind: 'block', parent: null };
+  const pcs = getComputedStyle(parent);
+  const pdisp = pcs.display;
+  if (pdisp === 'flex' || pdisp === 'inline-flex') {
+    const flexDirection = pcs.flexDirection || 'row';
+    return {
+      kind: 'flex-item',
+      parent,
+      flexDirection,
+      isFlexEndInFixedContainer: detectFlexEndInFixed(el, parent, pcs, flexDirection),
+    };
+  }
+  if (pdisp === 'grid' || pdisp === 'inline-grid') {
+    return { kind: 'grid-item', parent };
+  }
+  return { kind: 'block', parent };
+}
+
+// The structural pattern where flex layout pins the right edge and forces
+// any width grow to come from the left, against the user's gesture intent.
+// Conservative predicates — false positives clutter the HUD.
+//
+// Known imperfection (acknowledged, defer to v1.5): the proximity fallback
+// fires for any terminal item filling its parent in row-flex, even when
+// justify-content is flex-start and growing the item would actually push
+// siblings rightward as expected. Tightening to only flag space-* layouts
+// would miss our canonical case (GitHub's PageLayout, which uses default
+// flex-start with the pane filling to the right edge of a fixed-width
+// container). v1 trades some false positives for reliable detection of the
+// real cases; the parent chip is a low-cost suggestion, not a forced action.
+function detectFlexEndInFixed(el, parent, pcs, flexDirection) {
+  // Row direction only — the inversion is an x-axis phenomenon. Column
+  // flex has the analogous y-axis problem but it's out of scope for v1.
+  if (flexDirection.startsWith('column')) return false;
+  // Parent isn't itself overflowing horizontally — if it were, growing the
+  // child would just push more overflow into a region that was already
+  // scrolling, not invert the gesture.
+  if (parent.scrollWidth > parent.clientWidth + 1) return false;
+  // Element anchored at the right edge: explicit justify-content: flex-end,
+  // OR rect.right within 4px of the parent's content-box right edge (4px
+  // tolerance handles sub-pixel rounding without flagging mid-row items).
+  if (pcs.justifyContent === 'flex-end') return true;
+  const elRect = el.getBoundingClientRect();
+  const pRect = parent.getBoundingClientRect();
+  const padR = parseFloat(pcs.paddingRight) || 0;
+  return Math.abs(elRect.right - (pRect.right - padR)) < 4;
 }
 
 function findLayoutTarget(raw, extraLevels = 0) {
@@ -396,6 +471,10 @@ function selectElement(el) {
   window.AdnotaLog?.event('resizer', 'select', { el: window.AdnotaLog.el(el) });
   deselectElement();
   selectedEl = el;
+  // Cache layout context once at selection time. Used by updateHUD (warning
+  // visibility), updateSelectionChip (parent chip visibility), and startDrag
+  // (strategy dispatch). Survives until deselectElement clears selectedEl.
+  selectedEl._adnotaLayoutContext = getLayoutContext(el);
   hoverOverlay.style.display = 'none';
 
   const rect = el.getBoundingClientRect();
@@ -519,6 +598,25 @@ function selectElement(el) {
     updateSelectionChip();
   });
 
+  // Parent-chip: when this element is a flex-end child in a fixed-width
+  // container, the right-handle's intent (grow rightward) is structurally
+  // impossible — flex pins the right edge. The chip lets the user
+  // one-click promote selection to the constraining parent and resize that
+  // instead. Visibility decided in updateSelectionChip from the cached
+  // layout context.
+  selectionParentChip = document.createElement('div');
+  selectionParentChip.className = 'adnota-resizer-action-chip';
+  selectionParentChip.setAttribute('data-adnota-ui', '1');
+  selectionParentChip.style.display = 'none';
+  selectionParentChip.textContent = 'resize parent';
+  selectionParentChip.setAttribute('data-adnota-tooltip', 'Pane is pinned by its container — resize the container instead');
+  selectionParentChip.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const parent = selectedEl?._adnotaLayoutContext?.parent;
+    if (parent) selectElement(parent);
+  });
+
   selectionChipCluster = document.createElement('div');
   selectionChipCluster.setAttribute('data-adnota-ui', '1');
   Object.assign(selectionChipCluster.style, {
@@ -530,6 +628,8 @@ function selectElement(el) {
     alignItems: 'center',
     zIndex: '2147483647',
   });
+  // Order: parent (when present) → unstick/restick → finite scroll → dimension.
+  selectionChipCluster.appendChild(selectionParentChip);
   selectionChipCluster.appendChild(selectionActionChip);
   selectionChipCluster.appendChild(selectionInfiniteChip);
   selectionChipCluster.appendChild(selectionDimBadge);
@@ -547,6 +647,13 @@ function updateSelectionChip() {
   if (!selectionActionChip || !selectedEl) return;
   const cs = getComputedStyle(selectedEl);
   const selector = generateCSSSelector(selectedEl);
+
+  // Parent chip — only when the cached layout context flags this as
+  // flex-end-in-fixed-container. Click handler reads the same cached parent.
+  if (selectionParentChip) {
+    const isFlexEndInFixed = selectedEl?._adnotaLayoutContext?.isFlexEndInFixedContainer;
+    selectionParentChip.style.display = isFlexEndInFixed ? '' : 'none';
+  }
 
   // Unstick chip
   const unstickOverridden = hasUnstickOverride(selector);
@@ -591,6 +698,10 @@ function updateSelectionChip() {
 
 function deselectElement() {
   const hadSelection = !!selectedEl;
+  // Drop the cached layout-context expando before clearing the reference,
+  // so nothing dangling (including the captured parent ref) survives on
+  // the page DOM after the user leaves resizer mode.
+  if (selectedEl) delete selectedEl._adnotaLayoutContext;
   selectedEl = null;
   if (selectionBox) { selectionBox.remove(); selectionBox = null; }
   if (handleLeft)   { handleLeft.remove();   handleLeft = null; }
@@ -599,11 +710,12 @@ function deselectElement() {
   if (handleBottom) { handleBottom.remove(); handleBottom = null; }
   if (handleCorner) { handleCorner.remove(); handleCorner = null; }
   if (dismissBtn)   { dismissBtn.remove();   dismissBtn = null; }
-  // Cluster removal also drops its children (badge + action + infinite chips).
+  // Cluster removal also drops its children (badge + action + infinite + parent chips).
   if (selectionChipCluster) { selectionChipCluster.remove(); selectionChipCluster = null; }
   selectionDimBadge = null;
   selectionActionChip = null;
   selectionInfiniteChip = null;
+  selectionParentChip = null;
   if (hadSelection && window.AdnotaState.mode === 'resizer') updateHUD();
 }
 
@@ -708,6 +820,206 @@ function positionDismiss(btn, rect, sx, sy) {
   });
 }
 
+// ─── Drag strategy: helpers shared by all strategies ──────────────────────
+// Originally local consts inside startDrag/onUp. Promoted to module scope
+// so the per-context strategies below can call them. `startHeight` is now
+// passed in rather than closed over.
+
+// Height application during drag (live inline styles). Shrink uses max-height,
+// grow uses min-height — both keep the box "indefinite" for percentage
+// resolution on absolutely-positioned descendants. See the `Fix bing.com
+// RESIZE EXPAND` commit for the full rationale.
+function applyHeight(el, newH, startHeight) {
+  if (newH <= startHeight) {
+    el.style.removeProperty('height');
+    el.style.setProperty('max-height', newH + 'px', 'important');
+    el.style.setProperty('min-height', '0', 'important');
+  } else {
+    el.style.removeProperty('height');
+    el.style.removeProperty('max-height');
+    el.style.setProperty('min-height', newH + 'px', 'important');
+  }
+}
+
+// Height piece for the persisted CSS rule. Mirror of applyHeight on the
+// cssParts side.
+function pushHeight(cssParts, newH, startHeight) {
+  if (newH <= startHeight) {
+    cssParts.push(`max-height: ${newH}px !important`);
+    cssParts.push(`min-height: 0 !important`);
+  } else {
+    cssParts.push(`min-height: ${newH}px !important`);
+    cssParts.push(`max-height: none !important`);
+  }
+}
+
+// ─── Drag strategies ──────────────────────────────────────────────────────
+// Each strategy exposes `applyDuringDrag(el, axis, dx, dy, snap)` for live
+// inline-style feedback during a drag, and `buildPersistedCss(axis, dx, dy,
+// snap)` for the persisted style-tag rule on commit. `snap` carries
+// startWidth / startHeight / startMarginLeft / startMarginTop / ctx.
+//
+// `block` is the default — current behavior, byte-for-byte the same CSS as
+// before this refactor on any non-flex element.
+//
+// `flex-item` uses `flex-basis` + `flex-shrink: 0` for x-axis instead of
+// width + margin-left. Margin-left pinning is theater on flex children: the
+// flex algorithm decides slot position, our margin offsets are ignored for
+// placement. Y-axis still goes through the block path (column-flex inversion
+// is a v2 problem).
+//
+// grid-item / positioned / table-component fall through to block for v1.
+// The dispatch infrastructure makes adding real strategies a one-line change
+// later.
+const STRATEGIES = {
+  block: {
+    applyDuringDrag(el, axis, dx, dy, snap) {
+      if (axis === 'x' || axis === 'xy') {
+        const newW = Math.max(0, snap.startWidth + dx);
+        el.style.setProperty('width', newW + 'px', 'important');
+        el.style.setProperty('min-width', '0', 'important');
+        el.style.setProperty('max-width', 'none', 'important');
+        el.style.setProperty('margin-left', snap.startMarginLeft + 'px', 'important');
+      }
+      if (axis === 'x-left') {
+        const newW = Math.max(0, snap.startWidth - dx);
+        const widthDelta = newW - snap.startWidth;
+        el.style.setProperty('width', newW + 'px', 'important');
+        el.style.setProperty('min-width', '0', 'important');
+        el.style.setProperty('max-width', 'none', 'important');
+        el.style.setProperty('margin-left', (snap.startMarginLeft - widthDelta) + 'px', 'important');
+      }
+      if (axis === 'y' || axis === 'xy') {
+        const newH = Math.max(0, snap.startHeight + dy);
+        applyHeight(el, newH, snap.startHeight);
+        el.style.setProperty('margin-top', snap.startMarginTop + 'px', 'important');
+      }
+      if (axis === 'y-top') {
+        const newH = Math.max(0, snap.startHeight - dy);
+        const heightDelta = newH - snap.startHeight;
+        applyHeight(el, newH, snap.startHeight);
+        el.style.setProperty('margin-top', (snap.startMarginTop - heightDelta) + 'px', 'important');
+      }
+    },
+    buildPersistedCss(axis, dx, dy, snap) {
+      const cssParts = [];
+      if (axis === 'x' || axis === 'xy') {
+        const newW = Math.max(0, snap.startWidth + dx);
+        cssParts.push(`width: ${newW}px !important`);
+        cssParts.push(`min-width: 0 !important`);
+        cssParts.push(`max-width: none !important`);
+        cssParts.push(`margin-left: ${snap.startMarginLeft}px !important`);
+      }
+      if (axis === 'x-left') {
+        const newW = Math.max(0, snap.startWidth - dx);
+        const widthDelta = newW - snap.startWidth;
+        cssParts.push(`width: ${newW}px !important`);
+        cssParts.push(`min-width: 0 !important`);
+        cssParts.push(`max-width: none !important`);
+        cssParts.push(`margin-left: ${snap.startMarginLeft - widthDelta}px !important`);
+      }
+      if (axis === 'y' || axis === 'xy') {
+        const newH = Math.max(0, snap.startHeight + dy);
+        pushHeight(cssParts, newH, snap.startHeight);
+        cssParts.push(`margin-top: ${snap.startMarginTop}px !important`);
+      }
+      if (axis === 'y-top') {
+        const newH = Math.max(0, snap.startHeight - dy);
+        const heightDelta = newH - snap.startHeight;
+        pushHeight(cssParts, newH, snap.startHeight);
+        cssParts.push(`margin-top: ${snap.startMarginTop - heightDelta}px !important`);
+      }
+      return cssParts.join('; ');
+    },
+  },
+
+  'flex-item': {
+    applyDuringDrag(el, axis, dx, dy, snap) {
+      // X-axis: flex-basis + flex-shrink: 0 + flex-grow: 0 force the new
+      // size in the flex algorithm (no auto-shrink-back). margin-left is
+      // ALSO needed: flex layout owns slot placement, but margin still
+      // applies after placement. The same margin-left math as block (pin
+      // for right handle, compensate by widthDelta for left handle) gives
+      // the correct anchor behavior — without it, left-handle drag has no
+      // way to shift the box leftward and growth ends up on the right.
+      if (axis === 'x' || axis === 'xy') {
+        const newW = Math.max(0, snap.startWidth + dx);
+        el.style.setProperty('flex-basis', newW + 'px', 'important');
+        el.style.setProperty('flex-shrink', '0', 'important');
+        el.style.setProperty('flex-grow', '0', 'important');
+        el.style.setProperty('width', newW + 'px', 'important');
+        el.style.setProperty('min-width', '0', 'important');
+        el.style.setProperty('max-width', 'none', 'important');
+        el.style.setProperty('margin-left', snap.startMarginLeft + 'px', 'important');
+      }
+      if (axis === 'x-left') {
+        const newW = Math.max(0, snap.startWidth - dx);
+        const widthDelta = newW - snap.startWidth;
+        el.style.setProperty('flex-basis', newW + 'px', 'important');
+        el.style.setProperty('flex-shrink', '0', 'important');
+        el.style.setProperty('flex-grow', '0', 'important');
+        el.style.setProperty('width', newW + 'px', 'important');
+        el.style.setProperty('min-width', '0', 'important');
+        el.style.setProperty('max-width', 'none', 'important');
+        el.style.setProperty('margin-left', (snap.startMarginLeft - widthDelta) + 'px', 'important');
+      }
+      // Y-axis: identical to block strategy. flex-row pinning issues don't
+      // apply on the cross axis, and column-flex y-inversion is out of v1.
+      if (axis === 'y' || axis === 'xy') {
+        const newH = Math.max(0, snap.startHeight + dy);
+        applyHeight(el, newH, snap.startHeight);
+        el.style.setProperty('margin-top', snap.startMarginTop + 'px', 'important');
+      }
+      if (axis === 'y-top') {
+        const newH = Math.max(0, snap.startHeight - dy);
+        const heightDelta = newH - snap.startHeight;
+        applyHeight(el, newH, snap.startHeight);
+        el.style.setProperty('margin-top', (snap.startMarginTop - heightDelta) + 'px', 'important');
+      }
+    },
+    buildPersistedCss(axis, dx, dy, snap) {
+      const cssParts = [];
+      if (axis === 'x' || axis === 'xy') {
+        const newW = Math.max(0, snap.startWidth + dx);
+        cssParts.push(`flex-basis: ${newW}px !important`);
+        cssParts.push(`flex-shrink: 0 !important`);
+        cssParts.push(`flex-grow: 0 !important`);
+        cssParts.push(`width: ${newW}px !important`);
+        cssParts.push(`min-width: 0 !important`);
+        cssParts.push(`max-width: none !important`);
+        cssParts.push(`margin-left: ${snap.startMarginLeft}px !important`);
+      }
+      if (axis === 'x-left') {
+        const newW = Math.max(0, snap.startWidth - dx);
+        const widthDelta = newW - snap.startWidth;
+        cssParts.push(`flex-basis: ${newW}px !important`);
+        cssParts.push(`flex-shrink: 0 !important`);
+        cssParts.push(`flex-grow: 0 !important`);
+        cssParts.push(`width: ${newW}px !important`);
+        cssParts.push(`min-width: 0 !important`);
+        cssParts.push(`max-width: none !important`);
+        cssParts.push(`margin-left: ${snap.startMarginLeft - widthDelta}px !important`);
+      }
+      if (axis === 'y' || axis === 'xy') {
+        const newH = Math.max(0, snap.startHeight + dy);
+        pushHeight(cssParts, newH, snap.startHeight);
+        cssParts.push(`margin-top: ${snap.startMarginTop}px !important`);
+      }
+      if (axis === 'y-top') {
+        const newH = Math.max(0, snap.startHeight - dy);
+        const heightDelta = newH - snap.startHeight;
+        pushHeight(cssParts, newH, snap.startHeight);
+        cssParts.push(`margin-top: ${snap.startMarginTop - heightDelta}px !important`);
+      }
+      return cssParts.join('; ');
+    },
+  },
+};
+// v1 fallbacks — wire dispatch now so adding real strategies later is one line.
+STRATEGIES['grid-item']       = STRATEGIES.block;
+STRATEGIES.positioned         = STRATEGIES.block;
+STRATEGIES['table-component'] = STRATEGIES.block;
+
 function refreshHandles() {
   if (!selectedEl) return;
   const rect = selectedEl.getBoundingClientRect();
@@ -757,6 +1069,9 @@ async function resetElement(el) {
   el.style.removeProperty('margin-left');
   el.style.removeProperty('margin-top');
   el.style.removeProperty('overflow');
+  el.style.removeProperty('flex-basis');
+  el.style.removeProperty('flex-shrink');
+  el.style.removeProperty('flex-grow');
   void el.offsetHeight; // force reflow
 
   // Remove from storage
@@ -809,6 +1124,11 @@ function startDrag(e, axis) {
     maxHeight: selectedEl.style.maxHeight,
     marginLeft: selectedEl.style.marginLeft,
     marginTop: selectedEl.style.marginTop,
+    // Flex-item strategy may write these; snapshot so a tiny-drag-cancel
+    // or a clean release restores the page's pre-drag inline state.
+    flexBasis: selectedEl.style.flexBasis,
+    flexShrink: selectedEl.style.flexShrink,
+    flexGrow: selectedEl.style.flexGrow,
   };
   const restoreInline = () => {
     const apply = (prop, value) => {
@@ -823,27 +1143,18 @@ function startDrag(e, axis) {
     apply('max-height', savedInline.maxHeight);
     apply('margin-left', savedInline.marginLeft);
     apply('margin-top', savedInline.marginTop);
+    apply('flex-basis', savedInline.flexBasis);
+    apply('flex-shrink', savedInline.flexShrink);
+    apply('flex-grow', savedInline.flexGrow);
   };
 
-  // Shrink with max-height, grow with min-height. Pages like bing.com use
-  // `top: calc(100% - <rem>)` on descendants of an auto-height container; the
-  // descendants' percentage resolves to ~0 while the container is auto, but
-  // jumps to the container's full height the moment we pin it with `height:
-  // <px>` — flinging children thousands of pixels off-screen. Both max-height
-  // (shrink) and min-height (grow) keep the container's height "indefinite"
-  // for percentage resolution while still constraining the element to the
-  // user's chosen size, so neither path triggers the jump.
-  const applyHeight = (newH) => {
-    if (newH <= startHeight) {
-      selectedEl.style.removeProperty('height');
-      selectedEl.style.setProperty('max-height', newH + 'px', 'important');
-      selectedEl.style.setProperty('min-height', '0', 'important');
-    } else {
-      selectedEl.style.removeProperty('height');
-      selectedEl.style.removeProperty('max-height');
-      selectedEl.style.setProperty('min-height', newH + 'px', 'important');
-    }
-  };
+  // Pick the layout strategy once at drag-start. It stays stable for the
+  // life of one drag — onMove/onUp dispatch through the same `strategy`
+  // and `snapshot`. The block path is byte-identical to pre-strategy
+  // behavior on any non-flex element.
+  const ctx = selectedEl._adnotaLayoutContext || getLayoutContext(selectedEl);
+  const strategy = STRATEGIES[ctx.kind] || STRATEGIES.block;
+  const snapshot = { startWidth, startHeight, startMarginLeft, startMarginTop, ctx };
 
   // Add a full-viewport overlay to capture all mouse events during drag
   const dragOverlay = document.createElement('div');
@@ -863,43 +1174,7 @@ function startDrag(e, axis) {
   function onMove(ev) {
     const dx = ev.clientX - dragStartX;
     const dy = ev.clientY - dragStartY;
-
-    if (axis === 'x' || axis === 'xy') {
-      // Right handle: grow/shrink from the right edge, left edge pinned.
-      // Pinning lets users move auto-centered elements via two operations
-      // (drag left handle out, drag right handle in) instead of having the
-      // element re-center every release.
-      const newW = Math.max(0, startWidth + dx);
-      selectedEl.style.setProperty('width', newW + 'px', 'important');
-      selectedEl.style.setProperty('min-width', '0', 'important');
-      selectedEl.style.setProperty('max-width', 'none', 'important');
-      selectedEl.style.setProperty('margin-left', startMarginLeft + 'px', 'important');
-    }
-    if (axis === 'x-left') {
-      // Left handle: grow/shrink from the left edge, right edge stays fixed.
-      // Offset margin-left relative to the original so the right edge stays pinned.
-      const newW = Math.max(0, startWidth - dx);
-      const widthDelta = newW - startWidth; // positive = grew, negative = shrank
-      selectedEl.style.setProperty('width', newW + 'px', 'important');
-      selectedEl.style.setProperty('min-width', '0', 'important');
-      selectedEl.style.setProperty('max-width', 'none', 'important');
-      selectedEl.style.setProperty('margin-left', (startMarginLeft - widthDelta) + 'px', 'important');
-    }
-    if (axis === 'y' || axis === 'xy') {
-      // Bottom handle: grow/shrink from the bottom edge, top edge pinned.
-      const newH = Math.max(0, startHeight + dy);
-      applyHeight(newH);
-      selectedEl.style.setProperty('margin-top', startMarginTop + 'px', 'important');
-    }
-    if (axis === 'y-top') {
-      // Top handle: grow/shrink from the top edge, bottom edge stays pinned via
-      // margin-top compensation — mirrors the left-handle math.
-      const newH = Math.max(0, startHeight - dy);
-      const heightDelta = newH - startHeight;
-      applyHeight(newH);
-      selectedEl.style.setProperty('margin-top', (startMarginTop - heightDelta) + 'px', 'important');
-    }
-
+    strategy.applyDuringDrag(selectedEl, axis, dx, dy, snapshot);
     refreshHandles();
   }
 
@@ -922,46 +1197,8 @@ function startDrag(e, axis) {
     // rule's !important takes over for the props we resized.
     restoreInline();
 
-    // Build CSS rule from final dimensions.
-    const cssParts = [];
-
-    if (axis === 'x' || axis === 'xy') {
-      const newW = Math.max(0, startWidth + dx);
-      cssParts.push(`width: ${newW}px !important`);
-      cssParts.push(`min-width: 0 !important`);
-      cssParts.push(`max-width: none !important`);
-      cssParts.push(`margin-left: ${startMarginLeft}px !important`);
-    }
-    if (axis === 'x-left') {
-      const newW = Math.max(0, startWidth - dx);
-      const widthDelta = newW - startWidth;
-      cssParts.push(`width: ${newW}px !important`);
-      cssParts.push(`min-width: 0 !important`);
-      cssParts.push(`max-width: none !important`);
-      cssParts.push(`margin-left: ${startMarginLeft - widthDelta}px !important`);
-    }
-    const pushHeight = (newH) => {
-      if (newH <= startHeight) {
-        cssParts.push(`max-height: ${newH}px !important`);
-        cssParts.push(`min-height: 0 !important`);
-      } else {
-        cssParts.push(`min-height: ${newH}px !important`);
-        cssParts.push(`max-height: none !important`);
-      }
-    };
-    if (axis === 'y' || axis === 'xy') {
-      const newH = Math.max(0, startHeight + dy);
-      pushHeight(newH);
-      cssParts.push(`margin-top: ${startMarginTop}px !important`);
-    }
-    if (axis === 'y-top') {
-      const newH = Math.max(0, startHeight - dy);
-      const heightDelta = newH - startHeight;
-      pushHeight(newH);
-      cssParts.push(`margin-top: ${startMarginTop - heightDelta}px !important`);
-    }
-
-    const cssText = cssParts.join('; ');
+    // Build CSS rule from final dimensions via the chosen strategy.
+    const cssText = strategy.buildPersistedCss(axis, dx, dy, snapshot);
     persistResize(selectedEl, cssText);
 
     dragAxis = null;
