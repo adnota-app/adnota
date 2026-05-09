@@ -603,6 +603,13 @@
 
     renderModeButton();
 
+    // Copy-All affordance reads honestly per mode: prose join in Snippets,
+    // raw-storage JSON dump in Edits (where there's no meaningful text to
+    // copy). Tooltip updated here so it tracks mode/filter switches.
+    if (copyAllBtn) {
+      copyAllBtn.title = activeMode === 'edits' ? 'Copy all as JSON' : 'Copy all';
+    }
+
     // Sub-tab counts — within the active mode only. The mode-gated filtered()
     // list above is post-tag-filter, so we recompute against the cache scoped
     // to this mode for the displayed counts.
@@ -1047,14 +1054,14 @@
   async function copyAll() {
     const list = filtered();
     if (!list.length) return;
-    // Snippets mode: prose join (the original behavior). Edits mode: a
-    // line per item — selector for erase/resize, "Label · uuid" for
-    // drawings (no selector, but still useful for cross-referencing).
+    // Snippets mode (highlights/notes): prose join — TEXT-IS-KING, the
+    // user wrote/grabbed this text and wants it back exactly.
+    // Edits mode (erase/resize/drawing): no meaningful prose payload, so
+    // dump the raw storage rows as a JSON array. Round-trips into a debug
+    // paste, mirrors the per-row "Copy as JSON" button in expanded detail.
+    // Filter-aware: only the visible sub-tab's records are copied.
     const payload = activeMode === 'edits'
-      ? list.map(s => {
-          if (s.type === 'drawing') return `${s.label} · ${s.id}`;
-          return s.selector || '';
-        }).filter(Boolean).join('\n')
+      ? JSON.stringify(list.map(s => s.record).filter(Boolean), null, 2)
       : list.map(s => isRedaction(s) ? redactionBar(s.text) : s.text).join('\n\n');
     if (!payload) return;
     try { await navigator.clipboard.writeText(payload); }
@@ -1066,7 +1073,9 @@
       copyAllBtn.classList.remove('copied');
       copyAllBtn.innerHTML = ICON_COPY_ALL;
     }, COPY_REVERT_MS);
-    window.AdnotaLog?.event('scratchpad', 'copy-all', { count: list.length, mode: activeMode });
+    window.AdnotaLog?.event('scratchpad', 'copy-all', {
+      count: list.length, mode: activeMode, format: activeMode === 'edits' ? 'json' : 'prose',
+    });
   }
 
   // ── GOTO: scroll the source annotation into view + flash ─────────────────
