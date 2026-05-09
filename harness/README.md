@@ -7,7 +7,7 @@ the current extension code and diff against the pinned outcome.
 
 ## Quick start
 
-Two interactive wrappers cover almost everything:
+Three interactive wrappers cover almost everything:
 
 ```
 # CREATE a test (snapshot + record + auto-capture)
@@ -15,6 +15,9 @@ Two interactive wrappers cover almost everything:
 
 # WATCH or RUN tests (single fixture or full suite)
 ./replay-test.sh
+
+# DELETE a test (removes the fixture dir AND the sites.json entry)
+./delete-test.sh
 ```
 
 `record-test.sh` prompts for a test name and (first time only) a URL with
