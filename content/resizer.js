@@ -246,7 +246,13 @@ let selectionDimBadge = null;
 let selectionActionChip = null;
 let selectionInfiniteChip = null;
 let selectionParentChip = null;
+let selectionClipChip = null;
 let selectionChipCluster = null;
+
+// Drag-time growth-blocker match. Set by onMove via AdnotaLayout.findGrowthOverflow,
+// latched after pointerup so the chip's click handler can fire post-release.
+// Cleared on selection change, mode exit, and at the top of each new startDrag.
+let currentClipMatch = null;
 
 // ─── Drag state ──────────────────────────────────────────────────────────────
 let dragAxis = null;       // 'x' | 'x-left' | 'y' | 'y-top' | 'xy'
@@ -718,6 +724,25 @@ function selectElement(el) {
     if (parent) selectElement(parent);
   });
 
+  // Clip chip — surfaces during drag (and latches after pointerup) when an
+  // ancestor's overflow:hidden|clip is masking growth, OR when the element's
+  // own max-width/max-height is capping growth. Click promotes selection to
+  // the constraining ancestor for the clip-ancestor case; size-cap is
+  // warn-only (no click action in v2). Visibility driven by onMove via
+  // AdnotaLayout.findGrowthOverflow.
+  selectionClipChip = document.createElement('div');
+  selectionClipChip.className = 'adnota-resizer-action-chip adnota-resizer-clip-chip';
+  selectionClipChip.setAttribute('data-adnota-ui', '1');
+  selectionClipChip.style.display = 'none';
+  selectionClipChip.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (currentClipMatch?.kind === 'clip-ancestor' && currentClipMatch.ancestor) {
+      selectElement(currentClipMatch.ancestor);
+    }
+    // 'size-cap' is warn-only in v2 — no click action.
+  });
+
   selectionChipCluster = document.createElement('div');
   selectionChipCluster.setAttribute('data-adnota-ui', '1');
   Object.assign(selectionChipCluster.style, {
@@ -732,10 +757,11 @@ function selectElement(el) {
     alignItems: 'center',
     zIndex: '2147483647',
   });
-  // Order: parent (when present) → unstick/restick → finite scroll → dimension.
+  // Order: parent (when present) → unstick/restick → finite scroll → clip → dimension.
   selectionChipCluster.appendChild(selectionParentChip);
   selectionChipCluster.appendChild(selectionActionChip);
   selectionChipCluster.appendChild(selectionInfiniteChip);
+  selectionChipCluster.appendChild(selectionClipChip);
   selectionChipCluster.appendChild(selectionDimBadge);
   selectionBox.appendChild(selectionChipCluster);
 
@@ -859,6 +885,8 @@ function deselectElement() {
   selectionActionChip = null;
   selectionInfiniteChip = null;
   selectionParentChip = null;
+  selectionClipChip = null;
+  currentClipMatch = null;
   if (hadSelection && window.AdnotaState.mode === 'resizer') updateHUD();
   updateReflowButtonStates();
 }
@@ -1590,6 +1618,43 @@ async function resetElement(el) {
   deselectElement();
 }
 
+// ─── Clip-chip state helpers ──────────────────────────────────────────────
+// `match` is the result of AdnotaLayout.findGrowthOverflow — null when no
+// growth blocker, or { kind, ancestor?, axis } when the live rect is being
+// clipped (by an overflow:hidden ancestor) or capped (by max-width/max-height
+// on the element itself). The chip is shared across both kinds; only the
+// label / cursor / click action differ. See plan v2.
+
+function clipMatchChanged(a, b) {
+  if (a === b) return false;            // both null
+  if (!a || !b) return true;            // one null, one set
+  if (a.kind !== b.kind) return true;
+  if (a.axis !== b.axis) return true;
+  if (a.ancestor !== b.ancestor) return true;
+  return false;
+}
+
+function applyClipChipState(match) {
+  if (!selectionClipChip) return;
+  if (!match) {
+    selectionClipChip.style.display = 'none';
+    return;
+  }
+  if (match.kind === 'clip-ancestor') {
+    selectionClipChip.textContent = 'Container clipping';
+    selectionClipChip.setAttribute('data-adnota-tooltip',
+      'Container is clipping growth — click to resize parent instead');
+    selectionClipChip.removeAttribute('data-warn-only');
+  } else {
+    // size-cap — warn-only, no click action in v2.
+    selectionClipChip.textContent = 'At max size';
+    selectionClipChip.setAttribute('data-adnota-tooltip',
+      'Element has hit its max-width/max-height — can\'t grow further on this axis');
+    selectionClipChip.setAttribute('data-warn-only', '1');
+  }
+  selectionClipChip.style.display = '';
+}
+
 // ─── Drag logic ──────────────────────────────────────────────────────────────
 function startDrag(e, axis) {
   e.preventDefault();
@@ -1652,6 +1717,16 @@ function startDrag(e, axis) {
   const strategy = STRATEGIES[ctx.kind] || STRATEGIES.block;
   const snapshot = { startWidth, startHeight, startMarginLeft, startMarginTop, ctx };
 
+  // Layout-aware growth-blocker detection. detectClippingAncestors walks up
+  // looking for overflow:hidden|clip ancestors that would silently mask growth;
+  // detectSizeCaps reads the element's own max-width/max-height. Both cached
+  // here so onMove just compares the live rect against pre-computed boundaries.
+  // Fresh drag clears any latched chip from a prior gesture before recompute.
+  if (selectionClipChip) selectionClipChip.style.display = 'none';
+  currentClipMatch = null;
+  snapshot.clipAncestors = window.AdnotaLayout?.detectClippingAncestors(selectedEl) || [];
+  snapshot.sizeCaps = window.AdnotaLayout?.detectSizeCaps(selectedEl) || null;
+
   // Add a full-viewport overlay to capture all mouse events during drag
   const dragOverlay = document.createElement('div');
   dragOverlay.id = 'adnota-resizer-drag-overlay';
@@ -1690,6 +1765,16 @@ function startDrag(e, axis) {
     }
     strategy.applyDuringDrag(selectedEl, axis, dx, dy, snapshot);
     refreshHandles();
+
+    // Layout-aware: check for silent growth blockers and toggle the warning
+    // chip. Gated on match change (kind + ancestor + axis) so we only touch
+    // the DOM when something flipped — every-frame style writes are wasted
+    // work on the common no-blocker path.
+    const match = window.AdnotaLayout?.findGrowthOverflow(selectedEl, snapshot) || null;
+    if (clipMatchChanged(match, currentClipMatch)) {
+      applyClipChipState(match);
+      currentClipMatch = match;
+    }
   }
 
   function onUp(ev) {
@@ -1707,6 +1792,11 @@ function startDrag(e, axis) {
     if (Math.abs(dx) < 3 && Math.abs(dy) < 3) {
       restoreInline();
       dragAxis = null;
+      // Tiny-drag cancel — also clear any chip that toggled mid-aborted drag.
+      if (currentClipMatch) {
+        applyClipChipState(null);
+        currentClipMatch = null;
+      }
       return;
     }
 
@@ -1720,6 +1810,10 @@ function startDrag(e, axis) {
 
     dragAxis = null;
     refreshHandles();
+    // currentClipMatch intentionally NOT cleared here. If it's truthy on
+    // the final frame, the chip stays latched (visible) so its click handler
+    // can fire post-release. Cleared by selection change, mode exit, or the
+    // next startDrag. See plan: yes-tidy-ladybug.md → "Click lifecycle".
   }
 
   document.addEventListener('mousemove', onMove);
