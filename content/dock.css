@@ -258,20 +258,13 @@
 /* ── Dismiss X — "get off my screen" ──────────────────────────────────────
    Reuses .adnota-select-delete from marker.css (same red circle as the
    select-tool delete affordance). This rule only adds dock-specific
-   behavior: top-right corner positioning and hover-reveal while idle.
+   behavior: hover-reveal while idle, animation timing, and z-index.
+   Sizing/positioning inherits the canonical 20×20 / -10/-10 from
+   .adnota-select-delete — every dismiss X across the extension shares
+   one hit-target size for ergonomics + visual consistency.
    Hidden when a tool is active — the dock IS the HUD then, so the user
    needs the back arrow, not an escape hatch that strands them. */
-/* Scoped to #adnota-dock to beat .adnota-select-delete on specificity —
-   marker.css loads after dock.css per the manifest, so a bare class wouldn't
-   override the shared 20px sizing. */
 #adnota-dock .adnota-dock-dismiss {
-  /* Shrink the shared .adnota-select-delete (sized for annotation shapes)
-     down to something proportionate to the compact dock. */
-  width: 16px;
-  height: 16px;
-  font-size: 8px;
-  top: -7px;
-  right: -7px;
   opacity: 0;
   pointer-events: none;
   /* Match the tool row: instant fade-in on hover, delayed fade-out so the X
