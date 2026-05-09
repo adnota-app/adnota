@@ -16,6 +16,12 @@ const MIN_HEIGHT = 60;
 // — just recolored to the resizer's blue accent.
 const hoverOverlay = window.AdnotaUI.createHoverOverlay('adnota-resizer-overlay', '#3b82f6', 'rgba(59, 130, 246, 0.09)');
 
+// ─── Reflow overlay (amber) ─────────────────────────────────────────────────
+// Separate overlay used to preview the *target* of a REFLOW button (the flex/
+// grid container or the child whose `order` will change). Mutually exclusive
+// with the blue hover overlay — see updateReflowOverlayForVerb / hideReflowOverlay.
+const reflowHoverOverlay = window.AdnotaUI.createHoverOverlay('adnota-reflow-overlay', '#f59e0b', 'rgba(245, 158, 11, 0.10)');
+
 // ─── Hover chip cluster (top-right corner of hover outline) ─────────────────
 // Three chips share a flex cluster pinned at the overlay's top-right. The
 // dimension badge is read-only; the action chips surface structural overrides
@@ -59,7 +65,9 @@ chipCluster.appendChild(dimensionBadge);
 // chrome (drag handle + logo + info + trash + undo) so trash/undo stay reachable
 // even when nothing is hovered or selected.
 // Dock body — mounted into AdnotaDock when resizer mode is active. The dock
-// owns drag handle + V logo + tool row; we own the info span + trash + undo.
+// owns drag handle + V logo + tool row; we own the info span + trash + undo
+// + the contextual REFLOW buttons (added after undo with a divider, hidden
+// when nothing applies).
 const resizerBody = document.createElement('div');
 resizerBody.style.display = 'inline-flex';
 resizerBody.style.alignItems = 'center';
@@ -89,11 +97,75 @@ const resizerHelpBtn = window.AdnotaUI.createHelpButton({
 });
 resizerBody.appendChild(resizerHelpBtn);
 
-// Divider
+// Static divider (always visible, between help and the rest)
 resizerBody.appendChild(Object.assign(document.createElement('div'), { className: 'adnota-toolbar-divider adnota-toolbar-divider-blue' }));
+
+// ── REFLOW group (inline, contextual) ──────────────────────────────────────
+// Three layout-flow buttons: Swap panels, Toggle stack, Send to end. Each
+// enables only when the page's flex/grid context supports it; the group +
+// trailing divider hide together when none enable. Sits between the static
+// divider and trash/undo so persistent utility buttons stay last (matches
+// every other tool dock). Click handlers route through applyReflowVerb
+// (function declarations hoist).
+const reflowRow = document.createElement('div');
+reflowRow.id = 'adnota-resizer-reflow-row';
+reflowRow.style.display = 'none';   // shown by updateReflowButtonStates
+reflowRow.style.gap = '4px';
+reflowRow.style.alignItems = 'center';
+
+// Trailing divider — separates REFLOW group from trash/undo. Hidden when
+// the group is hidden so single-row dock collapses cleanly to the original
+// `[?] | [trash] [undo]` layout.
+const reflowDivider = Object.assign(document.createElement('div'), { className: 'adnota-toolbar-divider adnota-toolbar-divider-blue' });
+reflowDivider.style.display = 'none';
+
+// Swap panels — flex: flex-direction toggle. Grid: order:-1 on visually-first child.
+const REFLOW_SWAP_ICON = '<rect x="2.5" y="5.5" width="5" height="9" rx="1"/><rect x="12.5" y="5.5" width="5" height="9" rx="1"/><path d="M7.5 8 L12.5 12"/><path d="M7.5 12 L12.5 8"/>';
+const reflowSwapBtn = window.AdnotaUI.createToolbarIconButton(
+  REFLOW_SWAP_ICON,
+  'Swap panels',
+  () => { if (reflowSwapBtn.dataset.disabled !== '1') applyReflowVerb('swap-panels'); }
+);
+
+// Toggle stack — flex-only. Toggles row ↔ column.
+const REFLOW_STACK_ICON = '<rect x="3" y="3.5" width="14" height="5" rx="1"/><rect x="3" y="11.5" width="14" height="5" rx="1"/>';
+const reflowStackBtn = window.AdnotaUI.createToolbarIconButton(
+  REFLOW_STACK_ICON,
+  'Stack vertically',
+  () => { if (reflowStackBtn.dataset.disabled !== '1') applyReflowVerb('toggle-stack'); }
+);
+
+// Send to end / start — applies order on the hovered/selected flex or grid child.
+const REFLOW_END_ICON = '<path d="M3 10 L12 10"/><path d="M9 7 L12 10 L9 13"/><path d="M16 4 L16 16"/>';
+const reflowEndBtn = window.AdnotaUI.createToolbarIconButton(
+  REFLOW_END_ICON,
+  'Send to end of the row',
+  () => { if (reflowEndBtn.dataset.disabled !== '1') applyReflowVerb('order-end'); }
+);
+
+// Mouseenter/leave on each button drives the amber hover-overlay mutex.
+for (const btn of [reflowSwapBtn, reflowStackBtn, reflowEndBtn]) {
+  const verb = btn === reflowSwapBtn ? 'swap-panels'
+            : btn === reflowStackBtn ? 'toggle-stack'
+            : 'order-end';
+  btn.addEventListener('mouseenter', () => {
+    if (btn.dataset.disabled === '1') return;
+    showReflowOverlayForVerb(verb);
+  });
+  btn.addEventListener('mouseleave', () => {
+    hideReflowOverlay();
+  });
+}
+
+reflowRow.appendChild(reflowSwapBtn);
+reflowRow.appendChild(reflowStackBtn);
+reflowRow.appendChild(reflowEndBtn);
+resizerBody.appendChild(reflowRow);
+resizerBody.appendChild(reflowDivider);
 
 // Trash — opens scratch pad on Edits / Resized for per-row review/delete.
 // Badge auto-managed by createTrashButton when mode/filter are passed.
+// Trash + undo always come last to match the rest of the tool docks.
 resizerBody.appendChild(window.AdnotaUI.createTrashButton({
   singular: 'resize',
   plural: 'resizes',
@@ -126,12 +198,19 @@ function updateHUD() {
   let html = '';
 
   if (selectedEl) {
-    // Selected state: dimensions live on the selection box itself (the
-    // top-right chip next to the reset button), so the HUD just carries
-    // the action hint here.
-    html += `<span style="color:#6ee7b7">Selected</span>`;
-    html += dot;
-    html += `<span style="color:#94a3b8">Drag a handle to resize · <span style="color:#93c5fd">↺</span> to reset</span>`;
+    // Selected state: the dotted blue outline already signals selection,
+    // so the HUD info area carries the action hint only — no redundant
+    // "Selected" badge. When the layout context flags structural gesture
+    // inversion (flex-end pinned in a fixed container), surface the
+    // warning + a hint to use the parent chip.
+    const ctx = selectedEl._adnotaLayoutContext;
+    if (ctx?.isFlexEndInFixedContainer) {
+      html += `<span style="color:#fbbf24">right handle grows leftward (flex pinned)</span>`;
+      html += dot;
+      html += `<span style="color:#94a3b8">try resize parent · <span style="color:#93c5fd">↺</span> to reset</span>`;
+    } else {
+      html += `<span style="color:#94a3b8">Drag a handle to resize · <span style="color:#93c5fd">↺</span> to reset</span>`;
+    }
     resizerHudInfo.innerHTML = html;
     return;
   }
@@ -166,6 +245,7 @@ let dismissBtn = null;
 let selectionDimBadge = null;
 let selectionActionChip = null;
 let selectionInfiniteChip = null;
+let selectionParentChip = null;
 let selectionChipCluster = null;
 
 // ─── Drag state ──────────────────────────────────────────────────────────────
@@ -230,6 +310,71 @@ function isUnresizableDisplay(el) {
       || display === 'table-footer-group'
       || display === 'table-column'
       || display === 'table-column-group';
+}
+
+// Layout context detection — runs once at drag-start so the strategy stays
+// stable for the duration of one drag. Returns:
+//   { kind, parent, flexDirection?, isFlexEndInFixedContainer? }
+//   kind: 'block' (default) | 'flex-item' | 'grid-item' | 'positioned' | 'table-component'
+//
+// Detection order matters: position: absolute/fixed wins over flex/grid
+// because abs/fixed elements are pulled out of flow and don't participate
+// in their parent's layout algorithm.
+function getLayoutContext(el) {
+  const cs = getComputedStyle(el);
+  if (cs.position === 'absolute' || cs.position === 'fixed') {
+    return { kind: 'positioned', parent: el.parentElement };
+  }
+  if (isUnresizableDisplay(el)) {
+    return { kind: 'table-component', parent: el.parentElement };
+  }
+  const parent = el.parentElement;
+  if (!parent) return { kind: 'block', parent: null };
+  const pcs = getComputedStyle(parent);
+  const pdisp = pcs.display;
+  if (pdisp === 'flex' || pdisp === 'inline-flex') {
+    const flexDirection = pcs.flexDirection || 'row';
+    return {
+      kind: 'flex-item',
+      parent,
+      flexDirection,
+      isFlexEndInFixedContainer: detectFlexEndInFixed(el, parent, pcs, flexDirection),
+    };
+  }
+  if (pdisp === 'grid' || pdisp === 'inline-grid') {
+    return { kind: 'grid-item', parent };
+  }
+  return { kind: 'block', parent };
+}
+
+// The structural pattern where flex layout pins the right edge and forces
+// any width grow to come from the left, against the user's gesture intent.
+// Conservative predicates — false positives clutter the HUD.
+//
+// Known imperfection (acknowledged, defer to v1.5): the proximity fallback
+// fires for any terminal item filling its parent in row-flex, even when
+// justify-content is flex-start and growing the item would actually push
+// siblings rightward as expected. Tightening to only flag space-* layouts
+// would miss our canonical case (GitHub's PageLayout, which uses default
+// flex-start with the pane filling to the right edge of a fixed-width
+// container). v1 trades some false positives for reliable detection of the
+// real cases; the parent chip is a low-cost suggestion, not a forced action.
+function detectFlexEndInFixed(el, parent, pcs, flexDirection) {
+  // Row direction only — the inversion is an x-axis phenomenon. Column
+  // flex has the analogous y-axis problem but it's out of scope for v1.
+  if (flexDirection.startsWith('column')) return false;
+  // Parent isn't itself overflowing horizontally — if it were, growing the
+  // child would just push more overflow into a region that was already
+  // scrolling, not invert the gesture.
+  if (parent.scrollWidth > parent.clientWidth + 1) return false;
+  // Element anchored at the right edge: explicit justify-content: flex-end,
+  // OR rect.right within 4px of the parent's content-box right edge (4px
+  // tolerance handles sub-pixel rounding without flagging mid-row items).
+  if (pcs.justifyContent === 'flex-end') return true;
+  const elRect = el.getBoundingClientRect();
+  const pRect = parent.getBoundingClientRect();
+  const padR = parseFloat(pcs.paddingRight) || 0;
+  return Math.abs(elRect.right - (pRect.right - padR)) < 4;
 }
 
 function findLayoutTarget(raw, extraLevels = 0) {
@@ -396,6 +541,10 @@ function selectElement(el) {
   window.AdnotaLog?.event('resizer', 'select', { el: window.AdnotaLog.el(el) });
   deselectElement();
   selectedEl = el;
+  // Cache layout context once at selection time. Used by updateHUD (warning
+  // visibility), updateSelectionChip (parent chip visibility), and startDrag
+  // (strategy dispatch). Survives until deselectElement clears selectedEl.
+  selectedEl._adnotaLayoutContext = getLayoutContext(el);
   hoverOverlay.style.display = 'none';
 
   const rect = el.getBoundingClientRect();
@@ -519,17 +668,41 @@ function selectElement(el) {
     updateSelectionChip();
   });
 
+  // Parent-chip: when this element is a flex-end child in a fixed-width
+  // container, the right-handle's intent (grow rightward) is structurally
+  // impossible — flex pins the right edge. The chip lets the user
+  // one-click promote selection to the constraining parent and resize that
+  // instead. Visibility decided in updateSelectionChip from the cached
+  // layout context.
+  selectionParentChip = document.createElement('div');
+  selectionParentChip.className = 'adnota-resizer-action-chip';
+  selectionParentChip.setAttribute('data-adnota-ui', '1');
+  selectionParentChip.style.display = 'none';
+  selectionParentChip.textContent = 'resize parent';
+  selectionParentChip.setAttribute('data-adnota-tooltip', 'Pane is pinned by its container — resize the container instead');
+  selectionParentChip.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const parent = selectedEl?._adnotaLayoutContext?.parent;
+    if (parent) selectElement(parent);
+  });
+
   selectionChipCluster = document.createElement('div');
   selectionChipCluster.setAttribute('data-adnota-ui', '1');
   Object.assign(selectionChipCluster.style, {
     position: 'absolute',
     top: `${chipClusterTopOffset(rect)}px`,
-    right: '32px',
+    // The dismiss button (20px) straddles the corner — its left edge
+    // sits 10px inside the selection box. 14px clears the button by 4px,
+    // matching the hover cluster's right:4px breathing room.
+    right: '14px',
     display: 'flex',
     gap: '4px',
     alignItems: 'center',
     zIndex: '2147483647',
   });
+  // Order: parent (when present) → unstick/restick → finite scroll → dimension.
+  selectionChipCluster.appendChild(selectionParentChip);
   selectionChipCluster.appendChild(selectionActionChip);
   selectionChipCluster.appendChild(selectionInfiniteChip);
   selectionChipCluster.appendChild(selectionDimBadge);
@@ -537,6 +710,7 @@ function selectElement(el) {
 
   updateSelectionChip();
   updateHUD();
+  updateReflowButtonStates();
 }
 
 // Re-evaluate the selection chips' labels/visibility against the current
@@ -547,6 +721,13 @@ function updateSelectionChip() {
   if (!selectionActionChip || !selectedEl) return;
   const cs = getComputedStyle(selectedEl);
   const selector = generateCSSSelector(selectedEl);
+
+  // Parent chip — only when the cached layout context flags this as
+  // flex-end-in-fixed-container. Click handler reads the same cached parent.
+  if (selectionParentChip) {
+    const isFlexEndInFixed = selectedEl?._adnotaLayoutContext?.isFlexEndInFixedContainer;
+    selectionParentChip.style.display = isFlexEndInFixed ? '' : 'none';
+  }
 
   // Unstick chip
   const unstickOverridden = hasUnstickOverride(selector);
@@ -591,6 +772,10 @@ function updateSelectionChip() {
 
 function deselectElement() {
   const hadSelection = !!selectedEl;
+  // Drop the cached layout-context expando before clearing the reference,
+  // so nothing dangling (including the captured parent ref) survives on
+  // the page DOM after the user leaves resizer mode.
+  if (selectedEl) delete selectedEl._adnotaLayoutContext;
   selectedEl = null;
   if (selectionBox) { selectionBox.remove(); selectionBox = null; }
   if (handleLeft)   { handleLeft.remove();   handleLeft = null; }
@@ -599,12 +784,14 @@ function deselectElement() {
   if (handleBottom) { handleBottom.remove(); handleBottom = null; }
   if (handleCorner) { handleCorner.remove(); handleCorner = null; }
   if (dismissBtn)   { dismissBtn.remove();   dismissBtn = null; }
-  // Cluster removal also drops its children (badge + action + infinite chips).
+  // Cluster removal also drops its children (badge + action + infinite + parent chips).
   if (selectionChipCluster) { selectionChipCluster.remove(); selectionChipCluster = null; }
   selectionDimBadge = null;
   selectionActionChip = null;
   selectionInfiniteChip = null;
+  selectionParentChip = null;
   if (hadSelection && window.AdnotaState.mode === 'resizer') updateHUD();
+  updateReflowButtonStates();
 }
 
 function createHandle(className, cursor) {
@@ -708,6 +895,494 @@ function positionDismiss(btn, rect, sx, sy) {
   });
 }
 
+// ─── Drag strategy: helpers shared by all strategies ──────────────────────
+// Originally local consts inside startDrag/onUp. Promoted to module scope
+// so the per-context strategies below can call them. `startHeight` is now
+// passed in rather than closed over.
+
+// Height application during drag (live inline styles). Shrink uses max-height,
+// grow uses min-height — both keep the box "indefinite" for percentage
+// resolution on absolutely-positioned descendants. See the `Fix bing.com
+// RESIZE EXPAND` commit for the full rationale.
+function applyHeight(el, newH, startHeight) {
+  if (newH <= startHeight) {
+    el.style.removeProperty('height');
+    el.style.setProperty('max-height', newH + 'px', 'important');
+    el.style.setProperty('min-height', '0', 'important');
+  } else {
+    el.style.removeProperty('height');
+    el.style.removeProperty('max-height');
+    el.style.setProperty('min-height', newH + 'px', 'important');
+  }
+}
+
+// Height piece for the persisted CSS rule. Mirror of applyHeight on the
+// cssParts side.
+function pushHeight(cssParts, newH, startHeight) {
+  if (newH <= startHeight) {
+    cssParts.push(`max-height: ${newH}px !important`);
+    cssParts.push(`min-height: 0 !important`);
+  } else {
+    cssParts.push(`min-height: ${newH}px !important`);
+    cssParts.push(`max-height: none !important`);
+  }
+}
+
+// ─── Drag strategies ──────────────────────────────────────────────────────
+// Each strategy exposes `applyDuringDrag(el, axis, dx, dy, snap)` for live
+// inline-style feedback during a drag, and `buildPersistedCss(axis, dx, dy,
+// snap)` for the persisted style-tag rule on commit. `snap` carries
+// startWidth / startHeight / startMarginLeft / startMarginTop / ctx.
+//
+// `block` is the default — current behavior, byte-for-byte the same CSS as
+// before this refactor on any non-flex element.
+//
+// `flex-item` uses `flex-basis` + `flex-shrink: 0` for x-axis instead of
+// width + margin-left. Margin-left pinning is theater on flex children: the
+// flex algorithm decides slot position, our margin offsets are ignored for
+// placement. Y-axis still goes through the block path (column-flex inversion
+// is a v2 problem).
+//
+// grid-item / positioned / table-component fall through to block for v1.
+// The dispatch infrastructure makes adding real strategies a one-line change
+// later.
+const STRATEGIES = {
+  block: {
+    applyDuringDrag(el, axis, dx, dy, snap) {
+      if (axis === 'x' || axis === 'xy') {
+        const newW = Math.max(0, snap.startWidth + dx);
+        el.style.setProperty('width', newW + 'px', 'important');
+        el.style.setProperty('min-width', '0', 'important');
+        el.style.setProperty('max-width', 'none', 'important');
+        el.style.setProperty('margin-left', snap.startMarginLeft + 'px', 'important');
+      }
+      if (axis === 'x-left') {
+        const newW = Math.max(0, snap.startWidth - dx);
+        const widthDelta = newW - snap.startWidth;
+        el.style.setProperty('width', newW + 'px', 'important');
+        el.style.setProperty('min-width', '0', 'important');
+        el.style.setProperty('max-width', 'none', 'important');
+        el.style.setProperty('margin-left', (snap.startMarginLeft - widthDelta) + 'px', 'important');
+      }
+      if (axis === 'y' || axis === 'xy') {
+        const newH = Math.max(0, snap.startHeight + dy);
+        applyHeight(el, newH, snap.startHeight);
+        el.style.setProperty('margin-top', snap.startMarginTop + 'px', 'important');
+      }
+      if (axis === 'y-top') {
+        const newH = Math.max(0, snap.startHeight - dy);
+        const heightDelta = newH - snap.startHeight;
+        applyHeight(el, newH, snap.startHeight);
+        el.style.setProperty('margin-top', (snap.startMarginTop - heightDelta) + 'px', 'important');
+      }
+    },
+    buildPersistedCss(axis, dx, dy, snap) {
+      const cssParts = [];
+      if (axis === 'x' || axis === 'xy') {
+        const newW = Math.max(0, snap.startWidth + dx);
+        cssParts.push(`width: ${newW}px !important`);
+        cssParts.push(`min-width: 0 !important`);
+        cssParts.push(`max-width: none !important`);
+        cssParts.push(`margin-left: ${snap.startMarginLeft}px !important`);
+      }
+      if (axis === 'x-left') {
+        const newW = Math.max(0, snap.startWidth - dx);
+        const widthDelta = newW - snap.startWidth;
+        cssParts.push(`width: ${newW}px !important`);
+        cssParts.push(`min-width: 0 !important`);
+        cssParts.push(`max-width: none !important`);
+        cssParts.push(`margin-left: ${snap.startMarginLeft - widthDelta}px !important`);
+      }
+      if (axis === 'y' || axis === 'xy') {
+        const newH = Math.max(0, snap.startHeight + dy);
+        pushHeight(cssParts, newH, snap.startHeight);
+        cssParts.push(`margin-top: ${snap.startMarginTop}px !important`);
+      }
+      if (axis === 'y-top') {
+        const newH = Math.max(0, snap.startHeight - dy);
+        const heightDelta = newH - snap.startHeight;
+        pushHeight(cssParts, newH, snap.startHeight);
+        cssParts.push(`margin-top: ${snap.startMarginTop - heightDelta}px !important`);
+      }
+      return cssParts.join('; ');
+    },
+  },
+
+  'flex-item': {
+    applyDuringDrag(el, axis, dx, dy, snap) {
+      // X-axis: flex-basis + flex-shrink: 0 + flex-grow: 0 force the new
+      // size in the flex algorithm (no auto-shrink-back). margin-left is
+      // ALSO needed: flex layout owns slot placement, but margin still
+      // applies after placement. The same margin-left math as block (pin
+      // for right handle, compensate by widthDelta for left handle) gives
+      // the correct anchor behavior — without it, left-handle drag has no
+      // way to shift the box leftward and growth ends up on the right.
+      if (axis === 'x' || axis === 'xy') {
+        const newW = Math.max(0, snap.startWidth + dx);
+        el.style.setProperty('flex-basis', newW + 'px', 'important');
+        el.style.setProperty('flex-shrink', '0', 'important');
+        el.style.setProperty('flex-grow', '0', 'important');
+        el.style.setProperty('width', newW + 'px', 'important');
+        el.style.setProperty('min-width', '0', 'important');
+        el.style.setProperty('max-width', 'none', 'important');
+        el.style.setProperty('margin-left', snap.startMarginLeft + 'px', 'important');
+      }
+      if (axis === 'x-left') {
+        const newW = Math.max(0, snap.startWidth - dx);
+        const widthDelta = newW - snap.startWidth;
+        el.style.setProperty('flex-basis', newW + 'px', 'important');
+        el.style.setProperty('flex-shrink', '0', 'important');
+        el.style.setProperty('flex-grow', '0', 'important');
+        el.style.setProperty('width', newW + 'px', 'important');
+        el.style.setProperty('min-width', '0', 'important');
+        el.style.setProperty('max-width', 'none', 'important');
+        el.style.setProperty('margin-left', (snap.startMarginLeft - widthDelta) + 'px', 'important');
+      }
+      // Y-axis: identical to block strategy. flex-row pinning issues don't
+      // apply on the cross axis, and column-flex y-inversion is out of v1.
+      if (axis === 'y' || axis === 'xy') {
+        const newH = Math.max(0, snap.startHeight + dy);
+        applyHeight(el, newH, snap.startHeight);
+        el.style.setProperty('margin-top', snap.startMarginTop + 'px', 'important');
+      }
+      if (axis === 'y-top') {
+        const newH = Math.max(0, snap.startHeight - dy);
+        const heightDelta = newH - snap.startHeight;
+        applyHeight(el, newH, snap.startHeight);
+        el.style.setProperty('margin-top', (snap.startMarginTop - heightDelta) + 'px', 'important');
+      }
+    },
+    buildPersistedCss(axis, dx, dy, snap) {
+      const cssParts = [];
+      if (axis === 'x' || axis === 'xy') {
+        const newW = Math.max(0, snap.startWidth + dx);
+        cssParts.push(`flex-basis: ${newW}px !important`);
+        cssParts.push(`flex-shrink: 0 !important`);
+        cssParts.push(`flex-grow: 0 !important`);
+        cssParts.push(`width: ${newW}px !important`);
+        cssParts.push(`min-width: 0 !important`);
+        cssParts.push(`max-width: none !important`);
+        cssParts.push(`margin-left: ${snap.startMarginLeft}px !important`);
+      }
+      if (axis === 'x-left') {
+        const newW = Math.max(0, snap.startWidth - dx);
+        const widthDelta = newW - snap.startWidth;
+        cssParts.push(`flex-basis: ${newW}px !important`);
+        cssParts.push(`flex-shrink: 0 !important`);
+        cssParts.push(`flex-grow: 0 !important`);
+        cssParts.push(`width: ${newW}px !important`);
+        cssParts.push(`min-width: 0 !important`);
+        cssParts.push(`max-width: none !important`);
+        cssParts.push(`margin-left: ${snap.startMarginLeft - widthDelta}px !important`);
+      }
+      if (axis === 'y' || axis === 'xy') {
+        const newH = Math.max(0, snap.startHeight + dy);
+        pushHeight(cssParts, newH, snap.startHeight);
+        cssParts.push(`margin-top: ${snap.startMarginTop}px !important`);
+      }
+      if (axis === 'y-top') {
+        const newH = Math.max(0, snap.startHeight - dy);
+        const heightDelta = newH - snap.startHeight;
+        pushHeight(cssParts, newH, snap.startHeight);
+        cssParts.push(`margin-top: ${snap.startMarginTop - heightDelta}px !important`);
+      }
+      return cssParts.join('; ');
+    },
+  },
+};
+// v1 fallbacks — wire dispatch now so adding real strategies later is one line.
+STRATEGIES['grid-item']       = STRATEGIES.block;
+STRATEGIES.positioned         = STRATEGIES.block;
+STRATEGIES['table-component'] = STRATEGIES.block;
+
+// ─── REFLOW: lazy ancestor walk for layout-flow operations ──────────────────
+// Given any element, walks upward until it finds a flex or grid container, or
+// hits documentElement. ~30 reads max. Runs only on hover/selection change
+// and when REFLOW button states need to be evaluated — no caching. The cost-
+// benefit of an eager `document.querySelectorAll('*') + getComputedStyle`
+// scan didn't pay off (large pages have thousands of nodes; we'd revisit on
+// every DOM mutation), and per-hover lazy is plenty fast.
+function findReflowContainer(el) {
+  if (!el) return null;
+  let cur = el.parentElement;
+  let depth = 0;
+  while (cur && cur !== document.documentElement && depth < 30) {
+    if (isAdnotaElement(cur)) return null;
+    const cs = getComputedStyle(cur);
+    const d = cs.display;
+    if (d === 'flex' || d === 'inline-flex') {
+      return makeContainerInfo(cur, cs, 'flex');
+    }
+    if (d === 'grid' || d === 'inline-grid') {
+      return makeContainerInfo(cur, cs, 'grid');
+    }
+    cur = cur.parentElement;
+    depth++;
+  }
+  return null;
+}
+
+// Build the metadata object the verb dispatchers need. `visibleChildren`
+// excludes Adnota chrome and zero-rect children so swap/order ops act on
+// the elements the user actually sees.
+function makeContainerInfo(el, cs, kind) {
+  const visibleChildren = [];
+  for (const c of el.children) {
+    if (isAdnotaElement(c)) continue;
+    const r = c.getBoundingClientRect();
+    if (r.width === 0 && r.height === 0) continue;
+    visibleChildren.push(c);
+  }
+  return {
+    el,
+    kind,                             // 'flex' | 'grid'
+    direction: cs.flexDirection || 'row',  // meaningful only for flex
+    reversed: (cs.flexDirection || '').includes('-reverse'),
+    childCount: visibleChildren.length,
+    visibleChildren,
+  };
+}
+
+// If `el` is a direct flex/grid child, return { container, child }. Otherwise
+// null. The walk uses immediate parent only — `order` operates on direct
+// children of the flex/grid container.
+function findReflowChildContext(el) {
+  if (!el || !el.parentElement) return null;
+  if (isAdnotaElement(el)) return null;
+  const parent = el.parentElement;
+  if (parent === document.documentElement) return null;
+  if (isAdnotaElement(parent)) return null;
+  const pcs = getComputedStyle(parent);
+  const d = pcs.display;
+  if (d !== 'flex' && d !== 'inline-flex' && d !== 'grid' && d !== 'inline-grid') return null;
+  const kind = (d === 'grid' || d === 'inline-grid') ? 'grid' : 'flex';
+  return { container: makeContainerInfo(parent, pcs, kind), child: el };
+}
+
+// Determine which way an `order` move on `child` should go, based on its
+// *visual* position among siblings. Returns 'start' if the next click
+// should send it visually first, 'end' if last, or null if there's only
+// one visible child (nothing to reorder against). Anchored on visual rect
+// so it handles row-reverse / column-reverse correctly — the actual order
+// value still gets reverse-aware translation in applyReflowVerb.
+function nextOrderDirection(child, container) {
+  if (!container || !container.visibleChildren) return null;
+  if (container.visibleChildren.length < 2) return null;
+  const isColumn = container.kind === 'flex' && container.direction.startsWith('column');
+  const sorted = [...container.visibleChildren].sort((a, b) => {
+    const ra = a.getBoundingClientRect();
+    const rb = b.getBoundingClientRect();
+    return isColumn ? (ra.top - rb.top) : (ra.left - rb.left);
+  });
+  const idx = sorted.indexOf(child);
+  if (idx < 0) return null;
+  return idx === 0 ? 'end' : 'start';
+}
+
+// Translate a logical direction ('start' / 'end') into an `order` value,
+// accounting for row-reverse / column-reverse where the numeric axis is
+// inverted relative to visual position. Sentinel values: max-int beats any
+// plausible site CSS, -1 beats the default 0 most pages use.
+function orderValueForDirection(direction, container) {
+  const isReverse = container.kind === 'flex' && container.direction.includes('-reverse');
+  if (direction === 'start') return isReverse ? 2147483647 : -1;
+  return isReverse ? -1 : 2147483647;
+}
+
+// Top-left visible child by document position. Used by the grid swap path:
+// applying `order: -1` to whichever child currently anchors the top-left
+// produces a visible "swap" against the rest of the auto-flow grid.
+function pickVisuallyFirstChild(visibleChildren) {
+  if (!visibleChildren || visibleChildren.length === 0) return null;
+  let best = null;
+  let bestRect = null;
+  for (const c of visibleChildren) {
+    const r = c.getBoundingClientRect();
+    if (!best ||
+        r.top < bestRect.top - 1 ||
+        (Math.abs(r.top - bestRect.top) < 1 && r.left < bestRect.left)) {
+      best = c;
+      bestRect = r;
+    }
+  }
+  return best;
+}
+
+// Resolve a verb to the element it would act on (for both dispatching and
+// the amber overlay preview). Anchored on selectedEl first (stable user
+// commitment), falling back to hoveredEl when nothing is selected. Picking
+// selection over hover keeps the REFLOW target stable across the layout
+// reflows the verbs themselves cause — hover bubble-up can otherwise drift
+// to a different ancestor after a flex-direction flip changes element
+// rect sizes, making the buttons "act on a different container each click."
+function getReflowTarget(verb) {
+  const anchorEl = selectedEl || hoveredEl;
+  if (!anchorEl) return null;
+
+  if (verb === 'swap-panels') {
+    const ctx = findReflowContainer(anchorEl);
+    if (!ctx || ctx.childCount < 2) return null;
+    if (ctx.kind === 'flex') return { container: ctx, el: ctx.el };
+    const firstChild = pickVisuallyFirstChild(ctx.visibleChildren);
+    if (!firstChild) return null;
+    return { container: ctx, el: firstChild };
+  }
+  if (verb === 'toggle-stack') {
+    const ctx = findReflowContainer(anchorEl);
+    if (!ctx || ctx.kind !== 'flex') return null;
+    return { container: ctx, el: ctx.el };
+  }
+  if (verb === 'order-end') {
+    const childCtx = findReflowChildContext(anchorEl);
+    if (!childCtx) return null;
+    const direction = nextOrderDirection(childCtx.child, childCtx.container);
+    if (!direction) return null;   // single-child container — no reorder to do
+    return { container: childCtx.container, el: childCtx.child, direction };
+  }
+  return null;
+}
+
+// ─── REFLOW dispatcher ──────────────────────────────────────────────────────
+async function applyReflowVerb(verb) {
+  const target = getReflowTarget(verb);
+  if (!target) return;
+
+  if (verb === 'swap-panels') {
+    if (target.container.kind === 'flex') {
+      const cur = target.container.direction;
+      const newDir = cur.includes('-reverse')
+        ? cur.replace('-reverse', '')
+        : `${cur}-reverse`;
+      await commitResizeRule(target.el, `flex-direction: ${newDir} !important`, 'reflow:swap-panels');
+    } else {
+      // Grid: toggle order: -1 on the visually-first child. If it already has
+      // a negative order (from us or the page), revert to 0.
+      const child = target.el;
+      const currentOrder = parseInt(getComputedStyle(child).order, 10) || 0;
+      const newOrder = currentOrder < 0 ? 0 : -1;
+      await commitResizeRule(child, `order: ${newOrder} !important`, 'reflow:swap-panels');
+    }
+  } else if (verb === 'toggle-stack') {
+    const cur = target.container.direction;
+    const base = cur.replace('-reverse', '');
+    const reverseSuffix = cur.includes('-reverse') ? '-reverse' : '';
+    const newBase = base === 'column' ? 'row' : 'column';
+    await commitResizeRule(target.el, `flex-direction: ${newBase}${reverseSuffix} !important`, 'reflow:toggle-stack');
+  } else if (verb === 'order-end') {
+    // target.direction is computed from visual position (not numeric order)
+    // so the first click always produces the visible move the label
+    // promises. The numeric `order` value flips for reverse containers so
+    // CSS row-reverse / column-reverse don't reverse the user's intent.
+    const newOrder = orderValueForDirection(target.direction, target.container);
+    await commitResizeRule(target.el, `order: ${newOrder} !important`, 'reflow:order-end');
+  }
+
+  // The page reflowed — selection box, handles, and overlays are all now
+  // sitting at stale positions. Force a layout read on documentElement to
+  // ensure new boxes have settled, then refresh.
+  void document.documentElement.offsetHeight;
+  if (selectedEl) refreshHandles();
+  if (rawHoveredEl) updateHoverTarget();
+  // If the cursor is still on the REFLOW button (the common case after a
+  // click), the amber overlay is showing at the verb target's *old*
+  // position — re-show to reposition it over the new layout.
+  if (reflowHoverOverlay.style.display !== 'none') {
+    hideReflowOverlay();
+    showReflowOverlayForVerb(verb);
+  }
+  updateReflowButtonStates();
+}
+
+// ─── REFLOW button state machine ────────────────────────────────────────────
+// Computes per-button enable, label flips, and row-level visibility from the
+// current hover/selection. Hide-when-empty keeps the row out of the way on
+// pages where no flex/grid context is under the cursor.
+function setReflowBtnEnabled(btn, enabled) {
+  if (enabled) {
+    btn.dataset.disabled = '0';
+    btn.style.opacity = '';
+    btn.style.pointerEvents = '';
+    btn.style.cursor = '';
+  } else {
+    btn.dataset.disabled = '1';
+    btn.style.opacity = '0.3';
+    btn.style.pointerEvents = 'none';
+    btn.style.cursor = 'default';
+  }
+}
+
+function updateReflowButtonStates() {
+  if (window.AdnotaState.mode !== 'resizer') {
+    reflowRow.style.display = 'none';
+    reflowDivider.style.display = 'none';
+    return;
+  }
+
+  const swapTarget  = getReflowTarget('swap-panels');
+  const stackTarget = getReflowTarget('toggle-stack');
+  const orderTarget = getReflowTarget('order-end');
+
+  setReflowBtnEnabled(reflowSwapBtn, !!swapTarget);
+  setReflowBtnEnabled(reflowStackBtn, !!stackTarget);
+  setReflowBtnEnabled(reflowEndBtn, !!orderTarget);
+
+  // Toggle-stack label flips with current direction.
+  if (stackTarget) {
+    const isColumn = stackTarget.container.direction.replace('-reverse', '') === 'column';
+    reflowStackBtn.setAttribute('data-adnota-tooltip', isColumn ? 'Lay horizontally' : 'Stack vertically');
+  } else {
+    reflowStackBtn.setAttribute('data-adnota-tooltip', 'Stack vertically');
+  }
+
+  // Send-to-end label tracks visual position: if the child is already
+  // visually first, the next move is "to end"; otherwise "to start". Axis
+  // wording adapts to the container's direction (row → row, column → column).
+  // Icon flips horizontally when sending to start so the arrow visually
+  // matches the action — direction='start' means an arrow pointing left.
+  const orderSvg = reflowEndBtn.querySelector('svg');
+  if (orderTarget) {
+    const isColumn = orderTarget.container.kind === 'flex'
+      && orderTarget.container.direction.startsWith('column');
+    const axis = isColumn ? 'column' : 'row';
+    const where = orderTarget.direction;  // 'start' | 'end'
+    reflowEndBtn.setAttribute('data-adnota-tooltip', `Send to ${where} of the ${axis}`);
+    if (orderSvg) orderSvg.style.transform = where === 'start' ? 'scaleX(-1)' : '';
+  } else {
+    reflowEndBtn.setAttribute('data-adnota-tooltip', 'Send to end of the row');
+    if (orderSvg) orderSvg.style.transform = '';
+  }
+
+  const anyEnabled = !!(swapTarget || stackTarget || orderTarget);
+  reflowRow.style.display = anyEnabled ? 'inline-flex' : 'none';
+  reflowDivider.style.display = anyEnabled ? '' : 'none';
+}
+
+// ─── REFLOW amber overlay (mutex with blue hover overlay) ───────────────────
+// On REFLOW button mouseenter: hide blue, position amber over the verb's
+// target, show. On mouseleave: hide amber. The page's next mousemove
+// re-enters updateHoverTarget which restores blue naturally — no explicit
+// "restore blue" call needed here.
+function showReflowOverlayForVerb(verb) {
+  const target = getReflowTarget(verb);
+  if (!target) return;
+  hoverOverlay.style.display = 'none';
+  const rect = target.el.getBoundingClientRect();
+  const scrollY = window.pageYOffset || document.documentElement.scrollTop;
+  const scrollX = window.pageXOffset || document.documentElement.scrollLeft;
+  document.documentElement.appendChild(reflowHoverOverlay);
+  Object.assign(reflowHoverOverlay.style, {
+    display: 'block',
+    top:    `${rect.top + scrollY}px`,
+    left:   `${rect.left + scrollX}px`,
+    width:  `${rect.width}px`,
+    height: `${rect.height}px`,
+  });
+}
+
+function hideReflowOverlay() {
+  reflowHoverOverlay.style.display = 'none';
+}
+
 function refreshHandles() {
   if (!selectedEl) return;
   const rect = selectedEl.getBoundingClientRect();
@@ -732,6 +1407,7 @@ function refreshHandles() {
   // is still active (e.g., user hits Ctrl+Z mid-selection).
   updateSelectionChip();
   updateHUD();
+  updateReflowButtonStates();
 }
 
 // ─── Reset: remove ALL resize rules for a given element ─────────────────────
@@ -757,6 +1433,12 @@ async function resetElement(el) {
   el.style.removeProperty('margin-left');
   el.style.removeProperty('margin-top');
   el.style.removeProperty('overflow');
+  el.style.removeProperty('flex-basis');
+  el.style.removeProperty('flex-shrink');
+  el.style.removeProperty('flex-grow');
+  // REFLOW props — clear so ↺ undoes Swap/Stack/Send-to-end too.
+  el.style.removeProperty('flex-direction');
+  el.style.removeProperty('order');
   void el.offsetHeight; // force reflow
 
   // Remove from storage
@@ -809,6 +1491,11 @@ function startDrag(e, axis) {
     maxHeight: selectedEl.style.maxHeight,
     marginLeft: selectedEl.style.marginLeft,
     marginTop: selectedEl.style.marginTop,
+    // Flex-item strategy may write these; snapshot so a tiny-drag-cancel
+    // or a clean release restores the page's pre-drag inline state.
+    flexBasis: selectedEl.style.flexBasis,
+    flexShrink: selectedEl.style.flexShrink,
+    flexGrow: selectedEl.style.flexGrow,
   };
   const restoreInline = () => {
     const apply = (prop, value) => {
@@ -823,27 +1510,18 @@ function startDrag(e, axis) {
     apply('max-height', savedInline.maxHeight);
     apply('margin-left', savedInline.marginLeft);
     apply('margin-top', savedInline.marginTop);
+    apply('flex-basis', savedInline.flexBasis);
+    apply('flex-shrink', savedInline.flexShrink);
+    apply('flex-grow', savedInline.flexGrow);
   };
 
-  // Shrink with max-height, grow with min-height. Pages like bing.com use
-  // `top: calc(100% - <rem>)` on descendants of an auto-height container; the
-  // descendants' percentage resolves to ~0 while the container is auto, but
-  // jumps to the container's full height the moment we pin it with `height:
-  // <px>` — flinging children thousands of pixels off-screen. Both max-height
-  // (shrink) and min-height (grow) keep the container's height "indefinite"
-  // for percentage resolution while still constraining the element to the
-  // user's chosen size, so neither path triggers the jump.
-  const applyHeight = (newH) => {
-    if (newH <= startHeight) {
-      selectedEl.style.removeProperty('height');
-      selectedEl.style.setProperty('max-height', newH + 'px', 'important');
-      selectedEl.style.setProperty('min-height', '0', 'important');
-    } else {
-      selectedEl.style.removeProperty('height');
-      selectedEl.style.removeProperty('max-height');
-      selectedEl.style.setProperty('min-height', newH + 'px', 'important');
-    }
-  };
+  // Pick the layout strategy once at drag-start. It stays stable for the
+  // life of one drag — onMove/onUp dispatch through the same `strategy`
+  // and `snapshot`. The block path is byte-identical to pre-strategy
+  // behavior on any non-flex element.
+  const ctx = selectedEl._adnotaLayoutContext || getLayoutContext(selectedEl);
+  const strategy = STRATEGIES[ctx.kind] || STRATEGIES.block;
+  const snapshot = { startWidth, startHeight, startMarginLeft, startMarginTop, ctx };
 
   // Add a full-viewport overlay to capture all mouse events during drag
   const dragOverlay = document.createElement('div');
@@ -863,43 +1541,7 @@ function startDrag(e, axis) {
   function onMove(ev) {
     const dx = ev.clientX - dragStartX;
     const dy = ev.clientY - dragStartY;
-
-    if (axis === 'x' || axis === 'xy') {
-      // Right handle: grow/shrink from the right edge, left edge pinned.
-      // Pinning lets users move auto-centered elements via two operations
-      // (drag left handle out, drag right handle in) instead of having the
-      // element re-center every release.
-      const newW = Math.max(0, startWidth + dx);
-      selectedEl.style.setProperty('width', newW + 'px', 'important');
-      selectedEl.style.setProperty('min-width', '0', 'important');
-      selectedEl.style.setProperty('max-width', 'none', 'important');
-      selectedEl.style.setProperty('margin-left', startMarginLeft + 'px', 'important');
-    }
-    if (axis === 'x-left') {
-      // Left handle: grow/shrink from the left edge, right edge stays fixed.
-      // Offset margin-left relative to the original so the right edge stays pinned.
-      const newW = Math.max(0, startWidth - dx);
-      const widthDelta = newW - startWidth; // positive = grew, negative = shrank
-      selectedEl.style.setProperty('width', newW + 'px', 'important');
-      selectedEl.style.setProperty('min-width', '0', 'important');
-      selectedEl.style.setProperty('max-width', 'none', 'important');
-      selectedEl.style.setProperty('margin-left', (startMarginLeft - widthDelta) + 'px', 'important');
-    }
-    if (axis === 'y' || axis === 'xy') {
-      // Bottom handle: grow/shrink from the bottom edge, top edge pinned.
-      const newH = Math.max(0, startHeight + dy);
-      applyHeight(newH);
-      selectedEl.style.setProperty('margin-top', startMarginTop + 'px', 'important');
-    }
-    if (axis === 'y-top') {
-      // Top handle: grow/shrink from the top edge, bottom edge stays pinned via
-      // margin-top compensation — mirrors the left-handle math.
-      const newH = Math.max(0, startHeight - dy);
-      const heightDelta = newH - startHeight;
-      applyHeight(newH);
-      selectedEl.style.setProperty('margin-top', (startMarginTop - heightDelta) + 'px', 'important');
-    }
-
+    strategy.applyDuringDrag(selectedEl, axis, dx, dy, snapshot);
     refreshHandles();
   }
 
@@ -922,46 +1564,8 @@ function startDrag(e, axis) {
     // rule's !important takes over for the props we resized.
     restoreInline();
 
-    // Build CSS rule from final dimensions.
-    const cssParts = [];
-
-    if (axis === 'x' || axis === 'xy') {
-      const newW = Math.max(0, startWidth + dx);
-      cssParts.push(`width: ${newW}px !important`);
-      cssParts.push(`min-width: 0 !important`);
-      cssParts.push(`max-width: none !important`);
-      cssParts.push(`margin-left: ${startMarginLeft}px !important`);
-    }
-    if (axis === 'x-left') {
-      const newW = Math.max(0, startWidth - dx);
-      const widthDelta = newW - startWidth;
-      cssParts.push(`width: ${newW}px !important`);
-      cssParts.push(`min-width: 0 !important`);
-      cssParts.push(`max-width: none !important`);
-      cssParts.push(`margin-left: ${startMarginLeft - widthDelta}px !important`);
-    }
-    const pushHeight = (newH) => {
-      if (newH <= startHeight) {
-        cssParts.push(`max-height: ${newH}px !important`);
-        cssParts.push(`min-height: 0 !important`);
-      } else {
-        cssParts.push(`min-height: ${newH}px !important`);
-        cssParts.push(`max-height: none !important`);
-      }
-    };
-    if (axis === 'y' || axis === 'xy') {
-      const newH = Math.max(0, startHeight + dy);
-      pushHeight(newH);
-      cssParts.push(`margin-top: ${startMarginTop}px !important`);
-    }
-    if (axis === 'y-top') {
-      const newH = Math.max(0, startHeight - dy);
-      const heightDelta = newH - startHeight;
-      pushHeight(newH);
-      cssParts.push(`margin-top: ${startMarginTop - heightDelta}px !important`);
-    }
-
-    const cssText = cssParts.join('; ');
+    // Build CSS rule from final dimensions via the chosen strategy.
+    const cssText = strategy.buildPersistedCss(axis, dx, dy, snapshot);
     persistResize(selectedEl, cssText);
 
     dragAxis = null;
@@ -990,12 +1594,30 @@ function startDrag(e, axis) {
 async function commitResizeRule(el, cssText, kind) {
   const selector = generateCSSSelector(el);
   const id = Date.now() + '-' + Math.random().toString(36).slice(2, 8);
+
+  // De-dup: kind-bearing commits replace any prior rule with the same
+  // selector + same kind. Without this, 17 toggle-stack clicks produce
+  // 17 entries when only the last matters — bloating storage,
+  // scratchpad rows, and the undo stack. Drag-resize (no kind) stays
+  // additive: separate axes/handles must accumulate so a width drag
+  // followed by a height drag both stick.
+  const supersededLive = [];
+  if (kind) {
+    for (const [oldId, oldRule] of window.AdnotaResizeRules) {
+      if (oldRule.selector === selector && oldRule.kind === kind) {
+        supersededLive.push({ id: oldId, ...oldRule });
+        window.AdnotaResizeRules.delete(oldId);
+      }
+    }
+  }
+
   window.AdnotaLog?.event('resizer', kind ? `${kind}-commit` : 'resize-commit', {
     id, sel: selector, el: window.AdnotaLog.el(el),
     handle: dragAxis, cssText,
+    superseded: supersededLive.length || undefined,
   });
 
-  window.AdnotaResizeRules.set(id, { selector, cssText });
+  window.AdnotaResizeRules.set(id, { selector, cssText, kind });
   rebuildResizeStyleTag();
 
   const domain = location.hostname;
@@ -1012,19 +1634,40 @@ async function commitResizeRule(el, cssText, kind) {
   };
   if (kind) entry.kind = kind;
 
+  // Snapshot the storage rows we're about to drop so undo can restore
+  // exactly what was there. Captured outside the storage block so the
+  // closure below doesn't depend on async-fetched state.
+  const supersededStorage = [];
+
   if (window.AdnotaStorage) {
     const data = await chrome.storage.local.get(domain);
     const domainData = data[domain] || { items: [] };
+    if (kind && supersededLive.length > 0) {
+      const supersededIds = new Set(supersededLive.map(r => r.id));
+      for (const item of domainData.items) {
+        if (supersededIds.has(item._id)) supersededStorage.push({ ...item });
+      }
+      domainData.items = domainData.items.filter(i => !supersededIds.has(i._id));
+    }
     domainData.items.push(entry);
     await chrome.storage.local.set({ [domain]: domainData });
   }
 
   // ── Undo ─────────────────────────────────────────────────────────────────
+  // Removes the new rule AND restores any superseded rules — Ctrl+Z walks
+  // back to the prior state, not to the original natural layout. Multi-step
+  // history is preserved at the kind level: each undo flips back one step.
   const undoEntry = {
     _resizeSelector: selector,
     undo: async () => {
-      window.AdnotaLog?.event('resizer', 'undo', { id, sel: selector });
+      window.AdnotaLog?.event('resizer', 'undo', {
+        id, sel: selector,
+        restored: supersededLive.length || undefined,
+      });
       window.AdnotaResizeRules.delete(id);
+      for (const r of supersededLive) {
+        window.AdnotaResizeRules.set(r.id, { selector: r.selector, cssText: r.cssText, kind: r.kind });
+      }
       rebuildResizeStyleTag();
 
       // Force a reflow so the browser re-computes layout against the
@@ -1036,14 +1679,17 @@ async function commitResizeRule(el, cssText, kind) {
         const data = await chrome.storage.local.get(domain);
         if (data[domain]) {
           data[domain].items = data[domain].items.filter(i => i._id !== id);
+          for (const r of supersededStorage) data[domain].items.push(r);
           await chrome.storage.local.set({ [domain]: data[domain] });
         }
       }
       window.AdnotaUndo.remove(undoEntry);
       refreshHandles();
+      updateReflowButtonStates();
     },
   };
   window.AdnotaUndo.push(undoEntry);
+  updateReflowButtonStates();
   return id;
 }
 
@@ -1245,8 +1891,12 @@ window.AdnotaState.subscribe((state) => {
   if (isResizer) {
     setHudVisible(true);
     updateHUD();
+    updateReflowButtonStates();
   } else {
     hoverOverlay.style.display = 'none';
+    reflowHoverOverlay.style.display = 'none';
+    reflowRow.style.display = 'none';
+    reflowDivider.style.display = 'none';
     hoveredEl = null;
     rawHoveredEl = null;
     traverseDepth = 0;
@@ -1269,6 +1919,15 @@ document.addEventListener('mousemove', (e) => {
   // impossible to click. Hold the previous hover state until the cursor
   // moves back to the page.
   if (raw && chipCluster.contains(raw)) return;
+  // Cursor is anywhere on our dock chrome — preserve hover state. Without
+  // this, mouse-over-dock clears hoveredEl, which (in pure-hover mode) hides
+  // the REFLOW row, which shrinks the dock width, which can move the dock
+  // out from under the cursor, which fires another mousemove that re-enables
+  // REFLOW… an infinite flicker loop along the dock's edge. Subsumes the
+  // earlier reflowRow.contains carve-out — the whole dock is a "hover hold"
+  // zone since the user is interacting with our UI, not the page.
+  const dockEl = document.getElementById('adnota-dock');
+  if (raw && dockEl && dockEl.contains(raw)) return;
   if (!raw || isAdnotaElement(raw)) {
     hoveredEl = null;
     rawHoveredEl = null;
@@ -1280,6 +1939,7 @@ document.addEventListener('mousemove', (e) => {
     hoveredHasUnstickOverride = false;
     hoveredHasFiniteScrollOverride = false;
     updateHUD();
+    updateReflowButtonStates();
     return;
   }
 
@@ -1370,6 +2030,7 @@ function updateHoverTarget() {
     hoveredHasFiniteScrollOverride = false;
   }
   updateHUD();
+  updateReflowButtonStates();
 }
 
 // ─── Scroll wheel: walk up/down the DOM tree while hovering ─────────────────
@@ -1492,7 +2153,10 @@ function applyOneResize(record) {
   const cssText = record.cssText;
   if (!id || !selector || !cssText) return;
   if (!window.AdnotaResizeRules) return;
-  window.AdnotaResizeRules.set(id, { selector, cssText });
+  // Propagate `kind` so de-dup on subsequent commits can match against
+  // restored rules (e.g., a stored toggle-stack survives reload, then a
+  // new toggle-stack click should replace it, not stack on top).
+  window.AdnotaResizeRules.set(id, { selector, cssText, kind: record.kind });
   if (typeof window.rebuildResizeStyleTag === 'function') {
     window.rebuildResizeStyleTag();
   }
