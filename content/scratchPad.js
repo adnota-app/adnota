@@ -45,6 +45,44 @@
   const ACTION_BY_TYPE  = { highlight: 'HIGHLIGHT', note: 'NOTE', erase: 'ERASE', resize: 'RESIZE', drawing: 'MARKER' };
   const ID_FIELD_BY_TYPE = { highlight: '_id', note: 'uuid', erase: '_id', resize: '_id', drawing: 'uuid' };
 
+  // ── class / data-role mirror helpers ────────────────────────────────────
+  // CSS rules in scratchPad.css key off `[data-role~="X"]` instead of `.X`.
+  // Reason: third-party DOM mutators — notably AdBlock's anti-circumvention
+  // scrambler on certain recipe sites (e.g. mamagourmand.com) — periodically
+  // rewrite the `class` attribute on dynamically-inserted DOM, breaking any
+  // class-scoped CSS. data-* attributes are left alone.
+  //
+  // These helpers wrap class mutations so they ALSO update data-role. We
+  // keep className intact too (cheap, and any 3rd-party scrambler that
+  // doesn't fire just leaves it working). State checks (active, copied,
+  // visible, expanded, etc.) MUST go through hasClass() not classList,
+  // because the class attribute may have been overwritten between writes.
+  function setClass(el, name) {
+    el.className = name;
+    el.dataset.role = name;
+    return el;
+  }
+  function addClass(el, ...names) {
+    for (const n of names) el.classList.add(n);
+    const tokens = new Set((el.dataset.role || '').split(/\s+/).filter(Boolean));
+    for (const n of names) tokens.add(n);
+    el.dataset.role = [...tokens].join(' ');
+  }
+  function removeClass(el, ...names) {
+    for (const n of names) el.classList.remove(n);
+    if (!el.dataset.role) return;
+    const drop = new Set(names);
+    el.dataset.role = el.dataset.role.split(/\s+/).filter(t => t && !drop.has(t)).join(' ');
+  }
+  function toggleClass(el, name, on) {
+    if (on === undefined) on = !hasClass(el, name);
+    if (on) addClass(el, name); else removeClass(el, name);
+    return on;
+  }
+  function hasClass(el, name) {
+    return (el.dataset.role || '').split(/\s+/).includes(name);
+  }
+
   let panel        = null;
   let bodyEl       = null;
   let copyAllBtn   = null;
@@ -329,7 +367,7 @@
     panel.setAttribute('data-adnota-ui', '1');
 
     const header = document.createElement('div');
-    header.className = 'adnota-scratchpad-header';
+    setClass(header, 'adnota-scratchpad-header');
 
     // Mode-switcher icon button — far-left of the header. Outermost-left
     // reads as the primary category control (Snippets vs Edits); the
@@ -337,7 +375,7 @@
     // a small popover listing both modes with counts.
     modeBtnEl = document.createElement('button');
     modeBtnEl.type = 'button';
-    modeBtnEl.className = 'adnota-scratchpad-mode-btn';
+    setClass(modeBtnEl, 'adnota-scratchpad-mode-btn');
     modeBtnEl.title = 'Switch view';
     modeBtnEl.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -346,13 +384,13 @@
     header.appendChild(modeBtnEl);
 
     filtersEl = document.createElement('div');
-    filtersEl.className = 'adnota-scratchpad-filters';
+    setClass(filtersEl, 'adnota-scratchpad-filters');
     buildSubTabs();
     header.appendChild(filtersEl);
 
     tagToggleBtn = document.createElement('button');
     tagToggleBtn.type = 'button';
-    tagToggleBtn.className = 'adnota-scratchpad-filterbtn';
+    setClass(tagToggleBtn, 'adnota-scratchpad-filterbtn');
     tagToggleBtn.title = 'Filter by tag';
     tagToggleBtn.innerHTML = ICON_FILTER;
     tagToggleBtn.addEventListener('click', (e) => {
@@ -363,7 +401,7 @@
 
     copyAllBtn = document.createElement('button');
     copyAllBtn.type = 'button';
-    copyAllBtn.className = 'adnota-scratchpad-copyall';
+    setClass(copyAllBtn, 'adnota-scratchpad-copyall');
     copyAllBtn.title = 'Copy all';
     copyAllBtn.innerHTML = ICON_COPY_ALL;
     copyAllBtn.addEventListener('click', (e) => {
@@ -374,7 +412,7 @@
 
     const closeBtn = document.createElement('button');
     closeBtn.type = 'button';
-    closeBtn.className = 'adnota-scratchpad-close';
+    setClass(closeBtn, 'adnota-scratchpad-close');
     closeBtn.title = 'Close';
     closeBtn.innerHTML = ICON_CLOSE;
     closeBtn.addEventListener('click', (e) => {
@@ -386,12 +424,12 @@
     panel.appendChild(header);
 
     tagBarEl = document.createElement('div');
-    tagBarEl.className = 'adnota-scratchpad-tagbar';
+    setClass(tagBarEl, 'adnota-scratchpad-tagbar');
     tagBarEl.hidden = true;
     panel.appendChild(tagBarEl);
 
     bodyEl = document.createElement('div');
-    bodyEl.className = 'adnota-scratchpad-body';
+    setClass(bodyEl, 'adnota-scratchpad-body');
     panel.appendChild(bodyEl);
 
     // Drag from anywhere on the header — buttons included. The handler
@@ -414,12 +452,12 @@
     // alpha via its own CSS so the panel stays findable when faded.
     panel.addEventListener('mouseenter', () => {
       clearTimeout(mouseLeaveTimer);
-      panel.classList.remove('adnota-scratchpad-idle');
+      removeClass(panel, 'adnota-scratchpad-idle');
     });
     panel.addEventListener('mouseleave', () => {
       clearTimeout(mouseLeaveTimer);
       mouseLeaveTimer = setTimeout(() => {
-        if (panel) panel.classList.add('adnota-scratchpad-idle');
+        if (panel) addClass(panel, 'adnota-scratchpad-idle');
       }, FADE_DELAY_MS);
     });
 
@@ -445,7 +483,7 @@
     for (const [val, label] of TABS_BY_MODE[activeMode]) {
       const btn = document.createElement('button');
       btn.type = 'button';
-      btn.className = 'adnota-scratchpad-filter';
+      setClass(btn, 'adnota-scratchpad-filter');
       btn.dataset.value = val;
       btn.dataset.label = label;
       btn.textContent = label;
@@ -501,7 +539,7 @@
     if (!modeBtnEl) return;
     while (modeBtnEl.firstChild) modeBtnEl.firstChild.remove();
     const glyph = document.createElement('span');
-    glyph.className = 'adnota-scratchpad-mode-btn-glyph';
+    setClass(glyph, 'adnota-scratchpad-mode-btn-glyph');
     glyph.innerHTML = ICON_CHEVRON_DOWN;
     modeBtnEl.appendChild(glyph);
   }
@@ -519,7 +557,7 @@
   function openModeMenu() {
     if (modeMenuEl || !modeBtnEl) return;
     const menu = document.createElement('div');
-    menu.className = 'adnota-scratchpad-modemenu';
+    setClass(menu, 'adnota-scratchpad-modemenu');
     menu.setAttribute('data-adnota-ui', '1');
 
     const allowedSnippets = TYPES_BY_MODE.snippets;
@@ -533,21 +571,21 @@
     ]) {
       const item = document.createElement('button');
       item.type = 'button';
-      item.className = 'adnota-scratchpad-modemenu-item';
-      if (val === activeMode) item.classList.add('active');
+      setClass(item, 'adnota-scratchpad-modemenu-item');
+      if (val === activeMode) addClass(item, 'active');
 
       const check = document.createElement('span');
-      check.className = 'adnota-scratchpad-modemenu-check';
+      setClass(check, 'adnota-scratchpad-modemenu-check');
       check.innerHTML = val === activeMode ? ICON_CHECK : '';
       item.appendChild(check);
 
       const lbl = document.createElement('span');
-      lbl.className = 'adnota-scratchpad-modemenu-label';
+      setClass(lbl, 'adnota-scratchpad-modemenu-label');
       lbl.textContent = label;
       item.appendChild(lbl);
 
       const cnt = document.createElement('span');
-      cnt.className = 'adnota-scratchpad-modemenu-count';
+      setClass(cnt, 'adnota-scratchpad-modemenu-count');
       cnt.textContent = `· ${count}`;
       item.appendChild(cnt);
 
@@ -571,7 +609,7 @@
     });
     document.documentElement.appendChild(menu);
     modeMenuEl = menu;
-    modeBtnEl.classList.add('active');
+    addClass(modeBtnEl, 'active');
 
     // Outside-click dismissal. Defer attach so the click that opened the
     // menu doesn't immediately close it.
@@ -589,7 +627,7 @@
     if (!modeMenuEl) return;
     modeMenuEl.remove();
     modeMenuEl = null;
-    modeBtnEl?.classList.remove('active');
+    if (modeBtnEl) removeClass(modeBtnEl, 'active');
     if (modeMenuOutsideHandler) {
       document.removeEventListener('click', modeMenuOutsideHandler, true);
       modeMenuOutsideHandler = null;
@@ -627,11 +665,11 @@
           drawing: modeList.filter(s => s.type === 'drawing').length,
         };
     for (const { btn, value, label } of filterEls) {
-      btn.classList.toggle('active', value === activeFilter);
+      toggleClass(btn, 'active', value === activeFilter);
       btn.textContent = '';
       btn.append(`${label} · `);
       const c = document.createElement('span');
-      c.className = 'adnota-scratchpad-filter-count';
+      setClass(c, 'adnota-scratchpad-filter-count');
       c.textContent = String(counts[value] ?? 0);
       btn.appendChild(c);
     }
@@ -641,7 +679,7 @@
     bodyEl.replaceChildren();
     if (!list.length) {
       const empty = document.createElement('div');
-      empty.className = 'adnota-scratchpad-empty';
+      setClass(empty, 'adnota-scratchpad-empty');
       const EMPTY_LABELS = {
         all:        'snippets',
         highlights: 'highlights',
@@ -653,7 +691,7 @@
       empty.textContent = `No ${EMPTY_LABELS[activeFilter] ?? 'items'} on this page yet.`;
       bodyEl.appendChild(empty);
       copyAllBtn.disabled = true;
-      copyAllBtn.classList.remove('copied');
+      removeClass(copyAllBtn, 'copied');
       return;
     }
     copyAllBtn.disabled = false;
@@ -665,15 +703,15 @@
 
   function buildRow(snippet) {
     const row = document.createElement('div');
-    row.className = 'adnota-scratchpad-row';
+    setClass(row, 'adnota-scratchpad-row');
     const isEdit = snippet.type === 'erase' || snippet.type === 'resize' || snippet.type === 'drawing';
     if (isEdit) {
-      row.classList.add('adnota-scratchpad-row-edit');
-      if (snippet.stale) row.classList.add('adnota-scratchpad-row-stale');
+      addClass(row, 'adnota-scratchpad-row-edit');
+      if (snippet.stale) addClass(row, 'adnota-scratchpad-row-stale');
     }
 
     const text = document.createElement('div');
-    text.className = 'adnota-scratchpad-text';
+    setClass(text, 'adnota-scratchpad-text');
     if (snippet.type === 'erase' || snippet.type === 'resize') {
       // Edits row: leaf segment of the selector (everything past the final
       // '>') in monospace, plus a short id-tail disambiguator (last 6 chars
@@ -682,10 +720,10 @@
       // textFingerprint or alt/title is present. Domain-wide records (path
       // === '*') get a leading globe icon so the user can tell at a glance
       // which rows are inherited site-wide rules vs page-specific edits.
-      text.classList.add('adnota-scratchpad-row-mono');
+      addClass(text, 'adnota-scratchpad-row-mono');
       if (snippet.record?.path === '*') {
         const globe = document.createElement('span');
-        globe.className = 'adnota-scratchpad-row-globe';
+        setClass(globe, 'adnota-scratchpad-row-globe');
         globe.title = 'Domain-wide — applies across this site';
         globe.innerHTML = ICON_GLOBE;
         // Globe is informational only — clicks shouldn't bubble up and
@@ -694,19 +732,19 @@
         text.appendChild(globe);
       }
       const sel = document.createElement('span');
-      sel.className = 'adnota-scratchpad-row-selector';
+      setClass(sel, 'adnota-scratchpad-row-selector');
       sel.textContent = leafSelector(snippet.selector);
       text.appendChild(sel);
       const idTail = shortIdTail(snippet.id);
       if (idTail) {
         const idSpan = document.createElement('span');
-        idSpan.className = 'adnota-scratchpad-row-suffix';
+        setClass(idSpan, 'adnota-scratchpad-row-suffix');
         idSpan.textContent = ` · ${idTail}`;
         text.appendChild(idSpan);
       }
       if (snippet.excerpt) {
         const suffix = document.createElement('span');
-        suffix.className = 'adnota-scratchpad-row-suffix';
+        setClass(suffix, 'adnota-scratchpad-row-suffix');
         // Quote text-derived excerpts; leave alt/title bare. Heuristic: if
         // the excerpt looks like text (has a space), quote it. Same '·'
         // separator as the id-tail for a uniform suffix rhythm.
@@ -718,26 +756,26 @@
       // Drawing row: leading color swatch, shape label, optional text
       // excerpt suffix (only meaningful for shapeType === 'text'). No
       // monospace — drawings aren't selector-shaped.
-      text.classList.add('adnota-scratchpad-row-drawing');
+      addClass(text, 'adnota-scratchpad-row-drawing');
       const swatch = document.createElement('span');
-      swatch.className = 'adnota-scratchpad-row-swatch';
+      setClass(swatch, 'adnota-scratchpad-row-swatch');
       swatch.style.background = snippet.color;
       // Outline a tiny ring so very-light or very-dark colors stay visible
       // against the dark panel background.
       swatch.style.boxShadow = '0 0 0 1px rgba(255,255,255,0.18) inset';
       text.appendChild(swatch);
       const label = document.createElement('span');
-      label.className = 'adnota-scratchpad-row-label';
+      setClass(label, 'adnota-scratchpad-row-label');
       label.textContent = snippet.label;
       text.appendChild(label);
       if (snippet.excerpt) {
         const suffix = document.createElement('span');
-        suffix.className = 'adnota-scratchpad-row-suffix';
+        setClass(suffix, 'adnota-scratchpad-row-suffix');
         suffix.textContent = ` · "${snippet.excerpt}"`;
         text.appendChild(suffix);
       }
     } else if (isRedaction(snippet)) {
-      text.classList.add('adnota-scratchpad-redaction');
+      addClass(text, 'adnota-scratchpad-redaction');
       text.textContent = redactionBar(snippet.text);
       text.title = 'Redacted';
     } else {
@@ -765,12 +803,12 @@
     // expanded before a re-render (e.g., storage onChanged tick).
     if (isEdit && expandedIds.has(snippet.id)) {
       row.appendChild(buildExpandedDetail(snippet));
-      row.classList.add('adnota-scratchpad-row-expanded');
+      addClass(row, 'adnota-scratchpad-row-expanded');
     }
 
     const gotoBtn = document.createElement('button');
     gotoBtn.type = 'button';
-    gotoBtn.className = 'adnota-scratchpad-rowgoto';
+    setClass(gotoBtn, 'adnota-scratchpad-rowgoto');
     gotoBtn.title = 'Go to this on the page';
     gotoBtn.innerHTML = ICON_GOTO;
     gotoBtn.addEventListener('click', (e) => {
@@ -782,7 +820,7 @@
 
     const copyBtn = document.createElement('button');
     copyBtn.type = 'button';
-    copyBtn.className = 'adnota-scratchpad-rowcopy';
+    setClass(copyBtn, 'adnota-scratchpad-rowcopy');
     copyBtn.title = 'Copy';
     copyBtn.innerHTML = ICON_COPY;
     copyBtn.addEventListener('click', async (e) => {
@@ -813,11 +851,11 @@
       if (!payload) return;
       try { await navigator.clipboard.writeText(payload); }
       catch (_) { return; }
-      copyBtn.classList.add('copied');
+      addClass(copyBtn, 'copied');
       copyBtn.innerHTML = ICON_CHECK;
       setTimeout(() => {
         if (!copyBtn.isConnected) return;
-        copyBtn.classList.remove('copied');
+        removeClass(copyBtn, 'copied');
         copyBtn.innerHTML = ICON_COPY;
       }, COPY_REVERT_MS);
       window.AdnotaLog?.event('scratchpad', 'copy', { type: snippet.type, len: payload.length });
@@ -826,7 +864,7 @@
 
     const trashBtn = document.createElement('button');
     trashBtn.type = 'button';
-    trashBtn.className = 'adnota-scratchpad-rowtrash';
+    setClass(trashBtn, 'adnota-scratchpad-rowtrash');
     trashBtn.title =
       snippet.type === 'highlight' ? 'Delete this quote' :
       snippet.type === 'note'      ? 'Delete this note' :
@@ -852,12 +890,12 @@
     if (snippet.type !== 'erase' && snippet.type !== 'resize' && snippet.type !== 'drawing') return;
     if (expandedIds.has(snippet.id)) {
       expandedIds.delete(snippet.id);
-      row.classList.remove('adnota-scratchpad-row-expanded');
-      const detail = row.querySelector('.adnota-scratchpad-detail');
+      removeClass(row, 'adnota-scratchpad-row-expanded');
+      const detail = row.querySelector('[data-role~="adnota-scratchpad-detail"]');
       if (detail) detail.remove();
     } else {
       expandedIds.add(snippet.id);
-      row.classList.add('adnota-scratchpad-row-expanded');
+      addClass(row, 'adnota-scratchpad-row-expanded');
       row.appendChild(buildExpandedDetail(snippet));
     }
     window.AdnotaLog?.event('scratchpad', 'expand-toggle', {
@@ -870,7 +908,7 @@
   // single click → clipboard contains the raw storage record.
   function buildExpandedDetail(snippet) {
     const wrap = document.createElement('div');
-    wrap.className = 'adnota-scratchpad-detail';
+    setClass(wrap, 'adnota-scratchpad-detail');
 
     const rec = snippet.record || {};
     const rows = [];
@@ -903,12 +941,12 @@
 
     for (const [k, v] of rows) {
       const row = document.createElement('div');
-      row.className = 'adnota-scratchpad-detail-row';
+      setClass(row, 'adnota-scratchpad-detail-row');
       const key = document.createElement('span');
-      key.className = 'adnota-scratchpad-detail-key';
+      setClass(key, 'adnota-scratchpad-detail-key');
       key.textContent = k;
       const val = document.createElement('span');
-      val.className = 'adnota-scratchpad-detail-val';
+      setClass(val, 'adnota-scratchpad-detail-val');
       val.textContent = v;
       row.append(key, val);
       wrap.appendChild(row);
@@ -916,7 +954,7 @@
 
     const copyJsonBtn = document.createElement('button');
     copyJsonBtn.type = 'button';
-    copyJsonBtn.className = 'adnota-scratchpad-detail-copyjson';
+    setClass(copyJsonBtn, 'adnota-scratchpad-detail-copyjson');
     copyJsonBtn.textContent = 'Copy as JSON';
     copyJsonBtn.addEventListener('click', async (e) => {
       e.stopPropagation();
@@ -1018,36 +1056,36 @@
 
   function showUndoToast(message, onUndo, duration = 5000) {
     if (!panel) return;
-    let toast = panel.querySelector('.adnota-scratchpad-toast');
+    let toast = panel.querySelector('[data-role~="adnota-scratchpad-toast"]');
     if (!toast) {
       toast = document.createElement('div');
-      toast.className = 'adnota-scratchpad-toast';
+      setClass(toast, 'adnota-scratchpad-toast');
       panel.appendChild(toast);
     }
     toast.textContent = '';
-    toast.classList.add('has-undo');
+    addClass(toast, 'has-undo');
 
     const msg = document.createElement('span');
-    msg.className = 'adnota-scratchpad-toast-msg';
+    setClass(msg, 'adnota-scratchpad-toast-msg');
     msg.textContent = message;
     toast.appendChild(msg);
 
     const btn = document.createElement('button');
     btn.type = 'button';
-    btn.className = 'adnota-scratchpad-toast-undo';
+    setClass(btn, 'adnota-scratchpad-toast-undo');
     btn.textContent = 'Undo';
     btn.addEventListener('click', async (e) => {
       e.stopPropagation();
       clearTimeout(_toastTimer);
       try { await onUndo?.(); } catch (_) {}
-      toast.classList.remove('visible', 'has-undo');
+      removeClass(toast, 'visible', 'has-undo');
     });
     toast.appendChild(btn);
 
-    toast.classList.add('visible');
+    addClass(toast, 'visible');
     clearTimeout(_toastTimer);
     _toastTimer = setTimeout(() => {
-      toast.classList.remove('visible', 'has-undo');
+      removeClass(toast, 'visible', 'has-undo');
     }, duration);
   }
 
@@ -1066,11 +1104,11 @@
     if (!payload) return;
     try { await navigator.clipboard.writeText(payload); }
     catch (_) { return; }
-    copyAllBtn.classList.add('copied');
+    addClass(copyAllBtn, 'copied');
     copyAllBtn.innerHTML = ICON_CHECK;
     setTimeout(() => {
       if (!copyAllBtn?.isConnected) return;
-      copyAllBtn.classList.remove('copied');
+      removeClass(copyAllBtn, 'copied');
       copyAllBtn.innerHTML = ICON_COPY_ALL;
     }, COPY_REVERT_MS);
     window.AdnotaLog?.event('scratchpad', 'copy-all', {
@@ -1238,17 +1276,17 @@
   let _toastTimer = null;
   function showScratchToast(msg) {
     if (!panel) return;
-    let toast = panel.querySelector('.adnota-scratchpad-toast');
+    let toast = panel.querySelector('[data-role~="adnota-scratchpad-toast"]');
     if (!toast) {
       toast = document.createElement('div');
-      toast.className = 'adnota-scratchpad-toast';
+      setClass(toast, 'adnota-scratchpad-toast');
       panel.appendChild(toast);
     }
     toast.textContent = msg;
-    toast.classList.remove('has-undo');
-    toast.classList.add('visible');
+    removeClass(toast, 'has-undo');
+    addClass(toast, 'visible');
     clearTimeout(_toastTimer);
-    _toastTimer = setTimeout(() => toast.classList.remove('visible'), 2000);
+    _toastTimer = setTimeout(() => removeClass(toast, 'visible'), 2000);
   }
 
   function setFilter(value) {
@@ -1294,7 +1332,7 @@
 
   function renderTagBar() {
     if (!tagBarEl || !tagToggleBtn) return;
-    tagToggleBtn.classList.toggle('active', tagBarVisible);
+    toggleClass(tagToggleBtn, 'active', tagBarVisible);
     if (!tagBarVisible) {
       tagBarEl.hidden = true;
       tagBarEl.replaceChildren();
@@ -1310,7 +1348,7 @@
 
     if (sorted.length === 0) {
       const empty = document.createElement('span');
-      empty.className = 'adnota-scratchpad-tagbar-empty';
+      setClass(empty, 'adnota-scratchpad-tagbar-empty');
       empty.textContent = 'No tags on this page yet.';
       tagBarEl.appendChild(empty);
       return;
@@ -1318,7 +1356,7 @@
 
     const allChip = document.createElement('button');
     allChip.type = 'button';
-    allChip.className = 'adnota-scratchpad-tagchip' + (activeTag === null ? ' active' : '');
+    setClass(allChip, 'adnota-scratchpad-tagchip' + (activeTag === null ? ' active' : ''));
     allChip.textContent = 'All';
     allChip.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -1329,15 +1367,15 @@
     for (const tag of sorted) {
       const chip = document.createElement('button');
       chip.type = 'button';
-      chip.className = 'adnota-scratchpad-tagchip' + (activeTag === tag ? ' active' : '');
+      setClass(chip, 'adnota-scratchpad-tagchip' + (activeTag === tag ? ' active' : ''));
       const hash = document.createElement('span');
-      hash.className = 'adnota-scratchpad-tagchip-hash';
+      setClass(hash, 'adnota-scratchpad-tagchip-hash');
       hash.textContent = '#';
       const name = document.createElement('span');
-      name.className = 'adnota-scratchpad-tagchip-name';
+      setClass(name, 'adnota-scratchpad-tagchip-name');
       name.textContent = tag;
       const count = document.createElement('span');
-      count.className = 'adnota-scratchpad-tagchip-count';
+      setClass(count, 'adnota-scratchpad-tagchip-count');
       count.textContent = String(tagCounts[tag]);
       chip.append(hash, name, count);
       chip.addEventListener('click', (e) => {
@@ -1584,18 +1622,18 @@
   // already explains "nothing to delete here").
   function blinkAllRows() {
     if (!bodyEl) return;
-    const trashes = bodyEl.querySelectorAll('.adnota-scratchpad-rowtrash');
+    const trashes = bodyEl.querySelectorAll('[data-role~="adnota-scratchpad-rowtrash"]');
     if (!trashes.length) return;
     for (const t of trashes) {
-      t.classList.remove('adnota-blink');
+      removeClass(t, 'adnota-blink');
     }
     // Force reflow so re-adding the class restarts the animation when a
     // user clicks a tool-trash twice in quick succession.
     void bodyEl.offsetWidth;
     for (const t of trashes) {
-      t.classList.add('adnota-blink');
+      addClass(t, 'adnota-blink');
       // 3 pulses × 0.42s = 1.26s; clean up just after.
-      setTimeout(() => t.classList.remove('adnota-blink'), 1300);
+      setTimeout(() => removeClass(t, 'adnota-blink'), 1300);
     }
   }
 
