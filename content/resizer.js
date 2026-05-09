@@ -692,7 +692,10 @@ function selectElement(el) {
   Object.assign(selectionChipCluster.style, {
     position: 'absolute',
     top: `${chipClusterTopOffset(rect)}px`,
-    right: '32px',
+    // The dismiss button (20px) straddles the corner — its left edge
+    // sits 10px inside the selection box. 14px clears the button by 4px,
+    // matching the hover cluster's right:4px breathing room.
+    right: '14px',
     display: 'flex',
     gap: '4px',
     alignItems: 'center',
@@ -1591,12 +1594,30 @@ function startDrag(e, axis) {
 async function commitResizeRule(el, cssText, kind) {
   const selector = generateCSSSelector(el);
   const id = Date.now() + '-' + Math.random().toString(36).slice(2, 8);
+
+  // De-dup: kind-bearing commits replace any prior rule with the same
+  // selector + same kind. Without this, 17 toggle-stack clicks produce
+  // 17 entries when only the last matters — bloating storage,
+  // scratchpad rows, and the undo stack. Drag-resize (no kind) stays
+  // additive: separate axes/handles must accumulate so a width drag
+  // followed by a height drag both stick.
+  const supersededLive = [];
+  if (kind) {
+    for (const [oldId, oldRule] of window.AdnotaResizeRules) {
+      if (oldRule.selector === selector && oldRule.kind === kind) {
+        supersededLive.push({ id: oldId, ...oldRule });
+        window.AdnotaResizeRules.delete(oldId);
+      }
+    }
+  }
+
   window.AdnotaLog?.event('resizer', kind ? `${kind}-commit` : 'resize-commit', {
     id, sel: selector, el: window.AdnotaLog.el(el),
     handle: dragAxis, cssText,
+    superseded: supersededLive.length || undefined,
   });
 
-  window.AdnotaResizeRules.set(id, { selector, cssText });
+  window.AdnotaResizeRules.set(id, { selector, cssText, kind });
   rebuildResizeStyleTag();
 
   const domain = location.hostname;
@@ -1613,19 +1634,40 @@ async function commitResizeRule(el, cssText, kind) {
   };
   if (kind) entry.kind = kind;
 
+  // Snapshot the storage rows we're about to drop so undo can restore
+  // exactly what was there. Captured outside the storage block so the
+  // closure below doesn't depend on async-fetched state.
+  const supersededStorage = [];
+
   if (window.AdnotaStorage) {
     const data = await chrome.storage.local.get(domain);
     const domainData = data[domain] || { items: [] };
+    if (kind && supersededLive.length > 0) {
+      const supersededIds = new Set(supersededLive.map(r => r.id));
+      for (const item of domainData.items) {
+        if (supersededIds.has(item._id)) supersededStorage.push({ ...item });
+      }
+      domainData.items = domainData.items.filter(i => !supersededIds.has(i._id));
+    }
     domainData.items.push(entry);
     await chrome.storage.local.set({ [domain]: domainData });
   }
 
   // ── Undo ─────────────────────────────────────────────────────────────────
+  // Removes the new rule AND restores any superseded rules — Ctrl+Z walks
+  // back to the prior state, not to the original natural layout. Multi-step
+  // history is preserved at the kind level: each undo flips back one step.
   const undoEntry = {
     _resizeSelector: selector,
     undo: async () => {
-      window.AdnotaLog?.event('resizer', 'undo', { id, sel: selector });
+      window.AdnotaLog?.event('resizer', 'undo', {
+        id, sel: selector,
+        restored: supersededLive.length || undefined,
+      });
       window.AdnotaResizeRules.delete(id);
+      for (const r of supersededLive) {
+        window.AdnotaResizeRules.set(r.id, { selector: r.selector, cssText: r.cssText, kind: r.kind });
+      }
       rebuildResizeStyleTag();
 
       // Force a reflow so the browser re-computes layout against the
@@ -1637,6 +1679,7 @@ async function commitResizeRule(el, cssText, kind) {
         const data = await chrome.storage.local.get(domain);
         if (data[domain]) {
           data[domain].items = data[domain].items.filter(i => i._id !== id);
+          for (const r of supersededStorage) data[domain].items.push(r);
           await chrome.storage.local.set({ [domain]: data[domain] });
         }
       }
@@ -1876,10 +1919,15 @@ document.addEventListener('mousemove', (e) => {
   // impossible to click. Hold the previous hover state until the cursor
   // moves back to the page.
   if (raw && chipCluster.contains(raw)) return;
-  // Same carve-out for the REFLOW button row in the dock — its buttons
-  // operate on the *previous* hover/selection target, so clearing on
-  // mouseenter would leave nothing to act on.
-  if (raw && reflowRow.contains(raw)) return;
+  // Cursor is anywhere on our dock chrome — preserve hover state. Without
+  // this, mouse-over-dock clears hoveredEl, which (in pure-hover mode) hides
+  // the REFLOW row, which shrinks the dock width, which can move the dock
+  // out from under the cursor, which fires another mousemove that re-enables
+  // REFLOW… an infinite flicker loop along the dock's edge. Subsumes the
+  // earlier reflowRow.contains carve-out — the whole dock is a "hover hold"
+  // zone since the user is interacting with our UI, not the page.
+  const dockEl = document.getElementById('adnota-dock');
+  if (raw && dockEl && dockEl.contains(raw)) return;
   if (!raw || isAdnotaElement(raw)) {
     hoveredEl = null;
     rawHoveredEl = null;
@@ -2105,7 +2153,10 @@ function applyOneResize(record) {
   const cssText = record.cssText;
   if (!id || !selector || !cssText) return;
   if (!window.AdnotaResizeRules) return;
-  window.AdnotaResizeRules.set(id, { selector, cssText });
+  // Propagate `kind` so de-dup on subsequent commits can match against
+  // restored rules (e.g., a stored toggle-stack survives reload, then a
+  // new toggle-stack click should replace it, not stack on top).
+  window.AdnotaResizeRules.set(id, { selector, cssText, kind: record.kind });
   if (typeof window.rebuildResizeStyleTag === 'function') {
     window.rebuildResizeStyleTag();
   }
