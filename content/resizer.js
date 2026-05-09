@@ -1866,6 +1866,15 @@ function startPositionDrag(e) {
   dragStartX = e.clientX;
   dragStartY = e.clientY;
 
+  // Clear any latched clip-chip from a prior resize drag — the warning is
+  // about growth, not movement, so it shouldn't ride along into a position
+  // drag on the same selection. (Selection-change paths already clear via
+  // deselectElement; this catches resize → position on the same element.)
+  if (currentClipMatch) {
+    applyClipChipState(null);
+    currentClipMatch = null;
+  }
+
   // Snapshot inline state with priority. After the first commit, a persisted
   // `<style>` rule exists for this selector with top/left/position/right/
   // bottom all at !important. To override that during the drag we must write
@@ -2189,24 +2198,45 @@ function startDrag(e, axis) {
     return [Math.sign(dx || 1) * Math.abs(dy) * startAspect, dy];
   }
 
+  // rAF-throttle the resize drag onMove. Each mousemove triggers a style
+  // write (strategy.applyDuringDrag), a forced layout to read the new rect
+  // (refreshHandles), and another sync read for findGrowthOverflow. On
+  // heavy pages with floated ancestors or huge documents (mamagourmand.com
+  // 27k tall) that round-trip can exceed 16ms, so without coalescing we
+  // drop frames and the handles visibly lag the cursor. Same shape as
+  // startPositionDrag's rAF: sample the latest pointer on every mousemove,
+  // commit visuals on rAF.
+  let rafPending = false;
+  let pendingShift = false;
+  let pendingX = 0;
+  let pendingY = 0;
   function onMove(ev) {
-    let dx = ev.clientX - dragStartX;
-    let dy = ev.clientY - dragStartY;
-    if (axis === 'xy' && ev.shiftKey) {
-      [dx, dy] = constrainToAspect(dx, dy);
-    }
-    strategy.applyDuringDrag(selectedEl, axis, dx, dy, snapshot);
-    refreshHandles();
+    pendingX = ev.clientX;
+    pendingY = ev.clientY;
+    pendingShift = !!ev.shiftKey;
+    if (rafPending) return;
+    rafPending = true;
+    requestAnimationFrame(() => {
+      rafPending = false;
+      if (dragAxis !== axis) return;   // drag ended before this rAF
+      let dx = pendingX - dragStartX;
+      let dy = pendingY - dragStartY;
+      if (axis === 'xy' && pendingShift) {
+        [dx, dy] = constrainToAspect(dx, dy);
+      }
+      strategy.applyDuringDrag(selectedEl, axis, dx, dy, snapshot);
+      refreshHandles();
 
-    // Layout-aware: check for silent growth blockers and toggle the warning
-    // chip. Gated on match change (kind + ancestor + axis) so we only touch
-    // the DOM when something flipped — every-frame style writes are wasted
-    // work on the common no-blocker path.
-    const match = window.AdnotaLayout?.findGrowthOverflow(selectedEl, snapshot) || null;
-    if (clipMatchChanged(match, currentClipMatch)) {
-      applyClipChipState(match);
-      currentClipMatch = match;
-    }
+      // Layout-aware: check for silent growth blockers and toggle the warning
+      // chip. Gated on match change (kind + ancestor + axis) so we only touch
+      // the DOM when something flipped — every-frame style writes are wasted
+      // work on the common no-blocker path.
+      const match = window.AdnotaLayout?.findGrowthOverflow(selectedEl, snapshot) || null;
+      if (clipMatchChanged(match, currentClipMatch)) {
+        applyClipChipState(match);
+        currentClipMatch = match;
+      }
+    });
   }
 
   function onUp(ev) {
