@@ -1095,30 +1095,35 @@ STRATEGIES['grid-item']       = STRATEGIES.block;
 STRATEGIES.positioned         = STRATEGIES.block;
 STRATEGIES['table-component'] = STRATEGIES.block;
 
-// ─── REFLOW: lazy ancestor walk for layout-flow operations ──────────────────
-// Given any element, walks upward until it finds a flex or grid container, or
-// hits documentElement. ~30 reads max. Runs only on hover/selection change
-// and when REFLOW button states need to be evaluated — no caching. The cost-
-// benefit of an eager `document.querySelectorAll('*') + getComputedStyle`
-// scan didn't pay off (large pages have thousands of nodes; we'd revisit on
-// every DOM mutation), and per-hover lazy is plenty fast.
+// ─── REFLOW: container resolution for swap-panels / toggle-stack ────────────
+// Only matches when `el` IS a flex/grid container, or its IMMEDIATE parent
+// is one. No deep walk: a deep walk on a paragraph deep inside a flex-laid
+// page finds the page's top-level flex container and would offer to
+// reorganize the entire page — wildly out of scope from what the user
+// selected. Restricting to (self | direct parent) keeps container verbs
+// close to the user's selection scale. The resizer's bubble-up targeting
+// already lands the selection on a layout-significant ancestor for typical
+// clicks, so reaching the "correct" flex level (e.g., GitHub's PageLayout)
+// usually requires zero or one Shift+Scroll traversal step from the
+// initial click.
 function findReflowContainer(el) {
-  if (!el) return null;
-  let cur = el.parentElement;
-  let depth = 0;
-  while (cur && cur !== document.documentElement && depth < 30) {
-    if (isAdnotaElement(cur)) return null;
-    const cs = getComputedStyle(cur);
-    const d = cs.display;
-    if (d === 'flex' || d === 'inline-flex') {
-      return makeContainerInfo(cur, cs, 'flex');
-    }
-    if (d === 'grid' || d === 'inline-grid') {
-      return makeContainerInfo(cur, cs, 'grid');
-    }
-    cur = cur.parentElement;
-    depth++;
-  }
+  if (!el || isAdnotaElement(el)) return null;
+
+  // Case 1: el itself is a flex/grid container — operate on its children.
+  const ecs = getComputedStyle(el);
+  const ed = ecs.display;
+  if (ed === 'flex' || ed === 'inline-flex') return makeContainerInfo(el, ecs, 'flex');
+  if (ed === 'grid' || ed === 'inline-grid') return makeContainerInfo(el, ecs, 'grid');
+
+  // Case 2: el's immediate parent is flex/grid — operate on the parent.
+  const parent = el.parentElement;
+  if (!parent || parent === document.documentElement) return null;
+  if (isAdnotaElement(parent)) return null;
+  const pcs = getComputedStyle(parent);
+  const pd = pcs.display;
+  if (pd === 'flex' || pd === 'inline-flex') return makeContainerInfo(parent, pcs, 'flex');
+  if (pd === 'grid' || pd === 'inline-grid') return makeContainerInfo(parent, pcs, 'grid');
+
   return null;
 }
 
@@ -1133,11 +1138,15 @@ function makeContainerInfo(el, cs, kind) {
     if (r.width === 0 && r.height === 0) continue;
     visibleChildren.push(c);
   }
+  // Block-flow is intrinsically vertical, so set direction='column' so
+  // every downstream consumer (nextOrderDirection sort axis, label flip)
+  // works the same way as flex-column without needing kind-specific checks.
+  const direction = kind === 'block' ? 'column' : (cs.flexDirection || 'row');
   return {
     el,
-    kind,                             // 'flex' | 'grid'
-    direction: cs.flexDirection || 'row',  // meaningful only for flex
-    reversed: (cs.flexDirection || '').includes('-reverse'),
+    kind,                             // 'flex' | 'grid' | 'block'
+    direction,
+    reversed: direction.includes('-reverse'),
     childCount: visibleChildren.length,
     visibleChildren,
   };
@@ -1154,9 +1163,22 @@ function findReflowChildContext(el) {
   if (isAdnotaElement(parent)) return null;
   const pcs = getComputedStyle(parent);
   const d = pcs.display;
-  if (d !== 'flex' && d !== 'inline-flex' && d !== 'grid' && d !== 'inline-grid') return null;
-  const kind = (d === 'grid' || d === 'inline-grid') ? 'grid' : 'flex';
-  return { container: makeContainerInfo(parent, pcs, kind), child: el };
+  if (d === 'flex' || d === 'inline-flex' || d === 'grid' || d === 'inline-grid') {
+    const kind = (d === 'grid' || d === 'inline-grid') ? 'grid' : 'flex';
+    return { container: makeContainerInfo(parent, pcs, kind), child: el };
+  }
+  // Block-flow fallback: enables DOM-reorder send-to-end/start when the
+  // parent is a layout-significant block container with multiple visible
+  // children. CSS verbs (flex-direction, order) don't apply here — the
+  // commit path forks to commitDomReorder. Layout-significance gating
+  // keeps inline tags / tiny wrappers from offering meaningless reorder.
+  if (isLayoutSignificant(parent)) {
+    const info = makeContainerInfo(parent, pcs, 'block');
+    if (info.visibleChildren.length >= 2) {
+      return { container: info, child: el };
+    }
+  }
+  return null;
 }
 
 // Determine which way an `order` move on `child` should go, based on its
@@ -1209,14 +1231,20 @@ function pickVisuallyFirstChild(visibleChildren) {
 }
 
 // Resolve a verb to the element it would act on (for both dispatching and
-// the amber overlay preview). Anchored on selectedEl first (stable user
-// commitment), falling back to hoveredEl when nothing is selected. Picking
-// selection over hover keeps the REFLOW target stable across the layout
-// reflows the verbs themselves cause — hover bubble-up can otherwise drift
-// to a different ancestor after a flex-direction flip changes element
-// rect sizes, making the buttons "act on a different container each click."
+// the amber overlay preview). Anchored on selectedEl ONLY — REFLOW buttons
+// require an explicit selection. Hovering alone doesn't enable them.
+//
+// Why selection-only: the buttons sit in the dock, far from the page
+// element. During pure hover the user has no visual commitment to "this
+// thing" until they mouse onto a button (and only then does the amber
+// overlay flash). With selection, the dotted blue outline is a persistent
+// "we're operating on this" cue, so by the time the user reaches the
+// REFLOW button their target is unambiguous. Selection also stabilizes
+// the target across the layout reflows the verbs themselves cause —
+// hover bubble-up can otherwise drift to a different ancestor after a
+// flex-direction flip changes element rect sizes.
 function getReflowTarget(verb) {
-  const anchorEl = selectedEl || hoveredEl;
+  const anchorEl = selectedEl;
   if (!anchorEl) return null;
 
   if (verb === 'swap-panels') {
@@ -1271,10 +1299,15 @@ async function applyReflowVerb(verb) {
   } else if (verb === 'order-end') {
     // target.direction is computed from visual position (not numeric order)
     // so the first click always produces the visible move the label
-    // promises. The numeric `order` value flips for reverse containers so
-    // CSS row-reverse / column-reverse don't reverse the user's intent.
-    const newOrder = orderValueForDirection(target.direction, target.container);
-    await commitResizeRule(target.el, `order: ${newOrder} !important`, 'reflow:order-end');
+    // promises. Block-flow forks to DOM reorder because CSS `order` only
+    // applies to flex/grid children; flex/grid stays on the cheaper, more
+    // framework-safe stylesheet path.
+    if (target.container.kind === 'block') {
+      await commitDomReorder(target.el, target.container, target.direction);
+    } else {
+      const newOrder = orderValueForDirection(target.direction, target.container);
+      await commitResizeRule(target.el, `order: ${newOrder} !important`, 'reflow:order-end');
+    }
   }
 
   // The page reflowed — selection box, handles, and overlays are all now
@@ -1341,8 +1374,9 @@ function updateReflowButtonStates() {
   // matches the action — direction='start' means an arrow pointing left.
   const orderSvg = reflowEndBtn.querySelector('svg');
   if (orderTarget) {
-    const isColumn = orderTarget.container.kind === 'flex'
-      && orderTarget.container.direction.startsWith('column');
+    // Block-flow direction is normalized to 'column' in makeContainerInfo,
+    // so this single check covers flex-column AND block intrinsic-vertical.
+    const isColumn = orderTarget.container.direction.startsWith('column');
     const axis = isColumn ? 'column' : 'row';
     const where = orderTarget.direction;  // 'start' | 'end'
     reflowEndBtn.setAttribute('data-adnota-tooltip', `Send to ${where} of the ${axis}`);
@@ -1423,6 +1457,27 @@ async function resetElement(el) {
   }
   rebuildResizeStyleTag();
 
+  // Reorder rules key on sourceEl ref, not selector — walk the live Map and
+  // unwind any rule whose source IS this element (or whose source resolves
+  // to this element by anchor). Reverse the move via originalPrevAnchor and
+  // detach the observer. Storage rows for matching reorders are dropped in
+  // the storage-filter pass below alongside CSS rules.
+  for (const [rid, rrule] of window.AdnotaReorderRules) {
+    if (rrule.sourceEl !== el) continue;
+    detachReorderGuard(rrule);
+    try {
+      if (rrule.originalPrevAnchor) {
+        const m = window.FuzzyAnchor?.findMatch?.(rrule.originalPrevAnchor);
+        if (m?.element && m.confidence >= REORDER_SOURCE_CONFIDENCE_MIN) {
+          rrule.parentEl.insertBefore(rrule.sourceEl, m.element.nextElementSibling);
+        }
+      } else if (rrule.parentEl?.isConnected) {
+        rrule.parentEl.insertBefore(rrule.sourceEl, firstNonAdnotaChild(rrule.parentEl));
+      }
+    } catch (_) {}
+    window.AdnotaReorderRules.delete(rid);
+  }
+
   // Clear inline style leftovers
   el.style.removeProperty('width');
   el.style.removeProperty('min-width');
@@ -1441,14 +1496,19 @@ async function resetElement(el) {
   el.style.removeProperty('order');
   void el.offsetHeight; // force reflow
 
-  // Remove from storage
+  // Remove from storage — both CSS-keyed (selector match) and reorder-keyed
+  // (sourceAnchor.cssSelector match, since reorder rows have no top-level
+  // selector field).
   if (window.AdnotaStorage) {
     const data = await chrome.storage.local.get(domain);
     if (data[domain]) {
-      data[domain].items = data[domain].items.filter(
-        i => !(i.action === 'RESIZE' && i.selector === selector &&
-               (i.path === path || i.path === '*'))
-      );
+      data[domain].items = data[domain].items.filter(i => {
+        if (i.action !== 'RESIZE') return true;
+        if (!(i.path === path || i.path === '*')) return true;
+        if (i.selector === selector) return false;
+        if (i.kind === 'reflow:dom-reorder' && i.sourceAnchor?.cssSelector === selector) return false;
+        return true;
+      });
       await chrome.storage.local.set({ [domain]: data[domain] });
     }
   }
@@ -1696,6 +1756,365 @@ async function commitResizeRule(el, cssText, kind) {
 // Drag-resize commit: thin wrapper over commitResizeRule with no `kind`.
 async function persistResize(el, cssText) {
   await commitResizeRule(el, cssText);
+}
+
+// ─── REFLOW v1.5: DOM-reorder for block-flow pages ──────────────────────────
+// CSS `order` only applies to flex/grid children, so block-flow pages need a
+// physical DOM move (parent.appendChild / insertBefore) to reorder. The move
+// itself is cheap, but it has to survive: (a) page reload (replay via
+// FuzzyAnchor in restorer), (b) framework reconciliation (per-rule
+// MutationObserver re-asserts the move, capped at REORDER_GUARD_MAX_FIGHTS),
+// and (c) parent unmount (validateReorderRules piggybacks on the restorer's
+// existing debounced pass to re-resolve via parentAnchor when the cached
+// parentEl becomes detached).
+//
+// Storage shape mirrors RESIZE so scratchpad coexistence is automatic, but
+// the rule lives in its own runtime Map (AdnotaReorderRules) — distinct
+// from AdnotaResizeRules because reorder rules don't produce CSS and must
+// not flow through rebuildResizeStyleTag.
+window.AdnotaReorderRules = new Map();   // id → live rule record
+
+const REORDER_GUARD_MAX_FIGHTS = 10;
+const REORDER_PARENT_CONFIDENCE_MIN = 60;  // higher than the 40 used for content
+const REORDER_SOURCE_CONFIDENCE_MIN = 40;
+const _reorderGiveUpToasted = new Set();   // session-scoped; one toast per source
+
+function previousNonAdnotaSibling(el) {
+  let cur = el.previousElementSibling;
+  while (cur && isAdnotaElement(cur)) cur = cur.previousElementSibling;
+  return cur;
+}
+
+function firstNonAdnotaChild(parent) {
+  let cur = parent.firstElementChild;
+  while (cur && isAdnotaElement(cur)) cur = cur.nextElementSibling;
+  return cur;
+}
+
+function lastNonAdnotaChild(parent) {
+  let cur = parent.lastElementChild;
+  while (cur && isAdnotaElement(cur)) cur = cur.previousElementSibling;
+  return cur;
+}
+
+function applyReorderMove(source, parent, toPosition) {
+  if (toPosition === 'first') {
+    parent.insertBefore(source, firstNonAdnotaChild(parent));
+  } else {
+    parent.appendChild(source);
+  }
+}
+
+function positionMatchesIntent(rule) {
+  const { parentEl, sourceEl, toPosition } = rule;
+  if (sourceEl.parentElement !== parentEl) return false;
+  if (toPosition === 'first') return firstNonAdnotaChild(parentEl) === sourceEl;
+  return lastNonAdnotaChild(parentEl) === sourceEl;
+}
+
+// Per-rule observer. Watches direct-child mutations on parentEl. When the
+// framework moves source out of position, re-applies our move. Caps fights
+// to prevent infinite loops with frameworks that diff aggressively. Re-
+// resolves sourceEl via FuzzyAnchor if the framework replaced the node
+// entirely (zombie ref) — fighting a stale ref produces a flicker war that
+// burns through the fight cap to no effect.
+function attachReorderGuard(rule) {
+  const obs = new MutationObserver(() => {
+    if (rule.fights >= REORDER_GUARD_MAX_FIGHTS) {
+      obs.disconnect();
+      rule.observer = null;
+      window.AdnotaLog?.event('resizer', 'reorder-guard-gave-up', {
+        sel: rule.sourceAnchor?.cssSelector,
+      });
+      const key = rule.sourceAnchor?.cssSelector || '?';
+      if (!_reorderGiveUpToasted.has(key)) {
+        _reorderGiveUpToasted.add(key);
+        window.AdnotaUI?.showToast?.(
+          "Couldn't keep this in place — reverted and removed.",
+          { id: 'adnota-reorder-giveup-toast', timeout: 4000 }
+        );
+      }
+      // Revert the move + drop from Map + storage. Without this, the page
+      // is left in an unstable state (whichever side won the last fight)
+      // and the storage entry persists into the next reload where it'll
+      // lose the fight again — same toast, same failure, same bad UX. By
+      // reverting on give-up, the failure is honest: original layout is
+      // back, entry is gone, no phantom rules dragging on reloads.
+      revertReorderRule(rule);
+      return;
+    }
+    if (!rule.sourceEl?.isConnected) {
+      const m = window.FuzzyAnchor?.findMatch?.(rule.sourceAnchor);
+      if (m?.element && m.confidence >= REORDER_SOURCE_CONFIDENCE_MIN) rule.sourceEl = m.element;
+      else return;
+    }
+    if (positionMatchesIntent(rule)) return;
+    rule.fights++;
+    applyReorderMove(rule.sourceEl, rule.parentEl, rule.toPosition);
+  });
+  obs.observe(rule.parentEl, { childList: true, subtree: false });
+  rule.observer = obs;
+}
+
+// Used by attachReorderGuard's give-up path. Moves source back to its
+// original previous-sibling position (or first-child if it had none),
+// drops the rule from the live Map, and removes the storage entry. Async
+// because the storage write is async; observer callback doesn't await it.
+async function revertReorderRule(rule) {
+  try {
+    if (rule.originalPrevAnchor) {
+      const m = window.FuzzyAnchor?.findMatch?.(rule.originalPrevAnchor);
+      if (m?.element && m.confidence >= REORDER_SOURCE_CONFIDENCE_MIN
+          && rule.parentEl?.isConnected && rule.sourceEl?.isConnected) {
+        rule.parentEl.insertBefore(rule.sourceEl, m.element.nextElementSibling);
+      }
+    } else if (rule.parentEl?.isConnected && rule.sourceEl?.isConnected) {
+      rule.parentEl.insertBefore(rule.sourceEl, firstNonAdnotaChild(rule.parentEl));
+    }
+  } catch (_) {}
+
+  // Drop from live Map. rule.id is set at construction time (commit + restore
+  // + applyOneReorder); falls back to ref-equality search if missing.
+  if (rule.id && window.AdnotaReorderRules?.has(rule.id)) {
+    window.AdnotaReorderRules.delete(rule.id);
+  } else {
+    for (const [oid, r] of window.AdnotaReorderRules || []) {
+      if (r === rule) { window.AdnotaReorderRules.delete(oid); break; }
+    }
+  }
+
+  // Drop from storage so reload doesn't replay a rule that already lost.
+  if (window.AdnotaStorage && rule.id) {
+    try {
+      const domain = location.hostname;
+      const data = await chrome.storage.local.get(domain);
+      if (data[domain]) {
+        data[domain].items = data[domain].items.filter(i => i._id !== rule.id);
+        await chrome.storage.local.set({ [domain]: data[domain] });
+      }
+    } catch (_) {}
+  }
+
+  try { updateReflowButtonStates(); } catch (_) {}
+  try { refreshHandles?.(); } catch (_) {}
+  window.AdnotaLog?.event('resizer', 'reorder-reverted-on-giveup', {
+    id: rule.id, sel: rule.sourceAnchor?.cssSelector,
+  });
+}
+
+function detachReorderGuard(rule) {
+  if (rule.observer) { rule.observer.disconnect(); rule.observer = null; }
+}
+
+// Catches the parent-unmount case the per-rule observer can't see: if the
+// framework replaces parentEl above our subtree, our observer is attached
+// to a detached node and fires nothing. Restorer calls this on its
+// debounced mutation pass.
+function validateReorderRules() {
+  for (const [, rule] of window.AdnotaReorderRules) {
+    if (rule.parentEl?.isConnected) continue;
+    const pm = window.FuzzyAnchor?.findMatch?.(rule.parentAnchor);
+    if (!pm?.element || pm.confidence < REORDER_PARENT_CONFIDENCE_MIN) continue;
+    detachReorderGuard(rule);
+    rule.parentEl = pm.element;
+    if (!rule.sourceEl?.isConnected) {
+      const sm = window.FuzzyAnchor?.findMatch?.(rule.sourceAnchor);
+      if (!sm?.element || sm.confidence < REORDER_SOURCE_CONFIDENCE_MIN) continue;
+      rule.sourceEl = sm.element;
+    }
+    rule.fights = 0;   // new parent gets a fresh fight budget
+    applyReorderMove(rule.sourceEl, rule.parentEl, rule.toPosition);
+    attachReorderGuard(rule);
+    window.AdnotaLog?.event('resizer', 'reorder-parent-revalidated', {
+      sel: rule.sourceAnchor?.cssSelector,
+    });
+  }
+}
+
+// Reorder commit. Mirrors commitResizeRule's dedup/storage/undo shape but
+// keys on FuzzyAnchor instead of selector since DOM-moved entries don't
+// have a stable selector after the move.
+async function commitDomReorder(source, container, direction) {
+  const parent = container.el;
+  const id = Date.now() + '-' + Math.random().toString(36).slice(2, 8);
+  const toPosition = direction === 'start' ? 'first' : 'last';
+  const label = `→ moved to ${direction} of parent`;
+
+  const originalPrev = previousNonAdnotaSibling(source);
+  const sourceAnchor = window.FuzzyAnchor.generate(source);
+  const parentAnchor = window.FuzzyAnchor.generate(parent);
+  const originalPrevAnchor = originalPrev ? window.FuzzyAnchor.generate(originalPrev) : null;
+
+  // Live-Map dedup: identity by sourceEl ref. AdnotaReorderRules holds only
+  // reorder rules, so no kind check is needed (and adding one would just be
+  // a footgun if a code path forgot to stamp the field).
+  const supersededLive = [];
+  for (const [oldId, oldRule] of window.AdnotaReorderRules) {
+    if (oldRule.sourceEl === source) {
+      supersededLive.push({ id: oldId, ...oldRule });
+      detachReorderGuard(oldRule);
+      window.AdnotaReorderRules.delete(oldId);
+    }
+  }
+
+  applyReorderMove(source, parent, toPosition);
+
+  const liveRule = {
+    id,                            // self-reference so observer give-up can revert + delete
+    sourceEl: source, parentEl: parent,
+    sourceAnchor, parentAnchor, originalPrevAnchor, toPosition,
+    observer: null, fights: 0,
+  };
+  window.AdnotaReorderRules.set(id, liveRule);
+  attachReorderGuard(liveRule);
+
+  window.AdnotaLog?.event('resizer', 'reflow-dom-reorder-commit', {
+    id, sel: sourceAnchor?.cssSelector, toPosition,
+    superseded: supersededLive.length || undefined,
+  });
+
+  const domain = location.hostname;
+  const path = '*';
+  const entry = {
+    action: 'RESIZE', kind: 'reflow:dom-reorder',
+    parentAnchor, sourceAnchor, originalPrevAnchor, toPosition,
+    label,
+    _id: id, path, version: 1, timestamp: Date.now(),
+  };
+
+  // Storage dedup: drop prior reorder rows whose sourceAnchor.cssSelector
+  // matches before pushing the new entry. Snapshot for undo so a Ctrl+Z
+  // restores the prior state, not the natural DOM order. Mirrors the
+  // selector+kind dedup in commitResizeRule but keyed on FuzzyAnchor since
+  // reorder entries don't have a top-level `selector` field.
+  const supersededStorage = [];
+  if (window.AdnotaStorage) {
+    const data = await chrome.storage.local.get(domain);
+    const domainData = data[domain] || { items: [] };
+    const supersededIds = new Set(supersededLive.map(r => r.id));
+    domainData.items = domainData.items.filter(item => {
+      if (supersededIds.has(item._id)) {
+        supersededStorage.push({ ...item });
+        return false;
+      }
+      const sameByAnchor = item.kind === 'reflow:dom-reorder'
+        && item.sourceAnchor?.cssSelector === sourceAnchor?.cssSelector;
+      if (sameByAnchor && !supersededIds.has(item._id)) {
+        supersededStorage.push({ ...item });
+        return false;
+      }
+      return true;
+    });
+    domainData.items.push(entry);
+    await chrome.storage.local.set({ [domain]: domainData });
+  }
+
+  // Undo: detach guard, reverse our move via originalPrevAnchor, drop from
+  // Map + storage, restore any superseded rules. Each superseded restore
+  // is wrapped because the page can mutate between commit and undo and
+  // older anchors may no longer resolve cleanly.
+  const undoEntry = {
+    _resizeSelector: sourceAnchor?.cssSelector,
+    undo: async () => {
+      window.AdnotaLog?.event('resizer', 'undo', { id, kind: 'reflow:dom-reorder' });
+      detachReorderGuard(liveRule);
+      try {
+        if (originalPrevAnchor) {
+          const m = window.FuzzyAnchor?.findMatch?.(originalPrevAnchor);
+          if (m?.element && m.confidence >= REORDER_SOURCE_CONFIDENCE_MIN) {
+            parent.insertBefore(source, m.element.nextElementSibling);
+          } else {
+            window.AdnotaLog?.event('resizer', 'reorder-undo-degraded', { id });
+          }
+        } else {
+          parent.insertBefore(source, firstNonAdnotaChild(parent));
+        }
+      } catch (_) {
+        window.AdnotaLog?.event('resizer', 'reorder-undo-failed', { id });
+      }
+      window.AdnotaReorderRules.delete(id);
+      if (window.AdnotaStorage) {
+        const data = await chrome.storage.local.get(domain);
+        if (data[domain]) {
+          data[domain].items = data[domain].items.filter(i => i._id !== id);
+          for (const r of supersededStorage) data[domain].items.push(r);
+          await chrome.storage.local.set({ [domain]: data[domain] });
+        }
+      }
+      // Restore superseded live rules. Each in its own try — a page that
+      // mutated mid-session may have made the older anchors unresolvable.
+      for (const r of supersededLive) {
+        try {
+          const restored = {
+            sourceEl: r.sourceEl, parentEl: r.parentEl,
+            sourceAnchor: r.sourceAnchor, parentAnchor: r.parentAnchor,
+            originalPrevAnchor: r.originalPrevAnchor,
+            toPosition: r.toPosition,
+            observer: null, fights: 0,
+          };
+          if (restored.sourceEl?.isConnected && restored.parentEl?.isConnected) {
+            applyReorderMove(restored.sourceEl, restored.parentEl, restored.toPosition);
+            attachReorderGuard(restored);
+            window.AdnotaReorderRules.set(r.id, restored);
+          }
+        } catch (_) {
+          window.AdnotaLog?.event('resizer', 'superseded-restore-failed', { id: r.id });
+        }
+      }
+      window.AdnotaUndo.remove(undoEntry);
+      refreshHandles();
+      updateReflowButtonStates();
+    },
+  };
+  window.AdnotaUndo.push(undoEntry);
+  updateReflowButtonStates();
+  return id;
+}
+
+// Scratchpad trash → reverse the move + drop from Map. Mirrors removeOneResize
+// but operates on AdnotaReorderRules.
+function removeOneReorder(id) {
+  const rule = window.AdnotaReorderRules?.get(id);
+  if (!rule) return;
+  detachReorderGuard(rule);
+  try {
+    if (rule.originalPrevAnchor) {
+      const m = window.FuzzyAnchor?.findMatch?.(rule.originalPrevAnchor);
+      if (m?.element && m.confidence >= REORDER_SOURCE_CONFIDENCE_MIN) {
+        rule.parentEl.insertBefore(rule.sourceEl, m.element.nextElementSibling);
+      }
+    } else if (rule.parentEl?.isConnected && rule.sourceEl?.isConnected) {
+      rule.parentEl.insertBefore(rule.sourceEl, firstNonAdnotaChild(rule.parentEl));
+    }
+  } catch (_) {}
+  window.AdnotaReorderRules.delete(id);
+  try { refreshHandles?.(); } catch (_) {}
+  window.AdnotaLog?.event('resizer', 'reorder-remove-one', { id });
+}
+
+// Scratchpad undo of a trashed entry → re-apply the move from a storage
+// record. Mirrors applyOneResize.
+function applyOneReorder(record) {
+  if (!record || record.kind !== 'reflow:dom-reorder') return;
+  const id = record._id;
+  if (!id || !window.AdnotaReorderRules) return;
+  const pm = window.FuzzyAnchor?.findMatch?.(record.parentAnchor);
+  const sm = window.FuzzyAnchor?.findMatch?.(record.sourceAnchor);
+  if (!pm?.element || pm.confidence < REORDER_PARENT_CONFIDENCE_MIN) return;
+  if (!sm?.element || sm.confidence < REORDER_SOURCE_CONFIDENCE_MIN) return;
+  const liveRule = {
+    id,
+    sourceEl: sm.element, parentEl: pm.element,
+    sourceAnchor: record.sourceAnchor,
+    parentAnchor: record.parentAnchor,
+    originalPrevAnchor: record.originalPrevAnchor,
+    toPosition: record.toPosition,
+    observer: null, fights: 0,
+  };
+  applyReorderMove(liveRule.sourceEl, liveRule.parentEl, liveRule.toPosition);
+  attachReorderGuard(liveRule);
+  window.AdnotaReorderRules.set(id, liveRule);
+  window.AdnotaLog?.event('resizer', 'reorder-apply-one', { id });
 }
 
 // ─── Unstick chip: apply / remove the override ──────────────────────────────
@@ -2170,6 +2589,14 @@ function applyOneResize(record) {
 window.AdnotaResizer = Object.assign(window.AdnotaResizer || {}, {
   removeOne: removeOneResize,
   applyOne: applyOneResize,
+  // DOM-reorder (v1.5) — exposed so restorer can replay rules and
+  // scratchpad trash can clean them up.
+  removeOneReorder,
+  applyOneReorder,
+  applyReorderMove,
+  attachReorderGuard,
+  detachReorderGuard,
+  validateReorderRules,
 });
 
 })();
