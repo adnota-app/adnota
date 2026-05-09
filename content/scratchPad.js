@@ -564,10 +564,15 @@
     if (modeMenuEl || !modeBtnEl) return;
     const menu = document.createElement('div');
     setClass(menu, 'adnota-scratchpad-modemenu');
-    // Mirror the class as ID — the menu is appended to documentElement
-    // (it can't live inside the panel because the panel has overflow:hidden
-    // for the resize handle). Its CSS rules scope off this ID rather than
-    // the panel root, so they keep specificity-winning against host CSS.
+    // The menu is appended to documentElement (it can't live inside the
+    // panel because the panel has overflow:hidden for the resize handle).
+    // CSS rules scope off `[data-role~="adnota-scratchpad-modemenu"]
+    // [data-adnota-ui="1"]` — specificity (0,2,0) beats host bleed AND
+    // survives the AdBlock scrambler that also rewrites `id` attributes
+    // on dynamically-inserted DOM (proven on mamagourmand.com — the panel
+    // root's id happens to survive, but freshly-created child IDs don't).
+    // The id below is just a debugging convenience for console queries;
+    // CSS does NOT depend on it.
     menu.id = 'adnota-scratchpad-modemenu';
     menu.setAttribute('data-adnota-ui', '1');
 
