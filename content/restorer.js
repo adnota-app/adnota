@@ -191,6 +191,9 @@ async function _performRestoration(trigger) {
         // end of *its own parent* doesn't need fuzzy matching, just a ref.
         // parentAnchor is kept on the storage entry for validateReorderRules
         // (the parent-unmount fallback path), but not consulted here.
+        // Keep in sync with REORDER_SOURCE_CONFIDENCE_MIN in resizer.js —
+        // a number small enough that exporting it would be heavier than
+        // grepping if either drifts.
         const SOURCE_MIN = 40;
         const sm = window.FuzzyAnchor?.findMatch?.(item.sourceAnchor);
         if (!sm?.element || sm.confidence < SOURCE_MIN) {
