@@ -16,6 +16,12 @@ const MIN_HEIGHT = 60;
 // — just recolored to the resizer's blue accent.
 const hoverOverlay = window.AdnotaUI.createHoverOverlay('adnota-resizer-overlay', '#3b82f6', 'rgba(59, 130, 246, 0.09)');
 
+// ─── Reflow overlay (amber) ─────────────────────────────────────────────────
+// Separate overlay used to preview the *target* of a REFLOW button (the flex/
+// grid container or the child whose `order` will change). Mutually exclusive
+// with the blue hover overlay — see updateReflowOverlayForVerb / hideReflowOverlay.
+const reflowHoverOverlay = window.AdnotaUI.createHoverOverlay('adnota-reflow-overlay', '#f59e0b', 'rgba(245, 158, 11, 0.10)');
+
 // ─── Hover chip cluster (top-right corner of hover outline) ─────────────────
 // Three chips share a flex cluster pinned at the overlay's top-right. The
 // dimension badge is read-only; the action chips surface structural overrides
@@ -59,7 +65,9 @@ chipCluster.appendChild(dimensionBadge);
 // chrome (drag handle + logo + info + trash + undo) so trash/undo stay reachable
 // even when nothing is hovered or selected.
 // Dock body — mounted into AdnotaDock when resizer mode is active. The dock
-// owns drag handle + V logo + tool row; we own the info span + trash + undo.
+// owns drag handle + V logo + tool row; we own the info span + trash + undo
+// + the contextual REFLOW buttons (added after undo with a divider, hidden
+// when nothing applies).
 const resizerBody = document.createElement('div');
 resizerBody.style.display = 'inline-flex';
 resizerBody.style.alignItems = 'center';
@@ -89,11 +97,75 @@ const resizerHelpBtn = window.AdnotaUI.createHelpButton({
 });
 resizerBody.appendChild(resizerHelpBtn);
 
-// Divider
+// Static divider (always visible, between help and the rest)
 resizerBody.appendChild(Object.assign(document.createElement('div'), { className: 'adnota-toolbar-divider adnota-toolbar-divider-blue' }));
+
+// ── REFLOW group (inline, contextual) ──────────────────────────────────────
+// Three layout-flow buttons: Swap panels, Toggle stack, Send to end. Each
+// enables only when the page's flex/grid context supports it; the group +
+// trailing divider hide together when none enable. Sits between the static
+// divider and trash/undo so persistent utility buttons stay last (matches
+// every other tool dock). Click handlers route through applyReflowVerb
+// (function declarations hoist).
+const reflowRow = document.createElement('div');
+reflowRow.id = 'adnota-resizer-reflow-row';
+reflowRow.style.display = 'none';   // shown by updateReflowButtonStates
+reflowRow.style.gap = '4px';
+reflowRow.style.alignItems = 'center';
+
+// Trailing divider — separates REFLOW group from trash/undo. Hidden when
+// the group is hidden so single-row dock collapses cleanly to the original
+// `[?] | [trash] [undo]` layout.
+const reflowDivider = Object.assign(document.createElement('div'), { className: 'adnota-toolbar-divider adnota-toolbar-divider-blue' });
+reflowDivider.style.display = 'none';
+
+// Swap panels — flex: flex-direction toggle. Grid: order:-1 on visually-first child.
+const REFLOW_SWAP_ICON = '<rect x="2.5" y="5.5" width="5" height="9" rx="1"/><rect x="12.5" y="5.5" width="5" height="9" rx="1"/><path d="M7.5 8 L12.5 12"/><path d="M7.5 12 L12.5 8"/>';
+const reflowSwapBtn = window.AdnotaUI.createToolbarIconButton(
+  REFLOW_SWAP_ICON,
+  'Swap panels',
+  () => { if (reflowSwapBtn.dataset.disabled !== '1') applyReflowVerb('swap-panels'); }
+);
+
+// Toggle stack — flex-only. Toggles row ↔ column.
+const REFLOW_STACK_ICON = '<rect x="3" y="3.5" width="14" height="5" rx="1"/><rect x="3" y="11.5" width="14" height="5" rx="1"/>';
+const reflowStackBtn = window.AdnotaUI.createToolbarIconButton(
+  REFLOW_STACK_ICON,
+  'Stack vertically',
+  () => { if (reflowStackBtn.dataset.disabled !== '1') applyReflowVerb('toggle-stack'); }
+);
+
+// Send to end / start — applies order on the hovered/selected flex or grid child.
+const REFLOW_END_ICON = '<path d="M3 10 L12 10"/><path d="M9 7 L12 10 L9 13"/><path d="M16 4 L16 16"/>';
+const reflowEndBtn = window.AdnotaUI.createToolbarIconButton(
+  REFLOW_END_ICON,
+  'Send to end of the row',
+  () => { if (reflowEndBtn.dataset.disabled !== '1') applyReflowVerb('order-end'); }
+);
+
+// Mouseenter/leave on each button drives the amber hover-overlay mutex.
+for (const btn of [reflowSwapBtn, reflowStackBtn, reflowEndBtn]) {
+  const verb = btn === reflowSwapBtn ? 'swap-panels'
+            : btn === reflowStackBtn ? 'toggle-stack'
+            : 'order-end';
+  btn.addEventListener('mouseenter', () => {
+    if (btn.dataset.disabled === '1') return;
+    showReflowOverlayForVerb(verb);
+  });
+  btn.addEventListener('mouseleave', () => {
+    hideReflowOverlay();
+  });
+}
+
+reflowRow.appendChild(reflowSwapBtn);
+reflowRow.appendChild(reflowStackBtn);
+reflowRow.appendChild(reflowEndBtn);
+resizerBody.appendChild(reflowRow);
+resizerBody.appendChild(reflowDivider);
 
 // Trash — opens scratch pad on Edits / Resized for per-row review/delete.
 // Badge auto-managed by createTrashButton when mode/filter are passed.
+// Trash + undo always come last to match the rest of the tool docks.
 resizerBody.appendChild(window.AdnotaUI.createTrashButton({
   singular: 'resize',
   plural: 'resizes',
@@ -126,13 +198,11 @@ function updateHUD() {
   let html = '';
 
   if (selectedEl) {
-    // Selected state: dimensions live on the selection box itself (the
-    // top-right chip next to the reset button), so the HUD just carries
-    // the action hint here. When the layout context flags structural
-    // gesture inversion (flex-end pinned in a fixed container), surface
-    // the warning + a hint to use the parent chip.
-    html += `<span style="color:#6ee7b7">Selected</span>`;
-    html += dot;
+    // Selected state: the dotted blue outline already signals selection,
+    // so the HUD info area carries the action hint only — no redundant
+    // "Selected" badge. When the layout context flags structural gesture
+    // inversion (flex-end pinned in a fixed container), surface the
+    // warning + a hint to use the parent chip.
     const ctx = selectedEl._adnotaLayoutContext;
     if (ctx?.isFlexEndInFixedContainer) {
       html += `<span style="color:#fbbf24">right handle grows leftward (flex pinned)</span>`;
@@ -637,6 +707,7 @@ function selectElement(el) {
 
   updateSelectionChip();
   updateHUD();
+  updateReflowButtonStates();
 }
 
 // Re-evaluate the selection chips' labels/visibility against the current
@@ -717,6 +788,7 @@ function deselectElement() {
   selectionInfiniteChip = null;
   selectionParentChip = null;
   if (hadSelection && window.AdnotaState.mode === 'resizer') updateHUD();
+  updateReflowButtonStates();
 }
 
 function createHandle(className, cursor) {
@@ -1020,6 +1092,294 @@ STRATEGIES['grid-item']       = STRATEGIES.block;
 STRATEGIES.positioned         = STRATEGIES.block;
 STRATEGIES['table-component'] = STRATEGIES.block;
 
+// ─── REFLOW: lazy ancestor walk for layout-flow operations ──────────────────
+// Given any element, walks upward until it finds a flex or grid container, or
+// hits documentElement. ~30 reads max. Runs only on hover/selection change
+// and when REFLOW button states need to be evaluated — no caching. The cost-
+// benefit of an eager `document.querySelectorAll('*') + getComputedStyle`
+// scan didn't pay off (large pages have thousands of nodes; we'd revisit on
+// every DOM mutation), and per-hover lazy is plenty fast.
+function findReflowContainer(el) {
+  if (!el) return null;
+  let cur = el.parentElement;
+  let depth = 0;
+  while (cur && cur !== document.documentElement && depth < 30) {
+    if (isAdnotaElement(cur)) return null;
+    const cs = getComputedStyle(cur);
+    const d = cs.display;
+    if (d === 'flex' || d === 'inline-flex') {
+      return makeContainerInfo(cur, cs, 'flex');
+    }
+    if (d === 'grid' || d === 'inline-grid') {
+      return makeContainerInfo(cur, cs, 'grid');
+    }
+    cur = cur.parentElement;
+    depth++;
+  }
+  return null;
+}
+
+// Build the metadata object the verb dispatchers need. `visibleChildren`
+// excludes Adnota chrome and zero-rect children so swap/order ops act on
+// the elements the user actually sees.
+function makeContainerInfo(el, cs, kind) {
+  const visibleChildren = [];
+  for (const c of el.children) {
+    if (isAdnotaElement(c)) continue;
+    const r = c.getBoundingClientRect();
+    if (r.width === 0 && r.height === 0) continue;
+    visibleChildren.push(c);
+  }
+  return {
+    el,
+    kind,                             // 'flex' | 'grid'
+    direction: cs.flexDirection || 'row',  // meaningful only for flex
+    reversed: (cs.flexDirection || '').includes('-reverse'),
+    childCount: visibleChildren.length,
+    visibleChildren,
+  };
+}
+
+// If `el` is a direct flex/grid child, return { container, child }. Otherwise
+// null. The walk uses immediate parent only — `order` operates on direct
+// children of the flex/grid container.
+function findReflowChildContext(el) {
+  if (!el || !el.parentElement) return null;
+  if (isAdnotaElement(el)) return null;
+  const parent = el.parentElement;
+  if (parent === document.documentElement) return null;
+  if (isAdnotaElement(parent)) return null;
+  const pcs = getComputedStyle(parent);
+  const d = pcs.display;
+  if (d !== 'flex' && d !== 'inline-flex' && d !== 'grid' && d !== 'inline-grid') return null;
+  const kind = (d === 'grid' || d === 'inline-grid') ? 'grid' : 'flex';
+  return { container: makeContainerInfo(parent, pcs, kind), child: el };
+}
+
+// Determine which way an `order` move on `child` should go, based on its
+// *visual* position among siblings. Returns 'start' if the next click
+// should send it visually first, 'end' if last, or null if there's only
+// one visible child (nothing to reorder against). Anchored on visual rect
+// so it handles row-reverse / column-reverse correctly — the actual order
+// value still gets reverse-aware translation in applyReflowVerb.
+function nextOrderDirection(child, container) {
+  if (!container || !container.visibleChildren) return null;
+  if (container.visibleChildren.length < 2) return null;
+  const isColumn = container.kind === 'flex' && container.direction.startsWith('column');
+  const sorted = [...container.visibleChildren].sort((a, b) => {
+    const ra = a.getBoundingClientRect();
+    const rb = b.getBoundingClientRect();
+    return isColumn ? (ra.top - rb.top) : (ra.left - rb.left);
+  });
+  const idx = sorted.indexOf(child);
+  if (idx < 0) return null;
+  return idx === 0 ? 'end' : 'start';
+}
+
+// Translate a logical direction ('start' / 'end') into an `order` value,
+// accounting for row-reverse / column-reverse where the numeric axis is
+// inverted relative to visual position. Sentinel values: max-int beats any
+// plausible site CSS, -1 beats the default 0 most pages use.
+function orderValueForDirection(direction, container) {
+  const isReverse = container.kind === 'flex' && container.direction.includes('-reverse');
+  if (direction === 'start') return isReverse ? 2147483647 : -1;
+  return isReverse ? -1 : 2147483647;
+}
+
+// Top-left visible child by document position. Used by the grid swap path:
+// applying `order: -1` to whichever child currently anchors the top-left
+// produces a visible "swap" against the rest of the auto-flow grid.
+function pickVisuallyFirstChild(visibleChildren) {
+  if (!visibleChildren || visibleChildren.length === 0) return null;
+  let best = null;
+  let bestRect = null;
+  for (const c of visibleChildren) {
+    const r = c.getBoundingClientRect();
+    if (!best ||
+        r.top < bestRect.top - 1 ||
+        (Math.abs(r.top - bestRect.top) < 1 && r.left < bestRect.left)) {
+      best = c;
+      bestRect = r;
+    }
+  }
+  return best;
+}
+
+// Resolve a verb to the element it would act on (for both dispatching and
+// the amber overlay preview). Anchored on selectedEl first (stable user
+// commitment), falling back to hoveredEl when nothing is selected. Picking
+// selection over hover keeps the REFLOW target stable across the layout
+// reflows the verbs themselves cause — hover bubble-up can otherwise drift
+// to a different ancestor after a flex-direction flip changes element
+// rect sizes, making the buttons "act on a different container each click."
+function getReflowTarget(verb) {
+  const anchorEl = selectedEl || hoveredEl;
+  if (!anchorEl) return null;
+
+  if (verb === 'swap-panels') {
+    const ctx = findReflowContainer(anchorEl);
+    if (!ctx || ctx.childCount < 2) return null;
+    if (ctx.kind === 'flex') return { container: ctx, el: ctx.el };
+    const firstChild = pickVisuallyFirstChild(ctx.visibleChildren);
+    if (!firstChild) return null;
+    return { container: ctx, el: firstChild };
+  }
+  if (verb === 'toggle-stack') {
+    const ctx = findReflowContainer(anchorEl);
+    if (!ctx || ctx.kind !== 'flex') return null;
+    return { container: ctx, el: ctx.el };
+  }
+  if (verb === 'order-end') {
+    const childCtx = findReflowChildContext(anchorEl);
+    if (!childCtx) return null;
+    const direction = nextOrderDirection(childCtx.child, childCtx.container);
+    if (!direction) return null;   // single-child container — no reorder to do
+    return { container: childCtx.container, el: childCtx.child, direction };
+  }
+  return null;
+}
+
+// ─── REFLOW dispatcher ──────────────────────────────────────────────────────
+async function applyReflowVerb(verb) {
+  const target = getReflowTarget(verb);
+  if (!target) return;
+
+  if (verb === 'swap-panels') {
+    if (target.container.kind === 'flex') {
+      const cur = target.container.direction;
+      const newDir = cur.includes('-reverse')
+        ? cur.replace('-reverse', '')
+        : `${cur}-reverse`;
+      await commitResizeRule(target.el, `flex-direction: ${newDir} !important`, 'reflow:swap-panels');
+    } else {
+      // Grid: toggle order: -1 on the visually-first child. If it already has
+      // a negative order (from us or the page), revert to 0.
+      const child = target.el;
+      const currentOrder = parseInt(getComputedStyle(child).order, 10) || 0;
+      const newOrder = currentOrder < 0 ? 0 : -1;
+      await commitResizeRule(child, `order: ${newOrder} !important`, 'reflow:swap-panels');
+    }
+  } else if (verb === 'toggle-stack') {
+    const cur = target.container.direction;
+    const base = cur.replace('-reverse', '');
+    const reverseSuffix = cur.includes('-reverse') ? '-reverse' : '';
+    const newBase = base === 'column' ? 'row' : 'column';
+    await commitResizeRule(target.el, `flex-direction: ${newBase}${reverseSuffix} !important`, 'reflow:toggle-stack');
+  } else if (verb === 'order-end') {
+    // target.direction is computed from visual position (not numeric order)
+    // so the first click always produces the visible move the label
+    // promises. The numeric `order` value flips for reverse containers so
+    // CSS row-reverse / column-reverse don't reverse the user's intent.
+    const newOrder = orderValueForDirection(target.direction, target.container);
+    await commitResizeRule(target.el, `order: ${newOrder} !important`, 'reflow:order-end');
+  }
+
+  // The page reflowed — selection box, handles, and overlays are all now
+  // sitting at stale positions. Force a layout read on documentElement to
+  // ensure new boxes have settled, then refresh.
+  void document.documentElement.offsetHeight;
+  if (selectedEl) refreshHandles();
+  if (rawHoveredEl) updateHoverTarget();
+  // If the cursor is still on the REFLOW button (the common case after a
+  // click), the amber overlay is showing at the verb target's *old*
+  // position — re-show to reposition it over the new layout.
+  if (reflowHoverOverlay.style.display !== 'none') {
+    hideReflowOverlay();
+    showReflowOverlayForVerb(verb);
+  }
+  updateReflowButtonStates();
+}
+
+// ─── REFLOW button state machine ────────────────────────────────────────────
+// Computes per-button enable, label flips, and row-level visibility from the
+// current hover/selection. Hide-when-empty keeps the row out of the way on
+// pages where no flex/grid context is under the cursor.
+function setReflowBtnEnabled(btn, enabled) {
+  if (enabled) {
+    btn.dataset.disabled = '0';
+    btn.style.opacity = '';
+    btn.style.pointerEvents = '';
+    btn.style.cursor = '';
+  } else {
+    btn.dataset.disabled = '1';
+    btn.style.opacity = '0.3';
+    btn.style.pointerEvents = 'none';
+    btn.style.cursor = 'default';
+  }
+}
+
+function updateReflowButtonStates() {
+  if (window.AdnotaState.mode !== 'resizer') {
+    reflowRow.style.display = 'none';
+    reflowDivider.style.display = 'none';
+    return;
+  }
+
+  const swapTarget  = getReflowTarget('swap-panels');
+  const stackTarget = getReflowTarget('toggle-stack');
+  const orderTarget = getReflowTarget('order-end');
+
+  setReflowBtnEnabled(reflowSwapBtn, !!swapTarget);
+  setReflowBtnEnabled(reflowStackBtn, !!stackTarget);
+  setReflowBtnEnabled(reflowEndBtn, !!orderTarget);
+
+  // Toggle-stack label flips with current direction.
+  if (stackTarget) {
+    const isColumn = stackTarget.container.direction.replace('-reverse', '') === 'column';
+    reflowStackBtn.setAttribute('data-adnota-tooltip', isColumn ? 'Lay horizontally' : 'Stack vertically');
+  } else {
+    reflowStackBtn.setAttribute('data-adnota-tooltip', 'Stack vertically');
+  }
+
+  // Send-to-end label tracks visual position: if the child is already
+  // visually first, the next move is "to end"; otherwise "to start". Axis
+  // wording adapts to the container's direction (row → row, column → column).
+  // Icon flips horizontally when sending to start so the arrow visually
+  // matches the action — direction='start' means an arrow pointing left.
+  const orderSvg = reflowEndBtn.querySelector('svg');
+  if (orderTarget) {
+    const isColumn = orderTarget.container.kind === 'flex'
+      && orderTarget.container.direction.startsWith('column');
+    const axis = isColumn ? 'column' : 'row';
+    const where = orderTarget.direction;  // 'start' | 'end'
+    reflowEndBtn.setAttribute('data-adnota-tooltip', `Send to ${where} of the ${axis}`);
+    if (orderSvg) orderSvg.style.transform = where === 'start' ? 'scaleX(-1)' : '';
+  } else {
+    reflowEndBtn.setAttribute('data-adnota-tooltip', 'Send to end of the row');
+    if (orderSvg) orderSvg.style.transform = '';
+  }
+
+  const anyEnabled = !!(swapTarget || stackTarget || orderTarget);
+  reflowRow.style.display = anyEnabled ? 'inline-flex' : 'none';
+  reflowDivider.style.display = anyEnabled ? '' : 'none';
+}
+
+// ─── REFLOW amber overlay (mutex with blue hover overlay) ───────────────────
+// On REFLOW button mouseenter: hide blue, position amber over the verb's
+// target, show. On mouseleave: hide amber. The page's next mousemove
+// re-enters updateHoverTarget which restores blue naturally — no explicit
+// "restore blue" call needed here.
+function showReflowOverlayForVerb(verb) {
+  const target = getReflowTarget(verb);
+  if (!target) return;
+  hoverOverlay.style.display = 'none';
+  const rect = target.el.getBoundingClientRect();
+  const scrollY = window.pageYOffset || document.documentElement.scrollTop;
+  const scrollX = window.pageXOffset || document.documentElement.scrollLeft;
+  document.documentElement.appendChild(reflowHoverOverlay);
+  Object.assign(reflowHoverOverlay.style, {
+    display: 'block',
+    top:    `${rect.top + scrollY}px`,
+    left:   `${rect.left + scrollX}px`,
+    width:  `${rect.width}px`,
+    height: `${rect.height}px`,
+  });
+}
+
+function hideReflowOverlay() {
+  reflowHoverOverlay.style.display = 'none';
+}
+
 function refreshHandles() {
   if (!selectedEl) return;
   const rect = selectedEl.getBoundingClientRect();
@@ -1044,6 +1404,7 @@ function refreshHandles() {
   // is still active (e.g., user hits Ctrl+Z mid-selection).
   updateSelectionChip();
   updateHUD();
+  updateReflowButtonStates();
 }
 
 // ─── Reset: remove ALL resize rules for a given element ─────────────────────
@@ -1072,6 +1433,9 @@ async function resetElement(el) {
   el.style.removeProperty('flex-basis');
   el.style.removeProperty('flex-shrink');
   el.style.removeProperty('flex-grow');
+  // REFLOW props — clear so ↺ undoes Swap/Stack/Send-to-end too.
+  el.style.removeProperty('flex-direction');
+  el.style.removeProperty('order');
   void el.offsetHeight; // force reflow
 
   // Remove from storage
@@ -1278,9 +1642,11 @@ async function commitResizeRule(el, cssText, kind) {
       }
       window.AdnotaUndo.remove(undoEntry);
       refreshHandles();
+      updateReflowButtonStates();
     },
   };
   window.AdnotaUndo.push(undoEntry);
+  updateReflowButtonStates();
   return id;
 }
 
@@ -1482,8 +1848,12 @@ window.AdnotaState.subscribe((state) => {
   if (isResizer) {
     setHudVisible(true);
     updateHUD();
+    updateReflowButtonStates();
   } else {
     hoverOverlay.style.display = 'none';
+    reflowHoverOverlay.style.display = 'none';
+    reflowRow.style.display = 'none';
+    reflowDivider.style.display = 'none';
     hoveredEl = null;
     rawHoveredEl = null;
     traverseDepth = 0;
@@ -1506,6 +1876,10 @@ document.addEventListener('mousemove', (e) => {
   // impossible to click. Hold the previous hover state until the cursor
   // moves back to the page.
   if (raw && chipCluster.contains(raw)) return;
+  // Same carve-out for the REFLOW button row in the dock — its buttons
+  // operate on the *previous* hover/selection target, so clearing on
+  // mouseenter would leave nothing to act on.
+  if (raw && reflowRow.contains(raw)) return;
   if (!raw || isAdnotaElement(raw)) {
     hoveredEl = null;
     rawHoveredEl = null;
@@ -1517,6 +1891,7 @@ document.addEventListener('mousemove', (e) => {
     hoveredHasUnstickOverride = false;
     hoveredHasFiniteScrollOverride = false;
     updateHUD();
+    updateReflowButtonStates();
     return;
   }
 
@@ -1607,6 +1982,7 @@ function updateHoverTarget() {
     hoveredHasFiniteScrollOverride = false;
   }
   updateHUD();
+  updateReflowButtonStates();
 }
 
 // ─── Scroll wheel: walk up/down the DOM tree while hovering ─────────────────
