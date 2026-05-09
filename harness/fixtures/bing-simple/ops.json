@@ -1,0 +1,87 @@
+{
+  "url": "fixture://bing-simple",
+  "viewport": {
+    "width": 1280,
+    "height": 900
+  },
+  "settleMs": 2500,
+  "postSettleMs": 400,
+  "ops": [
+    {
+      "type": "waitForDock"
+    },
+    {
+      "type": "activateTool",
+      "tool": "resizer"
+    },
+    {
+      "type": "hoverElement",
+      "selector": "#b_results > li:nth-child(2) > div:nth-child(3) > p:nth-child(1)"
+    },
+    {
+      "type": "clickToSelect",
+      "expectedSelection": {
+        "text": "Internet Speed Test | Fast.com",
+        "w": 652,
+        "h": 148
+      }
+    },
+    {
+      "type": "dragHandle",
+      "handle": "top",
+      "dx": 5,
+      "dy": 34
+    },
+    {
+      "type": "undo"
+    },
+    {
+      "type": "hoverElement",
+      "selector": "#b_results > li:nth-child(2) > h2:nth-child(2)"
+    },
+    {
+      "type": "clickToSelect",
+      "expectedSelection": {
+        "text": "Internet Speed Test | Fast.com",
+        "w": 652,
+        "h": 148
+      }
+    },
+    {
+      "type": "dragHandle",
+      "handle": "right",
+      "dx": -342,
+      "dy": 8
+    },
+    {
+      "type": "undo"
+    },
+    {
+      "type": "dragHandle",
+      "handle": "left",
+      "dx": 195,
+      "dy": 6
+    },
+    {
+      "type": "undo"
+    },
+    {
+      "type": "dragHandle",
+      "handle": "bottom",
+      "dx": -11,
+      "dy": -76
+    },
+    {
+      "type": "hoverElement",
+      "selector": "#b_results > li:nth-child(2) > h2:nth-child(2)"
+    },
+    {
+      "type": "clickToSelect",
+      "expectedSelection": null
+    },
+    {
+      "type": "undo"
+    }
+  ],
+  "domInvariants": []
+}

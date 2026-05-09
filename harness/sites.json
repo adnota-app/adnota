@@ -9,12 +9,12 @@
       "fixture": "fixtures/resize-bing-overflow"
     },
     {
-      "id": "resize-bing-overflow-v2",
-      "fixture": "fixtures/resize-bing-overflow-v2"
-    },
-    {
       "id": "resize-up-down",
       "fixture": "fixtures/resize-up-down"
+    },
+    {
+      "id": "bing-simple",
+      "fixture": "fixtures/bing-simple"
     }
   ]
 }

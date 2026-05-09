@@ -1,0 +1,15 @@
+{
+  "$schema": "1",
+  "site": "bing-simple",
+  "pinnedAt": "2026-05-09",
+  "storage": {
+    "127.0.0.1": {
+      "items": []
+    },
+    "adnotaActiveMode": "resizer",
+    "adnotaToolEscTutorialShown": true
+  },
+  "styleOverrides": "",
+  "eraseOverrides": "",
+  "domInvariants": []
+}
