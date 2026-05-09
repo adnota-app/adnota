@@ -1001,27 +1001,36 @@ function positionDismiss(btn, rect, sx, sy) {
 // grow uses min-height — both keep the box "indefinite" for percentage
 // resolution on absolutely-positioned descendants. See the `Fix bing.com
 // RESIZE EXPAND` commit for the full rationale.
-function applyHeight(el, newH, startHeight) {
+function applyHeight(el, newH, startHeight, fillRisk) {
   if (newH <= startHeight) {
     el.style.removeProperty('height');
     el.style.setProperty('max-height', newH + 'px', 'important');
     el.style.setProperty('min-height', '0', 'important');
   } else {
     el.style.removeProperty('height');
-    el.style.removeProperty('max-height');
     el.style.setProperty('min-height', newH + 'px', 'important');
+    if (fillRisk) {
+      // Cap the upper bound so a fill-mode descendant's intrinsic
+      // aspect ratio can't push the rendered height past newH.
+      el.style.setProperty('max-height', newH + 'px', 'important');
+    } else {
+      el.style.removeProperty('max-height');
+    }
   }
 }
 
 // Height piece for the persisted CSS rule. Mirror of applyHeight on the
 // cssParts side.
-function pushHeight(cssParts, newH, startHeight) {
+function pushHeight(cssParts, newH, startHeight, fillRisk) {
   if (newH <= startHeight) {
     cssParts.push(`max-height: ${newH}px !important`);
     cssParts.push(`min-height: 0 !important`);
   } else {
     cssParts.push(`min-height: ${newH}px !important`);
-    cssParts.push(`max-height: none !important`);
+    // Same fillRisk reasoning as applyHeight — cap on grow rather than
+    // leaving max-height open, since the persisted rule lives on across
+    // reloads and would otherwise re-trigger the runaway every page load.
+    cssParts.push(`max-height: ${fillRisk ? newH + 'px' : 'none'} !important`);
   }
 }
 
@@ -1046,11 +1055,16 @@ function pushHeight(cssParts, newH, startHeight) {
 const STRATEGIES = {
   block: {
     applyDuringDrag(el, axis, dx, dy, snap) {
+      const fillRisk = snap.fillModeRisk;
+      // max-width: 'none' is the default to free up width-capped CSS rules
+      // (e.g. .container { max-width: 1200px }). When fillRisk is set we
+      // swap to a hard cap at newW — see snapshot.fillModeRisk in startDrag.
+      const xMax = (newW) => fillRisk ? newW + 'px' : 'none';
       if (axis === 'x' || axis === 'xy') {
         const newW = Math.max(0, snap.startWidth + dx);
         el.style.setProperty('width', newW + 'px', 'important');
         el.style.setProperty('min-width', '0', 'important');
-        el.style.setProperty('max-width', 'none', 'important');
+        el.style.setProperty('max-width', xMax(newW), 'important');
         el.style.setProperty('margin-left', snap.startMarginLeft + 'px', 'important');
       }
       if (axis === 'x-left') {
@@ -1058,28 +1072,43 @@ const STRATEGIES = {
         const widthDelta = newW - snap.startWidth;
         el.style.setProperty('width', newW + 'px', 'important');
         el.style.setProperty('min-width', '0', 'important');
-        el.style.setProperty('max-width', 'none', 'important');
+        el.style.setProperty('max-width', xMax(newW), 'important');
         el.style.setProperty('margin-left', (snap.startMarginLeft - widthDelta) + 'px', 'important');
       }
       if (axis === 'y' || axis === 'xy') {
         const newH = Math.max(0, snap.startHeight + dy);
-        applyHeight(el, newH, snap.startHeight);
+        applyHeight(el, newH, snap.startHeight, fillRisk);
         el.style.setProperty('margin-top', snap.startMarginTop + 'px', 'important');
       }
       if (axis === 'y-top') {
         const newH = Math.max(0, snap.startHeight - dy);
         const heightDelta = newH - snap.startHeight;
-        applyHeight(el, newH, snap.startHeight);
+        applyHeight(el, newH, snap.startHeight, fillRisk);
         el.style.setProperty('margin-top', (snap.startMarginTop - heightDelta) + 'px', 'important');
+      }
+      // Lock the non-dragged axis at start when fillRisk is present.
+      // Single-axis drags otherwise leave the other axis unconstrained,
+      // and a fill-mode descendant's intrinsic ratio fills the gap with
+      // its source dimensions (the HackerNoon Yubico banner failure).
+      if (fillRisk) {
+        if (axis === 'x' || axis === 'x-left') {
+          el.style.setProperty('max-height', snap.startHeight + 'px', 'important');
+          el.style.setProperty('min-height', '0', 'important');
+        } else if (axis === 'y' || axis === 'y-top') {
+          el.style.setProperty('max-width', snap.startWidth + 'px', 'important');
+          el.style.setProperty('min-width', '0', 'important');
+        }
       }
     },
     buildPersistedCss(axis, dx, dy, snap) {
       const cssParts = [];
+      const fillRisk = snap.fillModeRisk;
+      const xMax = (newW) => fillRisk ? newW + 'px' : 'none';
       if (axis === 'x' || axis === 'xy') {
         const newW = Math.max(0, snap.startWidth + dx);
         cssParts.push(`width: ${newW}px !important`);
         cssParts.push(`min-width: 0 !important`);
-        cssParts.push(`max-width: none !important`);
+        cssParts.push(`max-width: ${xMax(newW)} !important`);
         cssParts.push(`margin-left: ${snap.startMarginLeft}px !important`);
       }
       if (axis === 'x-left') {
@@ -1087,19 +1116,28 @@ const STRATEGIES = {
         const widthDelta = newW - snap.startWidth;
         cssParts.push(`width: ${newW}px !important`);
         cssParts.push(`min-width: 0 !important`);
-        cssParts.push(`max-width: none !important`);
+        cssParts.push(`max-width: ${xMax(newW)} !important`);
         cssParts.push(`margin-left: ${snap.startMarginLeft - widthDelta}px !important`);
       }
       if (axis === 'y' || axis === 'xy') {
         const newH = Math.max(0, snap.startHeight + dy);
-        pushHeight(cssParts, newH, snap.startHeight);
+        pushHeight(cssParts, newH, snap.startHeight, fillRisk);
         cssParts.push(`margin-top: ${snap.startMarginTop}px !important`);
       }
       if (axis === 'y-top') {
         const newH = Math.max(0, snap.startHeight - dy);
         const heightDelta = newH - snap.startHeight;
-        pushHeight(cssParts, newH, snap.startHeight);
+        pushHeight(cssParts, newH, snap.startHeight, fillRisk);
         cssParts.push(`margin-top: ${snap.startMarginTop - heightDelta}px !important`);
+      }
+      if (fillRisk) {
+        if (axis === 'x' || axis === 'x-left') {
+          cssParts.push(`max-height: ${snap.startHeight}px !important`);
+          cssParts.push(`min-height: 0 !important`);
+        } else if (axis === 'y' || axis === 'y-top') {
+          cssParts.push(`max-width: ${snap.startWidth}px !important`);
+          cssParts.push(`min-width: 0 !important`);
+        }
       }
       return cssParts.join('; ');
     },
@@ -1107,6 +1145,8 @@ const STRATEGIES = {
 
   'flex-item': {
     applyDuringDrag(el, axis, dx, dy, snap) {
+      const fillRisk = snap.fillModeRisk;
+      const xMax = (newW) => fillRisk ? newW + 'px' : 'none';
       // X-axis: flex-basis + flex-shrink: 0 + flex-grow: 0 force the new
       // size in the flex algorithm (no auto-shrink-back). margin-left is
       // ALSO needed: flex layout owns slot placement, but margin still
@@ -1121,7 +1161,7 @@ const STRATEGIES = {
         el.style.setProperty('flex-grow', '0', 'important');
         el.style.setProperty('width', newW + 'px', 'important');
         el.style.setProperty('min-width', '0', 'important');
-        el.style.setProperty('max-width', 'none', 'important');
+        el.style.setProperty('max-width', xMax(newW), 'important');
         el.style.setProperty('margin-left', snap.startMarginLeft + 'px', 'important');
       }
       if (axis === 'x-left') {
@@ -1132,25 +1172,38 @@ const STRATEGIES = {
         el.style.setProperty('flex-grow', '0', 'important');
         el.style.setProperty('width', newW + 'px', 'important');
         el.style.setProperty('min-width', '0', 'important');
-        el.style.setProperty('max-width', 'none', 'important');
+        el.style.setProperty('max-width', xMax(newW), 'important');
         el.style.setProperty('margin-left', (snap.startMarginLeft - widthDelta) + 'px', 'important');
       }
       // Y-axis: identical to block strategy. flex-row pinning issues don't
       // apply on the cross axis, and column-flex y-inversion is out of v1.
       if (axis === 'y' || axis === 'xy') {
         const newH = Math.max(0, snap.startHeight + dy);
-        applyHeight(el, newH, snap.startHeight);
+        applyHeight(el, newH, snap.startHeight, fillRisk);
         el.style.setProperty('margin-top', snap.startMarginTop + 'px', 'important');
       }
       if (axis === 'y-top') {
         const newH = Math.max(0, snap.startHeight - dy);
         const heightDelta = newH - snap.startHeight;
-        applyHeight(el, newH, snap.startHeight);
+        applyHeight(el, newH, snap.startHeight, fillRisk);
         el.style.setProperty('margin-top', (snap.startMarginTop - heightDelta) + 'px', 'important');
+      }
+      // Lock the non-dragged axis at start when fillRisk is present.
+      // See block.applyDuringDrag for reasoning.
+      if (fillRisk) {
+        if (axis === 'x' || axis === 'x-left') {
+          el.style.setProperty('max-height', snap.startHeight + 'px', 'important');
+          el.style.setProperty('min-height', '0', 'important');
+        } else if (axis === 'y' || axis === 'y-top') {
+          el.style.setProperty('max-width', snap.startWidth + 'px', 'important');
+          el.style.setProperty('min-width', '0', 'important');
+        }
       }
     },
     buildPersistedCss(axis, dx, dy, snap) {
       const cssParts = [];
+      const fillRisk = snap.fillModeRisk;
+      const xMax = (newW) => fillRisk ? newW + 'px' : 'none';
       if (axis === 'x' || axis === 'xy') {
         const newW = Math.max(0, snap.startWidth + dx);
         cssParts.push(`flex-basis: ${newW}px !important`);
@@ -1158,7 +1211,7 @@ const STRATEGIES = {
         cssParts.push(`flex-grow: 0 !important`);
         cssParts.push(`width: ${newW}px !important`);
         cssParts.push(`min-width: 0 !important`);
-        cssParts.push(`max-width: none !important`);
+        cssParts.push(`max-width: ${xMax(newW)} !important`);
         cssParts.push(`margin-left: ${snap.startMarginLeft}px !important`);
       }
       if (axis === 'x-left') {
@@ -1169,19 +1222,28 @@ const STRATEGIES = {
         cssParts.push(`flex-grow: 0 !important`);
         cssParts.push(`width: ${newW}px !important`);
         cssParts.push(`min-width: 0 !important`);
-        cssParts.push(`max-width: none !important`);
+        cssParts.push(`max-width: ${xMax(newW)} !important`);
         cssParts.push(`margin-left: ${snap.startMarginLeft - widthDelta}px !important`);
       }
       if (axis === 'y' || axis === 'xy') {
         const newH = Math.max(0, snap.startHeight + dy);
-        pushHeight(cssParts, newH, snap.startHeight);
+        pushHeight(cssParts, newH, snap.startHeight, fillRisk);
         cssParts.push(`margin-top: ${snap.startMarginTop}px !important`);
       }
       if (axis === 'y-top') {
         const newH = Math.max(0, snap.startHeight - dy);
         const heightDelta = newH - snap.startHeight;
-        pushHeight(cssParts, newH, snap.startHeight);
+        pushHeight(cssParts, newH, snap.startHeight, fillRisk);
         cssParts.push(`margin-top: ${snap.startMarginTop - heightDelta}px !important`);
+      }
+      if (fillRisk) {
+        if (axis === 'x' || axis === 'x-left') {
+          cssParts.push(`max-height: ${snap.startHeight}px !important`);
+          cssParts.push(`min-height: 0 !important`);
+        } else if (axis === 'y' || axis === 'y-top') {
+          cssParts.push(`max-width: ${snap.startWidth}px !important`);
+          cssParts.push(`min-width: 0 !important`);
+        }
       }
       return cssParts.join('; ');
     },
@@ -1726,6 +1788,16 @@ function startDrag(e, axis) {
   currentClipMatch = null;
   snapshot.clipAncestors = window.AdnotaLayout?.detectClippingAncestors(selectedEl) || [];
   snapshot.sizeCaps = window.AdnotaLayout?.detectSizeCaps(selectedEl) || null;
+  // Fill-mode risk: when the selected subtree contains an absolutely-
+  // positioned replaced element with min/max-100% on both axes (Next.js
+  // <Image fill>, Gatsby gatsby-image, etc.), our X-axis writes that
+  // clear min-width:0 and max-width:none expose the descendant's
+  // intrinsic aspect ratio. Without an upper bound on the dragged axis
+  // — and on the non-dragged axis — height (or width) runs away to
+  // match the source image's intrinsic dimensions. Strategy reads this
+  // flag and keeps both axes hard-bounded through the drag and in the
+  // persisted rule.
+  snapshot.fillModeRisk = window.AdnotaLayout?.detectFillModeRisk(selectedEl) || false;
 
   // Add a full-viewport overlay to capture all mouse events during drag
   const dragOverlay = document.createElement('div');
