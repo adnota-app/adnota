@@ -209,7 +209,11 @@ function updateHUD() {
       html += dot;
       html += `<span style="color:#94a3b8">try resize parent · <span style="color:#93c5fd">↺</span> to reset</span>`;
     } else {
-      html += `<span style="color:#94a3b8">Drag a handle to resize · <span style="color:#93c5fd">↺</span> to reset</span>`;
+      html += `<span style="color:#94a3b8">Drag a handle to resize`;
+      if (isPositionable(selectedEl)) {
+        html += ` · <span style="color:#93c5fd">drag body</span> to move · <span style="color:#93c5fd">arrows</span> nudge`;
+      }
+      html += ` · <span style="color:#93c5fd">↺</span> to reset</span>`;
     }
     resizerHudInfo.innerHTML = html;
     return;
@@ -561,6 +565,17 @@ function hasUnstickOverride(selector) {
   return false;
 }
 
+// Is there a position override currently in the live Map for this selector?
+// Used to suppress the redundant unstick chip on positioned elements (a
+// position rule's cssText already includes `position: relative !important`,
+// so the unstick chip would just revert the user's move).
+function hasPositionOverride(selector) {
+  for (const [, rule] of window.AdnotaResizeRules) {
+    if (rule.selector === selector && rule.kind === 'position') return true;
+  }
+  return false;
+}
+
 // Is there a finite-scroll override currently in the live Map for this
 // selector? Detected by `overflow: hidden` in the cssText — the unique
 // signature of finite-scroll rules in this codebase (drag-resize and unstick
@@ -768,6 +783,35 @@ function selectElement(el) {
   updateSelectionChip();
   updateHUD();
   updateReflowButtonStates();
+
+  // Body-drag-to-position affordances. Cursor stays as page-default for
+  // non-positionable selections (viewport-dominators, table-rows) so the
+  // unavailable state is communicated by absence.
+  //
+  // `setProperty(..., 'important')` is required to beat the global cursor
+  // lock injected by highlighter.js (`*:not([data-adnota-ui]) { cursor:
+  // crosshair !important }` while resizer mode is active). Inline
+  // !important beats stylesheet !important per cascade rules.
+  if (isPositionable(el)) {
+    el._adnotaPriorCursor = el.style.cursor;
+    el.style.setProperty('cursor', 'move', 'important');
+    el.dataset.adnotaPositionable = '1';
+    ensurePositionCursorStyle();
+    el.addEventListener('mousedown', onBodyDragStart, true);
+
+    // First-use discovery toast. Mirrors the eraser's domain-tutorial
+    // pattern at content/eraser.js:853 — chrome.storage.local for
+    // cross-machine sync, gracefully no-ops if context is invalidated.
+    const TUTORIAL_KEY = 'adnotaPositionTipShown';
+    chrome.storage.local.get(TUTORIAL_KEY).then((data) => {
+      if (data[TUTORIAL_KEY]) return;
+      chrome.storage.local.set({ [TUTORIAL_KEY]: true });
+      window.AdnotaUI?.showToast(
+        'Tip: drag any element to move it — arrow keys nudge by 1px (10px with Shift).',
+        { id: 'adnota-position-tip', timeout: 5000 }
+      );
+    }).catch(() => { /* context invalidated after extension reload */ });
+  }
 }
 
 // Re-evaluate the selection chips' labels/visibility against the current
@@ -824,9 +868,16 @@ function updateSelectionChip() {
     selectionParentChip.style.display = isFlexEndInFixed ? '' : 'none';
   }
 
-  // Unstick chip
+  // Unstick chip — suppressed when a position rule already covers the element.
+  // The position cssText sets `position: relative !important` which subsumes
+  // unstick's behavior; surfacing the chip would let the user inadvertently
+  // strip part of their move.
   const unstickOverridden = hasUnstickOverride(selector);
-  if (cs.position === 'sticky' || cs.position === 'fixed') {
+  const positionOverridden = hasPositionOverride(selector);
+  if (positionOverridden) {
+    selectionActionChip.style.display = 'none';
+    selectionActionChip._isOverridden = false;
+  } else if (cs.position === 'sticky' || cs.position === 'fixed') {
     selectionActionChip.textContent = 'unstick';
     selectionActionChip.setAttribute('data-adnota-tooltip', 'Stop this from following you when scrolling');
     selectionActionChip.style.display = '';
@@ -870,7 +921,27 @@ function deselectElement() {
   // Drop the cached layout-context expando before clearing the reference,
   // so nothing dangling (including the captured parent ref) survives on
   // the page DOM after the user leaves resizer mode.
-  if (selectedEl) delete selectedEl._adnotaLayoutContext;
+  if (selectedEl) {
+    delete selectedEl._adnotaLayoutContext;
+    // Tear down position-drag affordances. The listener was bound only when
+    // isPositionable was true at select-time; remove unconditionally because
+    // removeEventListener with a non-matching listener is a no-op.
+    selectedEl.removeEventListener('mousedown', onBodyDragStart, true);
+    delete selectedEl.dataset.adnotaPositionable;
+    if ('_adnotaPriorCursor' in selectedEl) {
+      // Use removeProperty to clear the !important inline we set; if the
+      // page had its own inline cursor (rare but possible), put it back.
+      if (selectedEl._adnotaPriorCursor) {
+        selectedEl.style.cursor = selectedEl._adnotaPriorCursor;
+      } else {
+        selectedEl.style.removeProperty('cursor');
+      }
+      delete selectedEl._adnotaPriorCursor;
+    }
+  }
+  // Drop any in-flight arrow-nudge debounce so it can't fire after the user
+  // has moved on to a different element (or out of resizer mode entirely).
+  cancelPendingNudge();
   selectedEl = null;
   if (selectionBox) { selectionBox.remove(); selectionBox = null; }
   if (handleLeft)   { handleLeft.remove();   handleLeft = null; }
@@ -1653,6 +1724,13 @@ async function resetElement(el) {
   // REFLOW props — clear so ↺ undoes Swap/Stack/Send-to-end too.
   el.style.removeProperty('flex-direction');
   el.style.removeProperty('order');
+  // POSITION props — clear so ↺ undoes drag-to-move + arrow-nudge as well.
+  // (No z-index property to clear — position rules don't write z-index.)
+  el.style.removeProperty('top');
+  el.style.removeProperty('left');
+  el.style.removeProperty('right');
+  el.style.removeProperty('bottom');
+  el.style.removeProperty('position');
   void el.offsetHeight; // force reflow
 
   // Remove from storage — both CSS-keyed (selector match) and reorder-keyed
@@ -1716,6 +1794,288 @@ function applyClipChipState(match) {
   }
   selectionClipChip.style.display = '';
 }
+
+
+// ─── Position (body-drag to reposition) ─────────────────────────────────────
+// Drag the body of a selected element to reposition it via injected CSS
+// `top/left`. Drag a handle = resize (below). The two are mutually exclusive
+// — handles attach their own pointerdown that runs first, and `dragAxis`
+// truthiness gates re-entry.
+//
+// The persisted rule writes `position: relative` (not absolute) so the
+// element follows its parent's reflow on responsive breakpoints / dynamic
+// chrome injection. No z-index is written: stacking during the drag is a
+// faithful preview of where the element ends up on release. See
+// `proceed-mellow-swan.md` design decision #4.
+
+function isPositionable(el) {
+  if (!el || !el.isConnected) return false;
+  if (el === document.body || el === document.documentElement) return false;
+  const ctx = el._adnotaLayoutContext || getLayoutContext(el);
+  if (ctx?.kind === 'table-component') return false;
+  if (window.AdnotaUI.dominatesViewport(el.getBoundingClientRect())) return false;
+  return true;
+}
+
+// Cursor override for the positionable element AND its descendants. The
+// global cursor lock (highlighter.js setCursorLock) targets every non-Adnota
+// element via a universal selector at !important — that means descendants of
+// the selected element are matched directly and don't inherit our inline
+// `cursor: move` from the parent. We work around it with a dedicated style
+// tag re-appended on every selection so cascade order wins on the
+// (0,0,2,0) specificity tie against the lock.
+function ensurePositionCursorStyle() {
+  let tag = document.getElementById('adnota-position-cursor');
+  if (!tag) {
+    tag = document.createElement('style');
+    tag.id = 'adnota-position-cursor';
+    tag.setAttribute('data-adnota-ui', '1');
+    tag.textContent =
+      '[data-adnota-positionable]:not([data-adnota-positionable=""]),' +
+      '[data-adnota-positionable]:not([data-adnota-positionable=""]) *' +
+      '{ cursor: move !important; }';
+  }
+  // Re-append to move the tag to the end of <head>. Same-specificity ties
+  // against the cursor-lock are broken by cascade order, so being last wins.
+  document.head.appendChild(tag);
+}
+
+function onBodyDragStart(e) {
+  if (e.button !== 0) return;
+  if (window.AdnotaUI.isAdnotaElement(e.target)) return;
+  if (dragAxis) return;
+  if (!isPositionable(selectedEl)) return;
+  startPositionDrag(e);
+}
+
+async function persistPosition(el, x, y) {
+  const cssText =
+    `position: relative !important; ` +
+    `top: ${Math.round(y)}px !important; ` +
+    `left: ${Math.round(x)}px !important; ` +
+    `right: auto !important; bottom: auto !important`;
+  return commitResizeRule(el, cssText, 'position');
+}
+
+function startPositionDrag(e) {
+  e.preventDefault();
+  e.stopPropagation();
+  if (!selectedEl) return;
+
+  dragAxis = 'position';
+  dragStartX = e.clientX;
+  dragStartY = e.clientY;
+
+  // Snapshot inline state with priority. After the first commit, a persisted
+  // `<style>` rule exists for this selector with top/left/position/right/
+  // bottom all at !important. To override that during the drag we must write
+  // inline with !important too — non-!important writes silently lose to the
+  // rule, leaving the element glued to its persisted position while the
+  // cursor moves (felt as lag). Snapshot priority so we can restore exactly.
+  const POS_PROPS = ['top', 'left', 'right', 'bottom', 'position'];
+  const inlineSnapshot = {};
+  for (const p of POS_PROPS) {
+    inlineSnapshot[p] = {
+      value:    selectedEl.style.getPropertyValue(p),
+      priority: selectedEl.style.getPropertyPriority(p),
+    };
+  }
+
+  // Capture the visual position the user grabbed.
+  const grabbedRect = selectedEl.getBoundingClientRect();
+
+  // Force position: relative + clear all offsets so we can measure the
+  // element's natural in-flow position. Load-bearing for sticky/fixed AND
+  // for any selector that already has a persisted position rule — `auto`
+  // alone wouldn't beat the rule's `Xpx !important`.
+  selectedEl.style.setProperty('position', 'relative', 'important');
+  selectedEl.style.setProperty('top',      'auto',     'important');
+  selectedEl.style.setProperty('left',     'auto',     'important');
+  selectedEl.style.setProperty('right',    'auto',     'important');
+  selectedEl.style.setProperty('bottom',   'auto',     'important');
+
+  const naturalRect = selectedEl.getBoundingClientRect();
+
+  // Compensating offset so the element stays at the grabbed position visually.
+  // For static / relative-no-offset: 0,0. For relative-with-offset (including
+  // a previously-persisted position rule): re-establishes the active offset.
+  // For sticky / fixed: bridges threshold/viewport coords to in-flow + offset.
+  const startLeft = grabbedRect.left - naturalRect.left;
+  const startTop  = grabbedRect.top  - naturalRect.top;
+
+  selectedEl.style.setProperty('left', startLeft + 'px', 'important');
+  selectedEl.style.setProperty('top',  startTop  + 'px', 'important');
+
+  // Fullscreen capture overlay so the mouse can travel anywhere without
+  // hitting page event handlers mid-drag (mirrors resize drag's pattern).
+  const dragOverlay = document.createElement('div');
+  dragOverlay.setAttribute('data-adnota-ui', '1');
+  Object.assign(dragOverlay.style, {
+    position: 'fixed',
+    inset: '0',
+    zIndex: '2147483647',
+    cursor: 'move',
+    background: 'transparent',
+  });
+  document.documentElement.appendChild(dragOverlay);
+
+  function restoreInlineSnapshot() {
+    for (const p of POS_PROPS) {
+      const snap = inlineSnapshot[p];
+      if (snap.value) {
+        selectedEl.style.setProperty(p, snap.value, snap.priority);
+      } else {
+        selectedEl.style.removeProperty(p);
+      }
+    }
+  }
+
+  // rAF-throttle the drag to coalesce mousemove events into one paint per
+  // frame. Without this, each mousemove triggered layout invalidation (style
+  // write) plus sync layout reads (getBoundingClientRect + getComputedStyle
+  // inside the chip/HUD/reflow updaters fired by refreshHandles). On heavy
+  // pages — especially long floated ancestors — that cascade made the drag
+  // preview feel jumpy. We sample the latest pointer position on every
+  // mousemove but only commit visual updates on rAF.
+  //
+  // Geometry-only refresh: chip/HUD/reflow state is invariant during a
+  // position drag (selection didn't change, sticky/finite/parent-flex status
+  // didn't change, dimensions didn't change). Skip the full refreshHandles
+  // and do them once on release in onUp.
+  let rafPending = false;
+  let pendingDx = 0;
+  let pendingDy = 0;
+
+  function onMove(ev) {
+    pendingDx = ev.clientX - dragStartX;
+    pendingDy = ev.clientY - dragStartY;
+    if (rafPending) return;
+    rafPending = true;
+    requestAnimationFrame(() => {
+      rafPending = false;
+      if (dragAxis !== 'position') return;   // drag ended before this rAF
+      // !important required to beat the persisted rule once one exists
+      // (after first commit). Non-!important writes lose silently and the
+      // element appears glued to its persisted position while the cursor
+      // moves — that's the "second drag is laggy" failure mode.
+      selectedEl.style.setProperty('left', (startLeft + pendingDx) + 'px', 'important');
+      selectedEl.style.setProperty('top',  (startTop  + pendingDy) + 'px', 'important');
+      const rect = selectedEl.getBoundingClientRect();
+      const sy = window.pageYOffset || document.documentElement.scrollTop;
+      const sx = window.pageXOffset || document.documentElement.scrollLeft;
+      if (selectionBox) positionBox(selectionBox, rect, sx, sy);
+      if (handleLeft)   positionHandleLeft(handleLeft, rect, sx, sy);
+      if (handleRight)  positionHandleRight(handleRight, rect, sx, sy);
+      if (handleTop)    positionHandleTop(handleTop, rect, sx, sy);
+      if (handleBottom) positionHandleBottom(handleBottom, rect, sx, sy);
+      if (handleCorner) positionHandleCorner(handleCorner, rect, sx, sy);
+      if (dismissBtn)   positionDismiss(dismissBtn, rect, sx, sy);
+      if (selectionChipCluster) {
+        selectionChipCluster.style.top = `${chipClusterTopOffset(rect)}px`;
+      }
+    });
+  }
+
+  function onUp(ev) {
+    document.removeEventListener('mousemove', onMove);
+    document.removeEventListener('mouseup', onUp);
+    dragOverlay.remove();
+
+    const dx = ev.clientX - dragStartX;
+    const dy = ev.clientY - dragStartY;
+
+    if (Math.abs(dx) < 3 && Math.abs(dy) < 3) {
+      restoreInlineSnapshot();
+      dragAxis = null;
+      return;
+    }
+
+    const finalLeft = startLeft + dx;
+    const finalTop  = startTop  + dy;
+
+    // Order: persist FIRST so the !important rule is in the style tag, THEN
+    // clear inline so the rule wins cleanly. Inverting this briefly leaves
+    // the element with neither inline nor persisted offsets and produces a
+    // visible flash back to natural position.
+    persistPosition(selectedEl, finalLeft, finalTop);
+    restoreInlineSnapshot();
+
+    dragAxis = null;
+    refreshHandles();   // full refresh on release: chip/HUD/reflow re-sync
+  }
+
+  document.addEventListener('mousemove', onMove);
+  document.addEventListener('mouseup', onUp);
+}
+
+// Arrow-key nudge — bound at module load. Active only when resizer mode is
+// on, an element is selected, and no drag is in progress. First keydown of a
+// burst applies the same force-relative + compensate-offset dance as drag-
+// start so sticky/fixed elements get correct live preview through nudges.
+// 300ms debounce coalesces a key burst into one storage row + one undo step.
+let positionNudgeDebounce = null;
+let positionNudgeStartLeft = 0;
+let positionNudgeStartTop  = 0;
+let positionNudgeActive    = false;
+
+function cancelPendingNudge() {
+  if (positionNudgeDebounce) clearTimeout(positionNudgeDebounce);
+  positionNudgeDebounce = null;
+  positionNudgeActive = false;
+}
+
+window.addEventListener('keydown', (e) => {
+  if (window.AdnotaState?.mode !== 'resizer') return;
+  if (!selectedEl || dragAxis) return;
+  if (!isPositionable(selectedEl)) return;
+  const t = e.target;
+  if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return;
+  const delta = { ArrowUp: [0,-1], ArrowDown: [0,1], ArrowLeft: [-1,0], ArrowRight: [1,0] }[e.key];
+  if (!delta) return;
+  e.preventDefault();
+  e.stopPropagation();
+  const step = e.shiftKey ? 10 : 1;
+
+  if (!positionNudgeActive) {
+    const grabbedRect = selectedEl.getBoundingClientRect();
+    // !important needed to override any persisted position rule from a
+    // prior drag/nudge — same reason as startPositionDrag.
+    selectedEl.style.setProperty('position', 'relative', 'important');
+    selectedEl.style.setProperty('top',      'auto',     'important');
+    selectedEl.style.setProperty('left',     'auto',     'important');
+    selectedEl.style.setProperty('right',    'auto',     'important');
+    selectedEl.style.setProperty('bottom',   'auto',     'important');
+    const naturalRect = selectedEl.getBoundingClientRect();
+    positionNudgeStartLeft = grabbedRect.left - naturalRect.left;
+    positionNudgeStartTop  = grabbedRect.top  - naturalRect.top;
+    positionNudgeActive = true;
+  }
+
+  positionNudgeStartLeft += delta[0] * step;
+  positionNudgeStartTop  += delta[1] * step;
+  selectedEl.style.setProperty('left', positionNudgeStartLeft + 'px', 'important');
+  selectedEl.style.setProperty('top',  positionNudgeStartTop  + 'px', 'important');
+  refreshHandles();
+
+  // Capture el + final values now — selectedEl could be cleared during the
+  // 300ms window if the user deselects mid-burst.
+  const elAtNudge = selectedEl;
+  const finalLeft = positionNudgeStartLeft;
+  const finalTop  = positionNudgeStartTop;
+
+  if (positionNudgeDebounce) clearTimeout(positionNudgeDebounce);
+  positionNudgeDebounce = setTimeout(() => {
+    positionNudgeDebounce = null;
+    positionNudgeActive = false;
+    if (!elAtNudge.isConnected) return;
+    persistPosition(elAtNudge, finalLeft, finalTop);
+    elAtNudge.style.removeProperty('left');
+    elAtNudge.style.removeProperty('top');
+    elAtNudge.style.removeProperty('right');
+    elAtNudge.style.removeProperty('bottom');
+    elAtNudge.style.removeProperty('position');
+  }, 300);
+}, true);
 
 // ─── Drag logic ──────────────────────────────────────────────────────────────
 function startDrag(e, axis) {
@@ -1924,6 +2284,23 @@ async function commitResizeRule(el, cssText, kind) {
   // cover X's). Corner drags subsume both because their cssText
   // touches both width-side and height-side props.
   const supersededLive = [];
+
+  // Cross-kind subsume: position is a strict superset of unstick (its cssText
+  // sets the same `position: relative` plus explicit top/left/right/bottom).
+  // Drop any unstick row for this selector before the regular dedup loop;
+  // the existing supersededLive walk in the undo callback restores it on
+  // Ctrl+Z, and the storage-side filter (lines below) propagates the drop
+  // to disk via the supersededIds path.
+  if (kind === 'position') {
+    for (const [oldId, oldRule] of window.AdnotaResizeRules) {
+      if (oldRule.selector !== selector) continue;
+      if (oldRule.kind === 'unstick') {
+        supersededLive.push({ id: oldId, ...oldRule });
+        window.AdnotaResizeRules.delete(oldId);
+      }
+    }
+  }
+
   const newProps = !kind ? cssTextProps(cssText) : null;
   for (const [oldId, oldRule] of window.AdnotaResizeRules) {
     if (oldRule.selector !== selector) continue;
@@ -2704,9 +3081,15 @@ function updateHoverTarget() {
     // Unstick chip: surface only when there's something to act on.
     //   - Naturally sticky/fixed -> show `unstick`
     //   - Naturally static but our override is winning -> show `restick`
+    //   - Position rule already applied -> hidden (redundant; would partially
+    //     undo the user's move)
     //   - Naturally static and no override -> no chip
     const unstickOverridden = hasUnstickOverride(selector);
-    if (cs.position === 'sticky' || cs.position === 'fixed') {
+    const positionOverridden = hasPositionOverride(selector);
+    if (positionOverridden) {
+      hoveredHasUnstickOverride = false;
+      actionChip.style.display = 'none';
+    } else if (cs.position === 'sticky' || cs.position === 'fixed') {
       hoveredHasUnstickOverride = false;
       actionChip.textContent = 'unstick';
       actionChip.setAttribute('data-adnota-tooltip', 'Stop this from following you when scrolling');
