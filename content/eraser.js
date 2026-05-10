@@ -597,8 +597,20 @@ function updateHUD(target) {
   // active business with the cluster the chip references, and we don't
   // want hover updates to overwrite it.
   if (batchState && batchState.candidates.length > 0) {
-    dimensionBadge.textContent = '';
-    adBadge.style.display = 'none';
+    // Hover-overlay badges (dimension + likely-ad pill) are owned by
+    // highlightOverlay, not the HUD info section. They reflect whatever the
+    // cursor's over — batch mode shouldn't blank them just because the
+    // chip is in the info section. Non-candidate hovers during review
+    // still get the standard W×H + ad-pill readout.
+    if (target) {
+      const rect = target.getBoundingClientRect();
+      dimensionBadge.textContent = `${Math.round(rect.width)}×${Math.round(rect.height)}`;
+      const hoverSignals = getEffectiveAdSignals(target);
+      adBadge.style.display = hoverSignals.length > 0 ? 'inline-block' : 'none';
+    } else {
+      dimensionBadge.textContent = '';
+      adBadge.style.display = 'none';
+    }
     const n = batchState.candidates.length;
     // Idempotent render: skip the rebuild if the chip is already showing
     // this N. Without this, every mousemove over the dock calls updateHUD
@@ -1048,15 +1060,30 @@ function _badgeLabel(n) {
   return String(n);
 }
 
-// Is this element one of the current batch's candidates? Used to suppress the
-// eraser's red hover overlay on candidates so it doesn't fight the dashed
-// red border the candidate's batch overlay already paints.
-function isCandidateElement(el) {
-  if (!batchState || !el) return false;
-  for (const c of batchState.candidates) {
-    if (c.el === el) return true;
+// Walk up from el to find the first ancestor (or el itself) that's a current
+// batch candidate. Returns the entry { el, displayNumber } or null.
+//
+// Subtree-aware: candidates can be wrappers with padding, and the eraser's
+// auto-bubble doesn't always promote a hover on a small inner element up to
+// the wrapper (low IoU). Without walking ancestors, hovering / clicking the
+// inner iframe of an ad we've already flagged would treat it as a different
+// element and tear down the review. We treat the candidate's whole DOM
+// subtree as part of the candidate.
+function findContainingCandidate(el) {
+  if (!batchState || !el) return null;
+  let walker = el;
+  while (walker && walker.nodeType === Node.ELEMENT_NODE) {
+    for (const c of batchState.candidates) {
+      if (c.el === walker) return c;
+    }
+    walker = walker.parentElement;
   }
-  return false;
+  return null;
+}
+
+// Boolean form for the hover-suppression call site that doesn't need the entry.
+function isCandidateElement(el) {
+  return findContainingCandidate(el) !== null;
 }
 
 // Build (or rebuild) the per-candidate overlay positioned over a candidate's
@@ -1671,10 +1698,48 @@ document.addEventListener('click', async (e) => {
 
   const target = hoveredElement;
 
-  // Implicit deny: any erase click during batch-pending signals the user is
-  // done with the current cluster. Tear it down before running the standard
-  // erase so the new target's findSimilarAds (post-settle) can surface a
-  // fresh batch on its own merits.
+  // Manual erase within an active batch — if the user clicks anywhere inside
+  // a highlighted candidate (including descendants like the inner iframe of
+  // an ad), erase that candidate and stay in review. No findSimilarAds
+  // rescan (we're already reviewing this cluster), no implicit deny. This
+  // is literally what "Erase all N more?" does under the hood, but user-
+  // driven one at a time. removeBatchCandidate self-dismisses the batch
+  // when the count drops to zero.
+  //
+  // We check the click's actual DOM target (e.target) — not the eraser's
+  // bubbled hoveredElement — so a click on a tiny inner ad (which the
+  // auto-bubble may not have promoted to the wrapper, low IoU on padded
+  // candidates) still resolves to its containing candidate via the
+  // ancestor walk.
+  if (batchState) {
+    const entry = findContainingCandidate(e.target) || findContainingCandidate(target);
+    if (entry) {
+      highlightOverlay.style.display = 'none';
+      hoveredElement = null;
+
+      const result = commitErase(entry.el, { shiftKey: e.shiftKey });
+      const innerUndo = result.undoEntry.undo;
+      window.AdnotaUndo.push(result.undoEntry);
+
+      window.AdnotaUI.showToast('Element erased', {
+        id: 'adnota-eraser-toast',
+        onUndo: () => innerUndo(),
+      });
+
+      removeBatchCandidate(entry.displayNumber);
+
+      window.AdnotaLog?.event('eraser', 'batch-manual-erase', {
+        displayNumber: entry.displayNumber,
+        remaining: batchState ? batchState.candidates.length : 0,
+      });
+      return; // skip the rest of the click handler (no rescan)
+    }
+  }
+
+  // Implicit deny: any erase click outside the active batch's candidates
+  // signals the user is done with the current cluster. Tear it down before
+  // running the standard erase so the new target's findSimilarAds
+  // (post-settle) can surface a fresh batch on its own merits.
   if (batchState) denyBatch('second-erase');
 
   // Hover-state teardown — click-handler concern, not commitErase.
