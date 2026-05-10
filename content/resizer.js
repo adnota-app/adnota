@@ -213,12 +213,6 @@ function updateHUD() {
       if (isPositionable(selectedEl)) {
         html += ` · <span style="color:#93c5fd">drag body</span> to move · <span style="color:#93c5fd">arrows</span> nudge`;
       }
-      if (isScalable(selectedEl)) {
-        html += ` · <span style="color:#93c5fd">A±</span> text size`;
-      }
-      if (isRecolorable(selectedEl)) {
-        html += ` · <span style="color:#93c5fd">recolor</span> bg / text`;
-      }
       html += ` · <span style="color:#93c5fd">↺</span> to reset</span>`;
     }
     resizerHudInfo.innerHTML = html;
