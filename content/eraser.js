@@ -600,14 +600,28 @@ function updateHUD(target) {
     dimensionBadge.textContent = '';
     adBadge.style.display = 'none';
     const n = batchState.candidates.length;
-    // Compact navigation arrow buttons — let the user scroll through
-    // candidates in order without having to spot them all manually.
-    const navBtnStyle = 'background:rgba(239,68,68,0.15);color:#fca5a5;border:1px solid rgba(239,68,68,0.4);font:600 12px/1 -apple-system,BlinkMacSystemFont,sans-serif;padding:4px 7px;border-radius:4px;cursor:pointer;margin-right:4px';
+    // Idempotent render: skip the rebuild if the chip is already showing
+    // this N. Without this, every mousemove over the dock calls updateHUD
+    // (via the isAdnotaElement branch) and tears down/recreates the buttons
+    // mid-hover, resetting any in-flight transition — visible as a flicker.
+    const stateKey = `batch:${n}`;
+    if (eraserHudInfo.dataset.batchKey === stateKey) return;
+    eraserHudInfo.dataset.batchKey = stateKey;
+
+    // Brand-fit: status pill (informational) sits subtle; nav arrows are bare
+    // glyphs with hover-tint only; the primary action mirrors the canonical
+    // .adnota-select-delete red — so "yes" (Erase) and "no" (✕) read as a
+    // decisive pair in the same red palette. Reading order: what's happening
+    // → how to inspect → what to do.
+    const navBtnStyle = 'display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;color:#fca5a5;font:600 12px/1 -apple-system,BlinkMacSystemFont,sans-serif;background:transparent;border:none;border-radius:4px;cursor:pointer;margin-right:2px;transition:background 0.12s;padding:0';
+    // Solid red matching .adnota-select-delete (rgba(239,68,68,0.9) bg, white
+    // text, soft drop-shadow). The dismiss ✕ uses the same palette — pairing
+    // them as the decisive yes/no.
+    const actionChipStyle = 'background:rgba(239,68,68,0.9);color:#fff;border:none;font:600 11px/1 -apple-system,BlinkMacSystemFont,sans-serif;padding:6px 12px;border-radius:4px;cursor:pointer;margin-right:6px;transition:background 0.15s;box-shadow:0 2px 6px rgba(0,0,0,0.3)';
     eraserHudInfo.innerHTML =
       `<button id="adnota-eraser-batch-prev" data-adnota-ui="1" data-adnota-tooltip="Previous similar (scroll into view)" style="${navBtnStyle}">◀</button>` +
-      `<button id="adnota-eraser-batch-next" data-adnota-ui="1" data-adnota-tooltip="Next similar (scroll into view)" style="${navBtnStyle};margin-right:8px">▶</button>` +
-      `<span style="background:rgba(239,68,68,0.18);color:#fca5a5;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600;margin-right:8px">⚠ ${n} similar</span>` +
-      `<button id="adnota-eraser-batch-commit" data-adnota-ui="1" data-adnota-tooltip="Erase all remaining" style="background:#ef4444;color:#fff;border:none;font:600 11px/1 -apple-system,BlinkMacSystemFont,\"Segoe UI\",Roboto,sans-serif;padding:5px 10px;border-radius:4px;cursor:pointer;margin-right:6px">Erase all ${n}</button>` +
+      `<button id="adnota-eraser-batch-next" data-adnota-ui="1" data-adnota-tooltip="Next similar (scroll into view)" style="${navBtnStyle};margin-right:10px">▶</button>` +
+      `<button id="adnota-eraser-batch-commit" data-adnota-ui="1" data-adnota-tooltip="Erase the remaining similar ads" style="${actionChipStyle}"><span style="margin-right:4px">⚠</span>Erase ${n} more?</button>` +
       `<div id="adnota-eraser-batch-deny" data-adnota-ui="1" data-adnota-tooltip="Dismiss without erasing" class="adnota-select-delete" style="position:relative;top:0;right:0">✕</div>`;
     // Wire button handlers — innerHTML wipes prior listeners every time, so
     // re-bind on each render.
@@ -615,6 +629,12 @@ function updateHUD(target) {
     const denyBtn = document.getElementById('adnota-eraser-batch-deny');
     const prevBtn = document.getElementById('adnota-eraser-batch-prev');
     const nextBtn = document.getElementById('adnota-eraser-batch-next');
+    const wireHover = (btn, hoverBg) => {
+      if (!btn) return;
+      const origBg = btn.style.background;
+      btn.addEventListener('mouseenter', () => { btn.style.background = hoverBg; });
+      btn.addEventListener('mouseleave', () => { btn.style.background = origBg; });
+    };
     const wireNav = (btn, dir) => {
       if (!btn) return;
       btn.addEventListener('mousedown', (ev) => { ev.preventDefault(); ev.stopPropagation(); });
@@ -623,6 +643,7 @@ function updateHUD(target) {
         ev.stopPropagation();
         navigateBatch(dir);
       });
+      wireHover(btn, 'rgba(239, 68, 68, 0.18)');
     };
     wireNav(prevBtn, -1);
     wireNav(nextBtn, 1);
@@ -633,6 +654,8 @@ function updateHUD(target) {
         ev.stopPropagation();
         commitBatch();
       });
+      // Hover deepens to .adnota-select-delete:hover's color (rgba(220,38,38,1)).
+      wireHover(commitBtn, 'rgba(220, 38, 38, 1)');
     }
     if (denyBtn) {
       denyBtn.addEventListener('mousedown', (ev) => { ev.preventDefault(); ev.stopPropagation(); });
@@ -642,8 +665,15 @@ function updateHUD(target) {
         denyBatch('user');
       });
     }
+    // No animation here — enterBatch owns the entry fade-in via an opacity
+    // transition on eraserHudInfo. updateHUD only rebuilds the innerHTML;
+    // it doesn't choreograph the reveal.
     return;
   }
+
+  // Non-batch render — clear the batch render-key so the next batch entry
+  // doesn't false-positive against a stale match.
+  delete eraserHudInfo.dataset.batchKey;
 
   if (!target) {
     dimensionBadge.textContent = '';
@@ -1045,6 +1075,22 @@ function _paintBatchOverlay(entry) {
 
   const scrollY = window.pageYOffset || document.documentElement.scrollTop;
   const scrollX = window.pageXOffset || document.documentElement.scrollLeft;
+  const docLeft = rect.left + scrollX;
+  const docTop = rect.top + scrollY;
+
+  // Stack-shift the number badge horizontally if another overlay is already
+  // painted at (approximately) this same doc-position — sites occasionally
+  // render two ad-slot wrappers at identical coords (SPA quirks, layout
+  // overlap), and stacked badges look like one when in fact the user has
+  // two affordances to act on. Side-by-side reads honestly.
+  let badgeStackOffset = 0;
+  for (const otherWrapper of batchOverlayMap.values()) {
+    const otherLeft = parseFloat(otherWrapper.style.left);
+    const otherTop = parseFloat(otherWrapper.style.top);
+    if (Math.abs(otherLeft - docLeft) < 4 && Math.abs(otherTop - docTop) < 4) {
+      badgeStackOffset++;
+    }
+  }
 
   const wrapper = document.createElement('div');
   wrapper.setAttribute('data-adnota-ui', '1');
@@ -1063,27 +1109,31 @@ function _paintBatchOverlay(entry) {
     borderRadius: '2px',
   });
 
-  // Number badge (top-left, decorative — pointer-events: none).
+  // Number badge — INSIDE the candidate's top-left corner (inset positioning
+  // keeps it visible on candidates flush with the viewport top). Styled to
+  // mirror the canonical .adnota-select-delete ✕: same semi-transparent red,
+  // same drop-shadow depth, no hard white border. Distinguished from the ✕
+  // only by size (26px vs 20px) — same visual language, scaled-up to read
+  // as "review affordance" rather than "remove button."
   const numBadge = document.createElement('div');
   numBadge.setAttribute('data-adnota-ui', '1');
   numBadge.textContent = _badgeLabel(entry.displayNumber);
   Object.assign(numBadge.style, {
     position: 'absolute',
-    top: '-12px',
-    left: '-12px',
-    background: '#ef4444',
+    top: '8px',
+    // 26px badge + 4px gap = 30px stride per stacked peer
+    left: `${8 + badgeStackOffset * 30}px`,
+    background: 'rgba(239, 68, 68, 0.9)',
     color: '#fff',
-    font: '700 14px/1 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
-    minWidth: '22px',
-    height: '22px',
-    padding: '0 5px',
+    font: '600 14px/1 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+    minWidth: '26px',
+    height: '26px',
+    padding: '0 7px',
     boxSizing: 'border-box',
     display: 'inline-flex',
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: '11px',
-    border: '2px solid #fff',
-    boxShadow: '0 1px 4px rgba(0, 0, 0, 0.3)',
+    borderRadius: '13px',
     pointerEvents: 'none',
   });
   wrapper.appendChild(numBadge);
@@ -1181,6 +1231,111 @@ function _onBatchScrollOrResize() {
   });
 }
 
+// Slide-transition the eraserHudInfo content: old content slides up and out
+// while new content slides up into its place from below. Pure vertical
+// slide — no width animation, no growth-from-middle. The dock width is
+// locked once at the start to fit whichever content is wider; that's the
+// only dimensional change, and it happens within a single frame so it's
+// not perceived as continuous growth.
+//
+// renderNewContent is called mid-transition; it must populate eraserHudInfo
+// (typically via updateHUD which sets innerHTML and wires handlers).
+function _slideTransitionHud(renderNewContent) {
+  const oldRect = eraserHudInfo.getBoundingClientRect();
+
+  // `width: max-content` makes each wrapper size to its own natural content
+  // even when position:absolute, so we can measure new content's width
+  // accurately before animation starts.
+  const wrapperStyle = {
+    position: 'absolute',
+    left: '0',
+    top: '0',
+    height: '100%',
+    width: 'max-content',
+    display: 'inline-flex',
+    alignItems: 'center',
+    whiteSpace: 'nowrap',
+    transition: 'transform 0.32s ease-out, opacity 0.32s ease-out',
+  };
+
+  // Capture current children into oldContent.
+  const oldContent = document.createElement('span');
+  oldContent.setAttribute('data-adnota-ui', '1');
+  while (eraserHudInfo.firstChild) oldContent.appendChild(eraserHudInfo.firstChild);
+  Object.assign(oldContent.style, wrapperStyle);
+  oldContent.style.pointerEvents = 'none';
+  oldContent.style.transform = 'translateY(0)';
+
+  // Render the new innerHTML into eraserHudInfo (handlers wired by updateHUD
+  // via getElementById, which still works because we've cleared old children
+  // out of eraserHudInfo first).
+  renderNewContent();
+
+  // Move that fresh content into newContent (starts off-screen below).
+  const newContent = document.createElement('span');
+  newContent.setAttribute('data-adnota-ui', '1');
+  while (eraserHudInfo.firstChild) newContent.appendChild(eraserHudInfo.firstChild);
+  Object.assign(newContent.style, wrapperStyle);
+  newContent.style.transform = 'translateY(100%)';
+  newContent.style.opacity = '0';
+
+  // Append both wrappers; measure new content's natural width.
+  eraserHudInfo.appendChild(oldContent);
+  eraserHudInfo.appendChild(newContent);
+  const newWidth = newContent.offsetWidth;
+  const lockWidth = Math.max(oldRect.width, newWidth);
+
+  // Lock dimensions for the duration of the slide — set once, no transition.
+  // The dock may snap-grow by a few px at this instant if new is wider than
+  // old, but it's a one-frame change (not continuous), so it reads as part
+  // of the slide kicking off rather than its own animation.
+  const prev = {
+    position: eraserHudInfo.style.position,
+    overflow: eraserHudInfo.style.overflow,
+    height: eraserHudInfo.style.height,
+    width: eraserHudInfo.style.width,
+    minWidth: eraserHudInfo.style.minWidth,
+    transition: eraserHudInfo.style.transition,
+  };
+  Object.assign(eraserHudInfo.style, {
+    position: 'relative',
+    overflow: 'hidden',
+    height: oldRect.height + 'px',
+    width: lockWidth + 'px',
+    minWidth: lockWidth + 'px',
+    transition: '', // explicit: no transition on container dimensions
+  });
+
+  // Double rAF: commit initial state to layout, then trigger transition.
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      oldContent.style.transform = 'translateY(-100%)';
+      oldContent.style.opacity = '0';
+      newContent.style.transform = 'translateY(0)';
+      newContent.style.opacity = '1';
+    });
+  });
+
+  setTimeout(() => {
+    // Defensive: a denyBatch / mode-off / new render may have wiped
+    // eraserHudInfo's children mid-flight. Only clean up wrappers we still
+    // own.
+    if (oldContent.parentNode === eraserHudInfo) {
+      eraserHudInfo.removeChild(oldContent);
+    }
+    if (newContent.parentNode === eraserHudInfo) {
+      while (newContent.firstChild) eraserHudInfo.appendChild(newContent.firstChild);
+      eraserHudInfo.removeChild(newContent);
+    }
+    eraserHudInfo.style.position = prev.position;
+    eraserHudInfo.style.overflow = prev.overflow;
+    eraserHudInfo.style.height = prev.height;
+    eraserHudInfo.style.width = prev.width;
+    eraserHudInfo.style.minWidth = prev.minWidth;
+    eraserHudInfo.style.transition = prev.transition;
+  }, 360);
+}
+
 function enterBatch(candidates) {
   // candidates: HTMLElement[] (visible, document-ordered)
   if (!candidates || candidates.length === 0) return;
@@ -1191,18 +1346,34 @@ function enterBatch(candidates) {
     candidates: candidates.map((el, i) => ({ el, displayNumber: i + 1 })),
   };
 
-  // Paint initial overlays for in-viewport candidates.
-  for (const entry of batchState.candidates) {
-    const w = _paintBatchOverlay(entry);
-    if (w) batchOverlayMap.set(entry.displayNumber, w);
-  }
-
   // Capture-phase listeners catch scrolls inside nested overflow containers
   // (window scroll events don't bubble from inner scrollers).
   window.addEventListener('scroll', _onBatchScrollOrResize, { passive: true, capture: true });
   window.addEventListener('resize', _onBatchScrollOrResize, { passive: true });
 
-  updateHUD(null); // surface the chip
+  // HUD slide-transition: old content slides up and out, new batch chip
+  // slides up into place. Smooth, deliberate, single coordinated movement.
+  _slideTransitionHud(() => updateHUD(null));
+
+  // Overlay stagger reveal — opacity-only, no transforms (pure scale on
+  // absolutely-positioned elements read as "boundary calculation glitches"
+  // in earlier iteration). Stagger gives the scanning feel.
+  let visibleIdx = 0;
+  for (const entry of batchState.candidates) {
+    const w = _paintBatchOverlay(entry);
+    if (!w) continue;
+    batchOverlayMap.set(entry.displayNumber, w);
+    const delay = visibleIdx * 50;
+    visibleIdx++;
+    w.style.opacity = '0';
+    w.style.transition = `opacity 0.3s ease-out ${delay}ms`;
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        w.style.opacity = '1';
+      });
+    });
+  }
+
   window.AdnotaLog?.event('eraser', 'batch-enter', { count: batchState.candidates.length });
 }
 
@@ -1513,6 +1684,14 @@ document.addEventListener('click', async (e) => {
 
   // Commit the erase: anchor + rule + animation + storage + undo entry.
   const { undoEntry, id, adSignals } = commitErase(target, { shiftKey: e.shiftKey });
+  // Wrap the seed undo so undoing the trigger click also tears down any
+  // batch UI surfaced from it. The batch was caused by this erase — if the
+  // user reverses that decision, the batch context is stale.
+  const seedUndoOriginal = undoEntry.undo;
+  undoEntry.undo = async () => {
+    if (batchState) denyBatch('seed-undo');
+    await seedUndoOriginal();
+  };
   window.AdnotaUndo.push(undoEntry);
 
   // ── Toast ──
