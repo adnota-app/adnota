@@ -1973,15 +1973,19 @@ function appendBreadcrumb() {
 }
 
 // Position the floating breadcrumb. Preferred placement: ABOVE the
-// selection's top edge with a 6px gap. Fallback: BELOW the bottom edge
-// when the selection is too close to the top of the viewport for the
-// breadcrumb to fit above. Horizontal: aligned with selection's left
-// edge, viewport-bounded so the breadcrumb never runs off-screen.
+// selection's top edge with a 22px gap. The corner ⓘ + ↺ buttons
+// extend ~10px above rect.top and the breadcrumb's drop shadow extends
+// another ~10px below its box; 22px clears both with breathing room
+// even when the breadcrumb wraps to multiple rows. Fallback: BELOW the
+// bottom edge when the selection is too close to the top of the
+// viewport for the breadcrumb to fit above. Horizontal: aligned with
+// selection's left edge, viewport-bounded so the breadcrumb never
+// runs off-screen.
 function positionBreadcrumb(rect, sx, sy) {
   if (!selectionBreadcrumb) return;
   const bcH = selectionBreadcrumb.offsetHeight;
   const bcW = selectionBreadcrumb.offsetWidth;
-  const gap = 6;
+  const gap = 22;
   // Decision: above unless selection's viewport-relative top is too small
   // to fit the breadcrumb + gap above it. Stable through normal resize
   // gestures because rect.top only changes on top-edge drags.
