@@ -1116,6 +1116,7 @@ function _paintBatchOverlay(entry) {
   // render two ad-slot wrappers at identical coords (SPA quirks, layout
   // overlap), and stacked badges look like one when in fact the user has
   // two affordances to act on. Side-by-side reads honestly.
+  // 42px badge + 4px gap = 46px stride per stacked peer.
   let badgeStackOffset = 0;
   for (const otherWrapper of batchOverlayMap.values()) {
     const otherLeft = parseFloat(otherWrapper.style.left);
@@ -1145,28 +1146,27 @@ function _paintBatchOverlay(entry) {
   // Number badge — INSIDE the candidate's top-left corner (inset positioning
   // keeps it visible on candidates flush with the viewport top). Styled to
   // mirror the canonical .adnota-select-delete ✕: same semi-transparent red,
-  // same drop-shadow depth, no hard white border. Distinguished from the ✕
-  // only by size (26px vs 20px) — same visual language, scaled-up to read
-  // as "review affordance" rather than "remove button."
+  // no hard border. Sized larger (42px vs 20px ✕) so the batch-review
+  // identifier reads as confidently as the action affordances in the HUD
+  // chip — primary identifier first, secondary remove button second.
   const numBadge = document.createElement('div');
   numBadge.setAttribute('data-adnota-ui', '1');
   numBadge.textContent = _badgeLabel(entry.displayNumber);
   Object.assign(numBadge.style, {
     position: 'absolute',
     top: '8px',
-    // 26px badge + 4px gap = 30px stride per stacked peer
-    left: `${8 + badgeStackOffset * 30}px`,
+    left: `${8 + badgeStackOffset * 46}px`,
     background: 'rgba(239, 68, 68, 0.9)',
     color: '#fff',
-    font: '600 14px/1 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
-    minWidth: '26px',
-    height: '26px',
-    padding: '0 7px',
+    font: '600 22px/1 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+    minWidth: '42px',
+    height: '42px',
+    padding: '0 12px',
     boxSizing: 'border-box',
     display: 'inline-flex',
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: '13px',
+    borderRadius: '21px',
     pointerEvents: 'none',
   });
   wrapper.appendChild(numBadge);
