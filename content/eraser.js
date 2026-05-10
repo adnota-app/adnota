@@ -397,12 +397,18 @@ function findSimilarAds(target) {
     return true;
   });
 
-  // Document-order sort so Prev/Next walks the page top-to-bottom.
+  // Visual-position sort: number candidates strictly by their on-screen top
+  // (then left for tie-break), regardless of DOM container. Document order
+  // mostly matches visual order but breaks on sidebar layouts — a sidebar ad
+  // that renders visually above an in-content ad might appear later in the
+  // DOM. Sorting by rect.top is what users actually mean by "top to bottom."
+  // Scroll position is constant at sort-time so we can use viewport coords
+  // directly; tie-break by rect.left for ads in the same horizontal row.
   deduped.sort((a, b) => {
-    const pos = a.compareDocumentPosition(b);
-    if (pos & Node.DOCUMENT_POSITION_FOLLOWING) return -1;
-    if (pos & Node.DOCUMENT_POSITION_PRECEDING) return 1;
-    return 0;
+    const ra = a.getBoundingClientRect();
+    const rb = b.getBoundingClientRect();
+    if (ra.top !== rb.top) return ra.top - rb.top;
+    return ra.left - rb.left;
   });
 
   return { candidates: deduped, strategies };
