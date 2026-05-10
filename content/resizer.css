@@ -177,6 +177,17 @@
   filter: brightness(1.1);
 }
 
+/* SVG-glyph chips (text-size A±, recolor bucket, recolor A) need tighter
+   padding so their 14×14 icon doesn't visually inflate the chip relative to
+   text-content chips like ↺ or "unstick". The :has() selector keeps the rule
+   scoped to chips that actually contain an SVG. */
+.adnota-resizer-action-chip:has(svg) {
+  padding: 2px 5px;
+}
+.adnota-resizer-action-chip svg {
+  display: block;
+}
+
 /* ─── Clip / size-cap warning chip ───────────────────────────────────────
    Surfaces during a drag when growth is being silently masked by a clipping
    ancestor (overflow:hidden|clip) or capped by the element's own

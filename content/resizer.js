@@ -214,7 +214,10 @@ function updateHUD() {
         html += ` · <span style="color:#93c5fd">drag body</span> to move · <span style="color:#93c5fd">arrows</span> nudge`;
       }
       if (isScalable(selectedEl)) {
-        html += ` · <span style="color:#93c5fd">Aa±</span> text size`;
+        html += ` · <span style="color:#93c5fd">A±</span> text size`;
+      }
+      if (isRecolorable(selectedEl)) {
+        html += ` · <span style="color:#93c5fd">recolor</span> bg / text`;
       }
       html += ` · <span style="color:#93c5fd">↺</span> to reset</span>`;
     }
@@ -256,6 +259,8 @@ let selectionParentChip = null;
 let selectionClipChip = null;
 let selectionTextSizeDownChip = null;
 let selectionTextSizeUpChip = null;
+let selectionRecolorBgChip = null;
+let selectionRecolorTextChip = null;
 let selectionChipCluster = null;
 
 // Drag-time growth-blocker match. Set by onMove via AdnotaLayout.findGrowthOverflow,
@@ -540,7 +545,11 @@ function isPropsSuperset(superset, subset) {
 // and arbitrary divs are deliberately NOT in the cascade — see the text-size
 // helpers section for the rationale.
 function ruleSelectorFor(rule) {
-  if (rule.kind === 'text-size') {
+  if (rule.kind === 'text-size' || rule.kind === 'recolor-text') {
+    // recolor-text shares the prose-cascade with text-size: authored CSS sets
+    // `color` on <p>/<li>/etc. directly, so cascading `color` from a parent
+    // selector alone won't reach them. <a> is deliberately excluded — links
+    // need to stay visually distinguishable.
     const s = rule.selector;
     return `${s},${s} p,${s} li,${s} dd,${s} dt,${s} blockquote,${s} caption,${s} figcaption`;
   }
@@ -784,9 +793,14 @@ function selectElement(el) {
   selectionTextSizeDownChip = document.createElement('div');
   selectionTextSizeDownChip.className = 'adnota-resizer-action-chip';
   selectionTextSizeDownChip.setAttribute('data-adnota-ui', '1');
-  selectionTextSizeDownChip.textContent = 'Aa−';
   selectionTextSizeDownChip.setAttribute('data-adnota-tooltip', 'Smaller text (Shift+click for bigger step)');
   selectionTextSizeDownChip.style.display = 'none';
+  selectionTextSizeDownChip.innerHTML = `
+    <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" style="display:block">
+      <text x="2" y="20" font-family="ui-sans-serif, system-ui, sans-serif" font-weight="900" font-size="20" fill="currentColor">A</text>
+      <text x="14.5" y="11" font-family="ui-sans-serif, system-ui, sans-serif" font-weight="900" font-size="11" fill="currentColor">−</text>
+    </svg>
+  `;
   selectionTextSizeDownChip.addEventListener('click', (e) => {
     e.preventDefault();
     e.stopPropagation();
@@ -798,15 +812,66 @@ function selectElement(el) {
   selectionTextSizeUpChip = document.createElement('div');
   selectionTextSizeUpChip.className = 'adnota-resizer-action-chip';
   selectionTextSizeUpChip.setAttribute('data-adnota-ui', '1');
-  selectionTextSizeUpChip.textContent = 'Aa+';
   selectionTextSizeUpChip.setAttribute('data-adnota-tooltip', 'Bigger text (Shift+click for bigger step)');
   selectionTextSizeUpChip.style.display = 'none';
+  selectionTextSizeUpChip.innerHTML = `
+    <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" style="display:block">
+      <text x="2" y="20" font-family="ui-sans-serif, system-ui, sans-serif" font-weight="900" font-size="20" fill="currentColor">A</text>
+      <text x="14.5" y="11" font-family="ui-sans-serif, system-ui, sans-serif" font-weight="900" font-size="11" fill="currentColor">+</text>
+    </svg>
+  `;
   selectionTextSizeUpChip.addEventListener('click', (e) => {
     e.preventDefault();
     e.stopPropagation();
     if (!selectedEl) return;
     bumpTextSize(selectedEl, 'up', e.shiftKey);
     updateSelectionChip();
+  });
+
+  // Recolor chips: bucket (background) and A-with-underline (text). Each click
+  // opens the native EyeDropper API; the picked color persists via a recolor-bg
+  // or recolor-text rule. Re-clicking re-opens EyeDropper and replaces the
+  // current color via same-kind dedup. ↺ remains the only way to fully clear.
+  // Chips stay visually identical regardless of state — the element repainting
+  // IS the user's confirmation, no need to mirror the color on the chip.
+  selectionRecolorBgChip = document.createElement('div');
+  selectionRecolorBgChip.className = 'adnota-resizer-action-chip';
+  selectionRecolorBgChip.setAttribute('data-adnota-ui', '1');
+  selectionRecolorBgChip.setAttribute('data-adnota-tooltip', 'Background — pick any color from the page');
+  selectionRecolorBgChip.style.display = 'none';
+  selectionRecolorBgChip.innerHTML = `
+    <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" style="display:block">
+      <g transform="rotate(20 12 12)" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round">
+        <path d="M5 7 L17 7 L15 18 Q11 19.5 7 18 Z"/>
+        <ellipse cx="11" cy="7" rx="6" ry="1.5"/>
+        <path d="M8 7 Q11 12 14 7"/>
+      </g>
+      <path d="M18.5 17 Q21 21 18.5 22 Q16 21 18.5 17 Z" fill="currentColor"/>
+    </svg>
+  `;
+  selectionRecolorBgChip.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!selectedEl) return;
+    pickColorAndApply(selectedEl, 'bg');
+  });
+
+  selectionRecolorTextChip = document.createElement('div');
+  selectionRecolorTextChip.className = 'adnota-resizer-action-chip';
+  selectionRecolorTextChip.setAttribute('data-adnota-ui', '1');
+  selectionRecolorTextChip.setAttribute('data-adnota-tooltip', 'Text color — pick any color from the page');
+  selectionRecolorTextChip.style.display = 'none';
+  selectionRecolorTextChip.innerHTML = `
+    <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" style="display:block">
+      <text x="12" y="18" font-family="ui-sans-serif, system-ui, sans-serif" font-weight="900" font-size="20" text-anchor="middle" fill="currentColor">A</text>
+      <rect x="3" y="20" width="18" height="3" fill="currentColor"/>
+    </svg>
+  `;
+  selectionRecolorTextChip.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!selectedEl) return;
+    pickColorAndApply(selectedEl, 'text');
   });
 
   selectionChipCluster = document.createElement('div');
@@ -823,12 +888,14 @@ function selectElement(el) {
     alignItems: 'center',
     zIndex: '2147483647',
   });
-  // Order: parent (when present) → unstick/restick → finite scroll → text-size → clip → dimension.
+  // Order: parent (when present) → unstick/restick → finite scroll → text-size → recolor → clip → dimension.
   selectionChipCluster.appendChild(selectionParentChip);
   selectionChipCluster.appendChild(selectionActionChip);
   selectionChipCluster.appendChild(selectionInfiniteChip);
   selectionChipCluster.appendChild(selectionTextSizeDownChip);
   selectionChipCluster.appendChild(selectionTextSizeUpChip);
+  selectionChipCluster.appendChild(selectionRecolorBgChip);
+  selectionChipCluster.appendChild(selectionRecolorTextChip);
   selectionChipCluster.appendChild(selectionClipChip);
   selectionChipCluster.appendChild(selectionDimBadge);
   selectionBox.appendChild(selectionChipCluster);
@@ -983,6 +1050,14 @@ function updateSelectionChip() {
       selectionTextSizeUpChip.style.display   = 'none';
     }
   }
+
+  // Recolor chips — show on the same predicate as text-size. No state
+  // mirroring on the chip itself: the element repaint IS the user's feedback.
+  if (selectionRecolorBgChip && selectionRecolorTextChip) {
+    const show = isRecolorable(selectedEl) ? '' : 'none';
+    selectionRecolorBgChip.style.display   = show;
+    selectionRecolorTextChip.style.display = show;
+  }
 }
 
 function deselectElement() {
@@ -1028,6 +1103,8 @@ function deselectElement() {
   selectionClipChip = null;
   selectionTextSizeDownChip = null;
   selectionTextSizeUpChip = null;
+  selectionRecolorBgChip = null;
+  selectionRecolorTextChip = null;
   currentClipMatch = null;
   if (hadSelection && window.AdnotaState.mode === 'resizer') updateHUD();
   updateReflowButtonStates();
@@ -1807,6 +1884,11 @@ async function resetElement(el) {
   // ever leaks inline font-size/line-height onto the element.
   el.style.removeProperty('font-size');
   el.style.removeProperty('line-height');
+  // RECOLOR props — same defensive pattern. Persisted recolor-bg/recolor-text
+  // rules go through the storage filter; these inline removes catch anything
+  // that might have leaked.
+  el.style.removeProperty('background-color');
+  el.style.removeProperty('color');
   void el.offsetHeight; // force reflow
 
   // Remove from storage — both CSS-keyed (selector match) and reorder-keyed
@@ -2395,6 +2477,61 @@ function fireTextSizeTipOnce() {
     window.AdnotaUI?.showToast(
       'Tip: Aa+/Aa− to scale this section\'s body text · Shift+click for bigger steps · ↺ to reset.',
       { id: 'adnota-text-size-tip', timeout: 5000 }
+    );
+  }).catch(() => { /* context invalidated after extension reload */ });
+}
+
+// ─── Recolor helpers (background + text via EyeDropper) ─────────────────────
+// Two chips, two kinds: 'recolor-bg' (element-only, no descendant cascade,
+// since CSS background-color doesn't inherit) and 'recolor-text' (expands to
+// the same prose-cascade list as text-size — see ruleSelectorFor — so authored
+// `color` on <p>/<li>/etc. gets overridden). Links are deliberately NOT in
+// the cascade so they stay visually distinguishable for navigation.
+
+function isRecolorable(el) {
+  if (!el || !el.isConnected) return false;
+  if (el === document.body || el === document.documentElement) return false;
+  const ctx = el._adnotaLayoutContext || getLayoutContext(el);
+  if (ctx?.kind === 'table-component') return false;
+  return true;
+}
+
+async function persistRecolor(el, which, hex) {
+  const prop = which === 'bg' ? 'background-color' : 'color';
+  const kind = which === 'bg' ? 'recolor-bg' : 'recolor-text';
+  const cssText = `${prop}: ${hex} !important`;
+  return commitResizeRule(el, cssText, kind);
+}
+
+async function pickColorAndApply(el, which) {
+  if (!isRecolorable(el)) return;
+  if (typeof window.EyeDropper !== 'function') {
+    window.AdnotaUI?.showToast('Eyedropper requires Chrome 95+');
+    return;
+  }
+  try {
+    const dropper = new window.EyeDropper();
+    const result = await dropper.open();
+    if (result?.sRGBHex) {
+      await persistRecolor(el, which, result.sRGBHex);
+      fireRecolorTipOnce();
+    }
+  } catch {
+    // User cancelled the picker — no-op.
+  }
+}
+
+let _recolorTipFired = false;
+function fireRecolorTipOnce() {
+  if (_recolorTipFired) return;
+  _recolorTipFired = true;
+  const KEY = 'adnotaRecolorTipShown';
+  chrome.storage.local.get(KEY).then((data) => {
+    if (data[KEY]) return;
+    chrome.storage.local.set({ [KEY]: true });
+    window.AdnotaUI?.showToast(
+      'Tip: Pick any color from this page or another tab · ↺ to reset.',
+      { id: 'adnota-recolor-tip', timeout: 5000 }
     );
   }).catch(() => { /* context invalidated after extension reload */ });
 }
