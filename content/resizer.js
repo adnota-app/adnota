@@ -1878,19 +1878,65 @@ function applyClipChipState(match) {
 // — handles attach their own pointerdown that runs first, and `dragAxis`
 // truthiness gates re-entry.
 //
-// The persisted rule writes `position: relative` (not absolute) so the
-// element follows its parent's reflow on responsive breakpoints / dynamic
-// chrome injection. No z-index is written: stacking during the drag is a
-// faithful preview of where the element ends up on release. See
-// `proceed-mellow-swan.md` design decision #4.
+// Layout-aware strategy dispatch (mirrors resize's per-kind strategies from
+// layout-aware-v2):
+//   - In-flow elements (static/relative/sticky): force position:relative +
+//     compute a compensating top/left so the element doesn't visually jump
+//     on pointerdown. Persisted rule writes `position: relative`. Element
+//     re-enters flow; siblings may reflow but that's the gap-as-feature.
+//   - Absolute elements: don't flip to relative (would collapse elements
+//     that escape zero-size parent chains via absolute positioning — modal
+//     dropdowns, autocomplete suggestions, etc.). Use cs.top/left or
+//     offsetTop/Left as the starting offset; persist `position: absolute`.
+//   - Fixed elements (without transformed ancestors): same offset math
+//     against the viewport; persist `position: fixed`.
+//   - Fixed elements inside a transformed ancestor: refused (the ancestor
+//     becomes the containing block for fixed descendants, and the math to
+//     handle that correctly is a v2 effort).
+//
+// No z-index is written for any kind: stacking during the drag is a
+// faithful preview of where the element ends up on release.
+
+// `transform`, `perspective`, `filter`, and certain `will-change` values
+// create a new containing block for `position: fixed` descendants. We refuse
+// those because computing CB-relative coordinates correctly across that
+// boundary requires more math than v1 ships.
+function hasTransformedAncestor(el) {
+  let cur = el.parentElement;
+  while (cur && cur !== document.documentElement) {
+    const cs = getComputedStyle(cur);
+    if (cs.transform !== 'none') return true;
+    if (cs.perspective !== 'none') return true;
+    if (cs.filter !== 'none') return true;
+    if (cs.willChange && /transform|perspective|filter/.test(cs.willChange)) return true;
+    cur = cur.parentElement;
+  }
+  return false;
+}
+
+// Returns either { kind: 'relative' | 'absolute' | 'fixed' } when the element
+// can be position-dragged, or { error: <reason> } when it can't. The reason
+// strings double as classification — useful for logging or surfacing in
+// future diagnostic UI.
+function getPositionStrategy(el) {
+  if (!el || !el.isConnected) return { error: 'not-connected' };
+  if (el === document.body || el === document.documentElement) return { error: 'page-root' };
+  const ctx = el._adnotaLayoutContext || getLayoutContext(el);
+  if (ctx?.kind === 'table-component') return { error: 'table-component' };
+  if (window.AdnotaUI.dominatesViewport(el.getBoundingClientRect())) return { error: 'viewport-dominator' };
+
+  const cs = getComputedStyle(el);
+  if (cs.position === 'absolute') return { kind: 'absolute' };
+  if (cs.position === 'fixed') {
+    if (hasTransformedAncestor(el)) return { error: 'fixed-in-transformed-ancestor' };
+    return { kind: 'fixed' };
+  }
+  // static / relative / sticky → in-flow strategy
+  return { kind: 'relative' };
+}
 
 function isPositionable(el) {
-  if (!el || !el.isConnected) return false;
-  if (el === document.body || el === document.documentElement) return false;
-  const ctx = el._adnotaLayoutContext || getLayoutContext(el);
-  if (ctx?.kind === 'table-component') return false;
-  if (window.AdnotaUI.dominatesViewport(el.getBoundingClientRect())) return false;
-  return true;
+  return !getPositionStrategy(el).error;
 }
 
 // Cursor override for the positionable element AND its descendants. The
@@ -1924,12 +1970,22 @@ function onBodyDragStart(e) {
   startPositionDrag(e);
 }
 
-async function persistPosition(el, x, y) {
-  const cssText =
-    `position: relative !important; ` +
+async function persistPosition(el, x, y, posType = 'relative', dims = null) {
+  let cssText =
+    `position: ${posType} !important; ` +
     `top: ${Math.round(y)}px !important; ` +
     `left: ${Math.round(x)}px !important; ` +
     `right: auto !important; bottom: auto !important`;
+  // Pin width/height when the element was sized via stretch-anchoring
+  // (left+right or top+bottom). Without these, nullifying right/bottom on
+  // commit would collapse the element — e.g., a `nav { left:0; right:0 }`
+  // that we drop to `right: auto` shrinks to its content width. Pinning
+  // preserves the dimensions the user saw at drag time. Only set when the
+  // strategy detected the anchor-stretch case (dims is null otherwise).
+  if (dims) {
+    if (dims.width  != null) cssText += `; width: ${Math.round(dims.width)}px !important`;
+    if (dims.height != null) cssText += `; height: ${Math.round(dims.height)}px !important`;
+  }
   return commitResizeRule(el, cssText, 'position');
 }
 
@@ -1937,6 +1993,16 @@ function startPositionDrag(e) {
   e.preventDefault();
   e.stopPropagation();
   if (!selectedEl) return;
+
+  // Strategy dispatch — choose drag math based on the element's computed
+  // position. In-flow elements get the force-relative + compensate-offset
+  // dance; absolute/fixed elements keep their position type and use raw
+  // CB-relative offsets. See getPositionStrategy + the section header
+  // comment above for the full rationale.
+  const strategy = getPositionStrategy(selectedEl);
+  if (strategy.error) return;
+  const posType = strategy.kind;                 // 'relative' | 'absolute' | 'fixed'
+  const isOutOfFlow = posType === 'absolute' || posType === 'fixed';
 
   dragAxis = 'position';
   dragStartX = e.clientX;
@@ -1957,7 +2023,9 @@ function startPositionDrag(e) {
   // inline with !important too — non-!important writes silently lose to the
   // rule, leaving the element glued to its persisted position while the
   // cursor moves (felt as lag). Snapshot priority so we can restore exactly.
-  const POS_PROPS = ['top', 'left', 'right', 'bottom', 'position'];
+  // width/height are included because the out-of-flow branch may pin them
+  // when the element is stretch-anchored.
+  const POS_PROPS = ['top', 'left', 'right', 'bottom', 'position', 'width', 'height'];
   const inlineSnapshot = {};
   for (const p of POS_PROPS) {
     inlineSnapshot[p] = {
@@ -1966,30 +2034,73 @@ function startPositionDrag(e) {
     };
   }
 
-  // Capture the visual position the user grabbed.
-  const grabbedRect = selectedEl.getBoundingClientRect();
-
-  // Force position: relative + clear all offsets so we can measure the
-  // element's natural in-flow position. Load-bearing for sticky/fixed AND
-  // for any selector that already has a persisted position rule — `auto`
-  // alone wouldn't beat the rule's `Xpx !important`.
-  selectedEl.style.setProperty('position', 'relative', 'important');
-  selectedEl.style.setProperty('top',      'auto',     'important');
-  selectedEl.style.setProperty('left',     'auto',     'important');
-  selectedEl.style.setProperty('right',    'auto',     'important');
-  selectedEl.style.setProperty('bottom',   'auto',     'important');
-
-  const naturalRect = selectedEl.getBoundingClientRect();
-
-  // Compensating offset so the element stays at the grabbed position visually.
-  // For static / relative-no-offset: 0,0. For relative-with-offset (including
-  // a previously-persisted position rule): re-establishes the active offset.
-  // For sticky / fixed: bridges threshold/viewport coords to in-flow + offset.
-  const startLeft = grabbedRect.left - naturalRect.left;
-  const startTop  = grabbedRect.top  - naturalRect.top;
-
-  selectedEl.style.setProperty('left', startLeft + 'px', 'important');
-  selectedEl.style.setProperty('top',  startTop  + 'px', 'important');
+  // Compute starting top/left in CB coordinates per strategy.
+  let startLeft, startTop;
+  // For out-of-flow elements sized via anchor-stretch (page set both
+  // left+right or both top+bottom to size the element to fill its CB),
+  // pin the current visual dimensions before nullifying right/bottom — and
+  // pass them to persistPosition so they make it into the persisted rule.
+  // Without this, a fixed nav with `left:0; right:0` collapses to its
+  // content width the moment we drop the right anchor.
+  let pinnedDims = null;
+  if (isOutOfFlow) {
+    // Out-of-flow: keep the element's position type. Read current top/left
+    // from computed style if numeric; otherwise derive an equivalent from
+    // offsetTop/Left (absolute) or boundingClientRect (fixed without
+    // transformed ancestor — viewport IS the CB). We always switch to
+    // top/left positioning on commit, so right/bottom must be cleared to
+    // 'auto' to defeat any authored right/bottom rule pulling in the
+    // opposite direction.
+    const cs = getComputedStyle(selectedEl);
+    const csLeft = parseFloat(cs.left);
+    const csTop  = parseFloat(cs.top);
+    if (posType === 'absolute') {
+      startLeft = isFinite(csLeft) ? csLeft : selectedEl.offsetLeft;
+      startTop  = isFinite(csTop)  ? csTop  : selectedEl.offsetTop;
+    } else {
+      const rect = selectedEl.getBoundingClientRect();
+      startLeft = isFinite(csLeft) ? csLeft : rect.left;
+      startTop  = isFinite(csTop)  ? csTop  : rect.top;
+    }
+    // Detect stretch-anchored sizing. If the page set both left+right (or
+    // top+bottom) to non-auto, the element's width (or height) is the
+    // resolved difference and would collapse when we drop the opposing
+    // anchor. Pin the current rect dimension inline + remember to persist.
+    const rect = selectedEl.getBoundingClientRect();
+    const widthAnchored  = (cs.left   !== 'auto' && cs.right  !== 'auto');
+    const heightAnchored = (cs.top    !== 'auto' && cs.bottom !== 'auto');
+    pinnedDims = (widthAnchored || heightAnchored) ? {} : null;
+    if (widthAnchored)  pinnedDims.width  = rect.width;
+    if (heightAnchored) pinnedDims.height = rect.height;
+    if (widthAnchored)  selectedEl.style.setProperty('width',  rect.width  + 'px', 'important');
+    if (heightAnchored) selectedEl.style.setProperty('height', rect.height + 'px', 'important');
+    selectedEl.style.setProperty('position', posType,           'important');
+    selectedEl.style.setProperty('right',    'auto',            'important');
+    selectedEl.style.setProperty('bottom',   'auto',            'important');
+    selectedEl.style.setProperty('left',     startLeft + 'px',  'important');
+    selectedEl.style.setProperty('top',      startTop  + 'px',  'important');
+  } else {
+    // In-flow: force position: relative + clear all offsets so we can
+    // measure the element's natural in-flow position. Load-bearing for
+    // sticky AND for any selector that already has a persisted position
+    // rule — `auto` alone wouldn't beat the rule's `Xpx !important`.
+    const grabbedRect = selectedEl.getBoundingClientRect();
+    selectedEl.style.setProperty('position', 'relative', 'important');
+    selectedEl.style.setProperty('top',      'auto',     'important');
+    selectedEl.style.setProperty('left',     'auto',     'important');
+    selectedEl.style.setProperty('right',    'auto',     'important');
+    selectedEl.style.setProperty('bottom',   'auto',     'important');
+    const naturalRect = selectedEl.getBoundingClientRect();
+    // Compensating offset so the element stays at the grabbed position
+    // visually. For static / relative-no-offset: 0,0. For relative-with-
+    // offset (including a previously-persisted position rule): re-
+    // establishes the active offset. For sticky: bridges threshold coords
+    // to in-flow + offset.
+    startLeft = grabbedRect.left - naturalRect.left;
+    startTop  = grabbedRect.top  - naturalRect.top;
+    selectedEl.style.setProperty('left', startLeft + 'px', 'important');
+    selectedEl.style.setProperty('top',  startTop  + 'px', 'important');
+  }
 
   // Fullscreen capture overlay so the mouse can travel anywhere without
   // hitting page event handlers mid-drag (mirrors resize drag's pattern).
@@ -2081,8 +2192,10 @@ function startPositionDrag(e) {
     // Order: persist FIRST so the !important rule is in the style tag, THEN
     // clear inline so the rule wins cleanly. Inverting this briefly leaves
     // the element with neither inline nor persisted offsets and produces a
-    // visible flash back to natural position.
-    persistPosition(selectedEl, finalLeft, finalTop);
+    // visible flash back to natural position. Pass posType so absolute /
+    // fixed elements don't get demoted to relative on commit, and
+    // pinnedDims so anchor-stretch elements keep their dimensions.
+    persistPosition(selectedEl, finalLeft, finalTop, posType, pinnedDims);
     restoreInlineSnapshot();
 
     dragAxis = null;
@@ -2109,10 +2222,16 @@ function cancelPendingNudge() {
   positionNudgeActive = false;
 }
 
+// Track which strategy this burst started under, so the debounced commit
+// persists the right position type. (Reset on every fresh burst.)
+let positionNudgePosType = 'relative';
+let positionNudgePinnedDims = null;   // anchor-stretch dims to persist (out-of-flow only)
+
 window.addEventListener('keydown', (e) => {
   if (window.AdnotaState?.mode !== 'resizer') return;
   if (!selectedEl || dragAxis) return;
-  if (!isPositionable(selectedEl)) return;
+  const strategy = getPositionStrategy(selectedEl);
+  if (strategy.error) return;
   const t = e.target;
   if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return;
   const delta = { ArrowUp: [0,-1], ArrowDown: [0,1], ArrowLeft: [-1,0], ArrowRight: [1,0] }[e.key];
@@ -2122,17 +2241,54 @@ window.addEventListener('keydown', (e) => {
   const step = e.shiftKey ? 10 : 1;
 
   if (!positionNudgeActive) {
-    const grabbedRect = selectedEl.getBoundingClientRect();
-    // !important needed to override any persisted position rule from a
-    // prior drag/nudge — same reason as startPositionDrag.
-    selectedEl.style.setProperty('position', 'relative', 'important');
-    selectedEl.style.setProperty('top',      'auto',     'important');
-    selectedEl.style.setProperty('left',     'auto',     'important');
-    selectedEl.style.setProperty('right',    'auto',     'important');
-    selectedEl.style.setProperty('bottom',   'auto',     'important');
-    const naturalRect = selectedEl.getBoundingClientRect();
-    positionNudgeStartLeft = grabbedRect.left - naturalRect.left;
-    positionNudgeStartTop  = grabbedRect.top  - naturalRect.top;
+    // Same strategy dispatch as startPositionDrag — in-flow does the
+    // force-relative + compensate-offset dance; out-of-flow keeps its
+    // position type and uses CB-relative offsets so absolute/fixed
+    // elements (modals, dropdowns, sticky chat) nudge correctly.
+    positionNudgePosType = strategy.kind;
+    positionNudgePinnedDims = null;
+    const isOutOfFlow = strategy.kind === 'absolute' || strategy.kind === 'fixed';
+    if (isOutOfFlow) {
+      const cs = getComputedStyle(selectedEl);
+      const csLeft = parseFloat(cs.left);
+      const csTop  = parseFloat(cs.top);
+      if (strategy.kind === 'absolute') {
+        positionNudgeStartLeft = isFinite(csLeft) ? csLeft : selectedEl.offsetLeft;
+        positionNudgeStartTop  = isFinite(csTop)  ? csTop  : selectedEl.offsetTop;
+      } else {
+        const rect = selectedEl.getBoundingClientRect();
+        positionNudgeStartLeft = isFinite(csLeft) ? csLeft : rect.left;
+        positionNudgeStartTop  = isFinite(csTop)  ? csTop  : rect.top;
+      }
+      // Stretch-anchor detection (mirrors startPositionDrag). If width or
+      // height comes from left+right or top+bottom, pin them so they
+      // survive the right:auto / bottom:auto we're about to write.
+      const rect2 = selectedEl.getBoundingClientRect();
+      const widthAnchored  = (cs.left !== 'auto' && cs.right  !== 'auto');
+      const heightAnchored = (cs.top  !== 'auto' && cs.bottom !== 'auto');
+      if (widthAnchored || heightAnchored) {
+        positionNudgePinnedDims = {};
+        if (widthAnchored)  positionNudgePinnedDims.width  = rect2.width;
+        if (heightAnchored) positionNudgePinnedDims.height = rect2.height;
+        if (widthAnchored)  selectedEl.style.setProperty('width',  rect2.width  + 'px', 'important');
+        if (heightAnchored) selectedEl.style.setProperty('height', rect2.height + 'px', 'important');
+      }
+      selectedEl.style.setProperty('position', strategy.kind, 'important');
+      selectedEl.style.setProperty('right',    'auto',        'important');
+      selectedEl.style.setProperty('bottom',   'auto',        'important');
+    } else {
+      const grabbedRect = selectedEl.getBoundingClientRect();
+      // !important needed to override any persisted position rule from a
+      // prior drag/nudge — same reason as startPositionDrag.
+      selectedEl.style.setProperty('position', 'relative', 'important');
+      selectedEl.style.setProperty('top',      'auto',     'important');
+      selectedEl.style.setProperty('left',     'auto',     'important');
+      selectedEl.style.setProperty('right',    'auto',     'important');
+      selectedEl.style.setProperty('bottom',   'auto',     'important');
+      const naturalRect = selectedEl.getBoundingClientRect();
+      positionNudgeStartLeft = grabbedRect.left - naturalRect.left;
+      positionNudgeStartTop  = grabbedRect.top  - naturalRect.top;
+    }
     positionNudgeActive = true;
   }
 
@@ -2142,23 +2298,29 @@ window.addEventListener('keydown', (e) => {
   selectedEl.style.setProperty('top',  positionNudgeStartTop  + 'px', 'important');
   refreshHandles();
 
-  // Capture el + final values now — selectedEl could be cleared during the
-  // 300ms window if the user deselects mid-burst.
-  const elAtNudge = selectedEl;
-  const finalLeft = positionNudgeStartLeft;
-  const finalTop  = positionNudgeStartTop;
+  // Capture el + final values + posType + pinnedDims now — selectedEl could
+  // be cleared during the 300ms window if the user deselects mid-burst.
+  const elAtNudge   = selectedEl;
+  const posAtNudge  = positionNudgePosType;
+  const dimsAtNudge = positionNudgePinnedDims;
+  const finalLeft   = positionNudgeStartLeft;
+  const finalTop    = positionNudgeStartTop;
 
   if (positionNudgeDebounce) clearTimeout(positionNudgeDebounce);
   positionNudgeDebounce = setTimeout(() => {
     positionNudgeDebounce = null;
     positionNudgeActive = false;
     if (!elAtNudge.isConnected) return;
-    persistPosition(elAtNudge, finalLeft, finalTop);
+    persistPosition(elAtNudge, finalLeft, finalTop, posAtNudge, dimsAtNudge);
     elAtNudge.style.removeProperty('left');
     elAtNudge.style.removeProperty('top');
     elAtNudge.style.removeProperty('right');
     elAtNudge.style.removeProperty('bottom');
     elAtNudge.style.removeProperty('position');
+    if (dimsAtNudge) {
+      if (dimsAtNudge.width  != null) elAtNudge.style.removeProperty('width');
+      if (dimsAtNudge.height != null) elAtNudge.style.removeProperty('height');
+    }
   }, 300);
 }, true);
 
