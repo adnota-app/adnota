@@ -67,6 +67,7 @@
         "lib/storage.js",
         "lib/annotationState.js",
         "lib/adnotaUI.js",
+        "lib/adnotaLayout.js",
         "lib/tagIndex.js",
         "content/scratchPad.js",
         "content/dock.js",
