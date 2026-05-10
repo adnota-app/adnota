@@ -213,6 +213,9 @@ function updateHUD() {
       if (isPositionable(selectedEl)) {
         html += ` · <span style="color:#93c5fd">drag body</span> to move · <span style="color:#93c5fd">arrows</span> nudge`;
       }
+      if (isScalable(selectedEl)) {
+        html += ` · <span style="color:#93c5fd">Aa±</span> text size`;
+      }
       html += ` · <span style="color:#93c5fd">↺</span> to reset</span>`;
     }
     resizerHudInfo.innerHTML = html;
@@ -252,6 +255,8 @@ let selectionInfiniteChip = null;
 let selectionParentChip = null;
 let selectionClipChip = null;
 let selectionStructureChip = null;
+let selectionTextSizeDownChip = null;
+let selectionTextSizeUpChip = null;
 let selectionChipCluster = null;
 let selectionBreadcrumb = null;
 let breadcrumbHoverOverlay = null;
@@ -539,11 +544,25 @@ function isPropsSuperset(superset, subset) {
   return true;
 }
 
+// Kind-aware selector expansion. Most rules render as `${selector} { ... }`
+// verbatim, but `kind: 'text-size'` expands to also hit common prose-bearing
+// descendants so the cssText overrides authored child font-sizes (the canonical
+// "13px body text unreadable" failure mode). Headings, code, form controls,
+// and arbitrary divs are deliberately NOT in the cascade — see the text-size
+// helpers section for the rationale.
+function ruleSelectorFor(rule) {
+  if (rule.kind === 'text-size') {
+    const s = rule.selector;
+    return `${s},${s} p,${s} li,${s} dd,${s} dt,${s} blockquote,${s} caption,${s} figcaption`;
+  }
+  return rule.selector;
+}
+
 function rebuildResizeStyleTag() {
   const tag = getStyleTag();
   const rules = [];
   for (const [, rule] of window.AdnotaResizeRules) {
-    rules.push(`${rule.selector} { ${rule.cssText} }`);
+    rules.push(`${ruleSelectorFor(rule)} { ${rule.cssText} }`);
   }
   tag.textContent = rules.join('\n');
 }
@@ -809,12 +828,39 @@ function selectElement(el) {
     appendBreadcrumb();
   }
 
-  // Chip cluster — own absolute positioning, anchored to the right edge
-  // of the selection (where it always lived). Pushed below the breadcrumb
-  // by the breadcrumb's measured height + gap when expanded. The 14px
-  // right matches the hover cluster's breathing room and clears the
-  // dismiss button. The structure-toggle button is a separate circular
-  // sibling of dismissBtn (not in this cluster).
+  // Text-size chips: Aa−/Aa+ scale the element + common text-bearing
+  // descendants via the kind:'text-size' rule. See the text-size helpers
+  // section for the cascade rationale (headings/code/forms preserved).
+  // U+2212 (mathematical minus) is intentional — looks better than ASCII -.
+  selectionTextSizeDownChip = document.createElement('div');
+  selectionTextSizeDownChip.className = 'adnota-resizer-action-chip';
+  selectionTextSizeDownChip.setAttribute('data-adnota-ui', '1');
+  selectionTextSizeDownChip.textContent = 'Aa−';
+  selectionTextSizeDownChip.setAttribute('data-adnota-tooltip', 'Smaller text (Shift+click for bigger step)');
+  selectionTextSizeDownChip.style.display = 'none';
+  selectionTextSizeDownChip.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!selectedEl) return;
+    bumpTextSize(selectedEl, 'down', e.shiftKey);
+    updateSelectionChip();
+  });
+
+  selectionTextSizeUpChip = document.createElement('div');
+  selectionTextSizeUpChip.className = 'adnota-resizer-action-chip';
+  selectionTextSizeUpChip.setAttribute('data-adnota-ui', '1');
+  selectionTextSizeUpChip.textContent = 'Aa+';
+  selectionTextSizeUpChip.setAttribute('data-adnota-tooltip', 'Bigger text (Shift+click for bigger step)');
+  selectionTextSizeUpChip.style.display = 'none';
+  selectionTextSizeUpChip.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!selectedEl) return;
+    bumpTextSize(selectedEl, 'up', e.shiftKey);
+    updateSelectionChip();
+  });
+
+
   selectionChipCluster = document.createElement('div');
   selectionChipCluster.setAttribute('data-adnota-ui', '1');
   Object.assign(selectionChipCluster.style, {
@@ -825,10 +871,12 @@ function selectElement(el) {
     alignItems: 'center',
     zIndex: '2147483647',
   });
-  // Order: parent (when present) → unstick/restick → finite scroll → clip → dimension.
+  // Order: parent (when present) → unstick/restick → finite scroll → text-size → clip → dimension.
   selectionChipCluster.appendChild(selectionParentChip);
   selectionChipCluster.appendChild(selectionActionChip);
   selectionChipCluster.appendChild(selectionInfiniteChip);
+  selectionChipCluster.appendChild(selectionTextSizeDownChip);
+  selectionChipCluster.appendChild(selectionTextSizeUpChip);
   selectionChipCluster.appendChild(selectionClipChip);
   selectionChipCluster.appendChild(selectionDimBadge);
   selectionBox.appendChild(selectionChipCluster);
@@ -969,6 +1017,22 @@ function updateSelectionChip() {
       selectionInfiniteChip._isOverridden = false;
     }
   }
+
+  // Text-size chips — show on any selectable element except html/body/table-
+  // components. Disable Aa- at the floor (8px) and Aa+ at the ceiling (96px)
+  // so a click at the bound isn't a silent no-op.
+  if (selectionTextSizeDownChip && selectionTextSizeUpChip) {
+    if (isScalable(selectedEl)) {
+      const px = currentTextSizePx(selectedEl, selector);
+      setReflowBtnEnabled(selectionTextSizeDownChip, px > 8 + 1e-3);
+      setReflowBtnEnabled(selectionTextSizeUpChip,   px < 96 - 1e-3);
+      selectionTextSizeDownChip.style.display = '';
+      selectionTextSizeUpChip.style.display   = '';
+    } else {
+      selectionTextSizeDownChip.style.display = 'none';
+      selectionTextSizeUpChip.style.display   = 'none';
+    }
+  }
 }
 
 function deselectElement() {
@@ -1018,6 +1082,8 @@ function deselectElement() {
   selectionInfiniteChip = null;
   selectionParentChip = null;
   selectionClipChip = null;
+  selectionTextSizeDownChip = null;
+  selectionTextSizeUpChip = null;
   currentClipMatch = null;
   if (hadSelection && window.AdnotaState.mode === 'resizer') updateHUD();
   updateReflowButtonStates();
@@ -1804,6 +1870,11 @@ async function resetElement(el) {
   el.style.removeProperty('right');
   el.style.removeProperty('bottom');
   el.style.removeProperty('position');
+  // TEXT-SIZE props — defensive cleanup; the persisted rule itself is wiped
+  // by the storage filter below. Only matters if a future drag-time preview
+  // ever leaks inline font-size/line-height onto the element.
+  el.style.removeProperty('font-size');
+  el.style.removeProperty('line-height');
   void el.offsetHeight; // force reflow
 
   // Remove from storage — both CSS-keyed (selector match) and reorder-keyed
@@ -2390,6 +2461,81 @@ window.addEventListener('keydown', (e) => {
     elAtNudge.style.removeProperty('position');
   }, 300);
 }, true);
+
+// ─── Text size (Aa+/Aa−) ────────────────────────────────────────────────────
+// Bump the selected element's body-text size via a persisted RESIZE rule with
+// `kind: 'text-size'`. The rule generator (rebuildResizeStyleTag) special-
+// cases this kind to expand the selector at render time so the cssText also
+// hits common prose-bearing descendants (p / li / blockquote / etc.) — that
+// solves the "13px body text" failure mode where literal font-size on the
+// container alone wouldn't override descendants with their own authored sizes.
+//
+// Headings (h1-h6), form controls, code (pre/code + their highlighter spans),
+// sub/sup/small, and arbitrary divs are intentionally NOT in the cascade —
+// their typography hierarchy / monospace relationship / form affordances stay
+// intact. Acknowledged trade-off: prose written directly in <div> without
+// <p> wrapping (Tailwind utility-CSS sites) won't scale on outer-container
+// click; users can click an inner element directly for those cases.
+//
+// Also forces line-height: 1.5 to prevent cramping on sites with px-valued
+// line-heights — without it, scaling 14px → 24px against a fixed 18px line-
+// height collapses lines into overlapping text.
+
+function isScalable(el) {
+  if (!el || !el.isConnected) return false;
+  if (el === document.body || el === document.documentElement) return false;
+  const ctx = el._adnotaLayoutContext || getLayoutContext(el);
+  if (ctx?.kind === 'table-component') return false;
+  return true;
+}
+
+// Returns the current effective text size in px. Prefer the persisted rule's
+// value (the active size after our override landed); fall back to the
+// element's computed font-size for the first-ever click.
+function currentTextSizePx(el, selector) {
+  for (const [, r] of window.AdnotaResizeRules) {
+    if (r.selector === selector && r.kind === 'text-size') {
+      const m = /font-size:\s*([\d.]+)px/.exec(r.cssText);
+      if (m) return parseFloat(m[1]);
+    }
+  }
+  return parseFloat(getComputedStyle(el).fontSize) || 16;
+}
+
+async function persistTextSize(el, px) {
+  const clamped = Math.max(8, Math.min(96, Math.round(px)));
+  const cssText =
+    `font-size: ${clamped}px !important; ` +
+    `line-height: 1.5 !important`;
+  return commitResizeRule(el, cssText, 'text-size');
+}
+
+function bumpTextSize(el, direction, big) {
+  if (!isScalable(el)) return;
+  const selector = generateCSSSelector(el);
+  const current = currentTextSizePx(el, selector);
+  const factor = big ? 1.25 : 1.10;
+  const next = direction === 'up' ? current * factor : current / factor;
+  persistTextSize(el, next);
+  fireTextSizeTipOnce();
+}
+
+// Synchronous lock alongside the async write — prevents a rapid click-burst
+// from racing past the storage flag check and firing the toast multiple times.
+let _textSizeTipFired = false;
+function fireTextSizeTipOnce() {
+  if (_textSizeTipFired) return;
+  _textSizeTipFired = true;
+  const KEY = 'adnotaTextSizeTipShown';
+  chrome.storage.local.get(KEY).then((data) => {
+    if (data[KEY]) return;
+    chrome.storage.local.set({ [KEY]: true });
+    window.AdnotaUI?.showToast(
+      'Tip: Aa+/Aa− to scale this section\'s body text · Shift+click for bigger steps · ↺ to reset.',
+      { id: 'adnota-text-size-tip', timeout: 5000 }
+    );
+  }).catch(() => { /* context invalidated after extension reload */ });
+}
 
 // ─── Drag logic ──────────────────────────────────────────────────────────────
 function startDrag(e, axis) {
