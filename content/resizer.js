@@ -749,13 +749,17 @@ function selectElement(el) {
   // The selection-state chips exist specifically so the user can pin a
   // hard-to-hover sticky bar with a click, then move the cursor freely to
   // reach the chip without losing the hover state.
+  // Dimension badge — passive blue readout sibling of the dismiss/structure
+  // buttons. Sits at the top-right corner straddling the selection edge, just
+  // to the left of the ⓘ button, so the corner reads as a coherent blue
+  // "info / reset" group while the inside cluster stays purely orange action
+  // chips.
   selectionDimBadge = document.createElement('div');
   selectionDimBadge.className = 'adnota-resizer-selection-dim';
   selectionDimBadge.setAttribute('data-adnota-ui', '1');
-  // Strip absolute positioning from the dim badge — it'll participate in the
-  // cluster's flex layout instead.
-  selectionDimBadge.style.position = 'static';
   selectionDimBadge.textContent = `${Math.round(rect.width)}×${Math.round(rect.height)}`;
+  document.documentElement.appendChild(selectionDimBadge);
+  positionSelectionDim(selectionDimBadge, rect, scrollX, scrollY);
 
   selectionActionChip = document.createElement('div');
   selectionActionChip.className = 'adnota-resizer-action-chip';
@@ -929,7 +933,12 @@ function selectElement(el) {
   selectionChipCluster.setAttribute('data-adnota-ui', '1');
   Object.assign(selectionChipCluster.style, {
     position: 'absolute',
-    right: '14px',
+    // 16px right offset: the cluster sits below the corner chrome (separate
+    // tier) so it doesn't need wide horizontal clearance, just enough breath
+    // from the dashed selection border. Was 14 before the dim moved out
+    // (cluster's rightmost was the wide blue dim pill); the orange chips
+    // wanted a touch more buffer than that without the dim's visual weight.
+    right: '16px',
     display: 'flex',
     gap: '4px',
     alignItems: 'center',
@@ -944,7 +953,6 @@ function selectElement(el) {
   selectionChipCluster.appendChild(selectionRecolorBgChip);
   selectionChipCluster.appendChild(selectionRecolorTextChip);
   selectionChipCluster.appendChild(selectionClipChip);
-  selectionChipCluster.appendChild(selectionDimBadge);
   selectionBox.appendChild(selectionChipCluster);
 
   updateTopChromePositions(rect);
@@ -1144,6 +1152,7 @@ function deselectElement() {
   if (handleCorner) { handleCorner.remove(); handleCorner = null; }
   if (dismissBtn)   { dismissBtn.remove();   dismissBtn = null; }
   if (selectionStructureChip) { selectionStructureChip.remove(); selectionStructureChip = null; }
+  if (selectionDimBadge) { selectionDimBadge.remove(); }
   // Breadcrumb + chip cluster are separately positioned absolute siblings
   // of selectionBox (split because breadcrumb is allowed to extend past
   // the selection's right edge on narrow targets, while chips stay
@@ -1182,12 +1191,17 @@ function positionBox(box, rect, sx, sy) {
   });
 }
 
-function clampToViewport(idealTop, idealLeft, handleW, handleH, sx, sy) {
-  // Clamp so the handle stays within the visible viewport (with 4px margin)
-  const vpTop  = sy + 4;
-  const vpBot  = sy + window.innerHeight - handleH - 4;
-  const vpLeft = sx + 4;
-  const vpRight = sx + window.innerWidth - handleW - 4;
+function clampToViewport(idealTop, idealLeft, handleW, handleH, sx, sy, margin = 4) {
+  // Clamp so the chrome stays within the visible viewport. Default margin
+  // is 4px (used by drag handles, where you want a comfortable gap from the
+  // edge). Corner chrome (dim/ⓘ/↺) passes a smaller margin so it hugs the
+  // top of the viewport when the selection scrolls past — keeps the corner
+  // group closer to where it "wants" to be (straddling the selection's top
+  // edge) instead of dropping a noticeable amount inward.
+  const vpTop  = sy + margin;
+  const vpBot  = sy + window.innerHeight - handleH - margin;
+  const vpLeft = sx + margin;
+  const vpRight = sx + window.innerWidth - handleW - margin;
   return {
     top:  Math.max(vpTop, Math.min(vpBot, idealTop)),
     left: Math.max(vpLeft, Math.min(vpRight, idealLeft)),
@@ -1203,6 +1217,18 @@ function chipClusterTopOffset(rect) {
   const CHIP_H = 32;  // approximate cluster height; safety cap, not exact
   const ideal = Math.max(4, 4 - rect.top);
   const cap   = Math.max(4, rect.height - CHIP_H);
+  return Math.min(ideal, cap);
+}
+
+// Selection-mode cluster sits below the top-right corner chrome (dim badge,
+// ⓘ, ↺ — all straddling rect.top with 10px below the line). Push the cluster
+// down 14px (10px to clear corner buttons + 4px breathing) so the two rows
+// read as distinct tiers rather than colliding on short selections.
+function selectionChipClusterTopOffset(rect) {
+  const CHIP_H = 32;
+  const TOP_GAP = 14;
+  const ideal = Math.max(TOP_GAP, TOP_GAP - rect.top);
+  const cap   = Math.max(TOP_GAP, rect.height - CHIP_H);
   return Math.min(ideal, cap);
 }
 
@@ -1256,10 +1282,15 @@ function positionHandleCorner(h, rect, sx, sy) {
   });
 }
 
+// 1px margin keeps the corner chrome (dim/ⓘ/↺) hugging the viewport top when
+// the selection scrolls past — handle clamping uses 4px since handles need a
+// more comfortable click target gap from the edge.
+const CORNER_VP_MARGIN = 1;
+
 function positionDismiss(btn, rect, sx, sy) {
   const idealTop  = rect.top + sy - 10;
   const idealLeft = rect.right + sx - 10;
-  const clamped = clampToViewport(idealTop, idealLeft, 20, 20, sx, sy);
+  const clamped = clampToViewport(idealTop, idealLeft, 20, 20, sx, sy, CORNER_VP_MARGIN);
   Object.assign(btn.style, {
     top:  `${clamped.top}px`,
     left: `${clamped.left}px`,
@@ -1272,8 +1303,29 @@ function positionDismiss(btn, rect, sx, sy) {
 function positionStructureBtn(btn, rect, sx, sy) {
   const idealTop  = rect.top + sy - 10;
   const idealLeft = rect.right + sx - 10 - 24;
-  const clamped = clampToViewport(idealTop, idealLeft, 20, 20, sx, sy);
+  const clamped = clampToViewport(idealTop, idealLeft, 20, 20, sx, sy, CORNER_VP_MARGIN);
   Object.assign(btn.style, {
+    top:  `${clamped.top}px`,
+    left: `${clamped.left}px`,
+  });
+}
+
+// Dimension badge sits 4px to the LEFT of the structure-toggle button,
+// straddling the selection's top edge. Width depends on the readout text
+// ("792×965" vs "12×8") so we measure offsetWidth/offsetHeight after the
+// badge has been appended to the DOM, then anchor by the right edge.
+//   structure-btn left edge = rect.right + sx − 44
+//   dim's right edge        = rect.right + sx − 44 − 4 = rect.right + sx − 48
+//   dim's left              = rect.right + sx − 48 − dimWidth
+// Clamps with the same tight margin as the corner buttons so the three pieces
+// fall together when the selection scrolls past the top of the viewport.
+function positionSelectionDim(badge, rect, sx, sy) {
+  const w = badge.offsetWidth || 56; // fallback if not yet laid out
+  const h = badge.offsetHeight || 18;
+  const idealTop  = rect.top + sy - h / 2;
+  const idealLeft = rect.right + sx - 48 - w;
+  const clamped = clampToViewport(idealTop, idealLeft, w, h, sx, sy, CORNER_VP_MARGIN);
+  Object.assign(badge.style, {
     top:  `${clamped.top}px`,
     left: `${clamped.left}px`,
   });
@@ -1878,6 +1930,7 @@ function refreshHandles() {
   if (selectionStructureChip) positionStructureBtn(selectionStructureChip, rect, scrollX, scrollY);
   if (selectionDimBadge) {
     selectionDimBadge.textContent = `${Math.round(rect.width)}×${Math.round(rect.height)}`;
+    positionSelectionDim(selectionDimBadge, rect, scrollX, scrollY);
   }
   // Pin top chrome (breadcrumb + chip cluster) to the visible top edge —
   // keeps both rows in view when the selection extends above the viewport.
@@ -2166,7 +2219,7 @@ function positionBreadcrumb(rect, sx, sy) {
 // placement.
 function updateTopChromePositions(rect) {
   if (selectionChipCluster) {
-    selectionChipCluster.style.top = `${chipClusterTopOffset(rect)}px`;
+    selectionChipCluster.style.top = `${selectionChipClusterTopOffset(rect)}px`;
   }
   if (selectionBreadcrumb) {
     const sx = window.pageXOffset || document.documentElement.scrollLeft;

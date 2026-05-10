@@ -188,6 +188,20 @@
   display: block;
 }
 
+/* Chip tooltips render BELOW the chip rather than above (the global default).
+   The chip cluster sits inside the selection just below the top-right corner
+   chrome (dim pill / ⓘ / ↺) — an upward-pointing tooltip would collide with
+   that corner chrome's higher stacking order, since the chip's stacking
+   context is bounded by selectionBox. Flipping the tooltip downward sidesteps
+   the collision entirely (tooltips point into the selection's interior, away
+   from the corner). Specificity beats the global tooltip rule, so this only
+   applies to resizer chips. */
+.adnota-resizer-action-chip[data-adnota-tooltip]:hover::after {
+  bottom: auto !important;
+  top: calc(100% + 8px) !important;
+}
+
+
 /* ─── Clip / size-cap warning chip ───────────────────────────────────────
    Surfaces during a drag when growth is being silently masked by a clipping
    ancestor (overflow:hidden|clip) or capped by the element's own
