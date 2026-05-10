@@ -707,17 +707,13 @@ function selectElement(el) {
   // The selection-state chips exist specifically so the user can pin a
   // hard-to-hover sticky bar with a click, then move the cursor freely to
   // reach the chip without losing the hover state.
-  // Dimension badge — passive blue readout sibling of the dismiss/structure
-  // buttons. Sits at the top-right corner straddling the selection edge, just
-  // to the left of the ⓘ button, so the corner reads as a coherent blue
-  // "info / reset" group while the inside cluster stays purely orange action
-  // chips.
   selectionDimBadge = document.createElement('div');
   selectionDimBadge.className = 'adnota-resizer-selection-dim';
   selectionDimBadge.setAttribute('data-adnota-ui', '1');
+  // Strip absolute positioning from the dim badge — it'll participate in the
+  // cluster's flex layout instead, sitting at the right end as the readout.
+  selectionDimBadge.style.position = 'static';
   selectionDimBadge.textContent = `${Math.round(rect.width)}×${Math.round(rect.height)}`;
-  document.documentElement.appendChild(selectionDimBadge);
-  positionSelectionDim(selectionDimBadge, rect, scrollX, scrollY);
 
   selectionActionChip = document.createElement('div');
   selectionActionChip.className = 'adnota-resizer-action-chip';
@@ -797,14 +793,9 @@ function selectElement(el) {
   selectionTextSizeDownChip = document.createElement('div');
   selectionTextSizeDownChip.className = 'adnota-resizer-action-chip';
   selectionTextSizeDownChip.setAttribute('data-adnota-ui', '1');
+  selectionTextSizeDownChip.textContent = 'Aa−';
   selectionTextSizeDownChip.setAttribute('data-adnota-tooltip', 'Smaller text (Shift+click for bigger step)');
   selectionTextSizeDownChip.style.display = 'none';
-  selectionTextSizeDownChip.innerHTML = `
-    <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" style="display:block">
-      <text x="2" y="20" font-family="ui-sans-serif, system-ui, sans-serif" font-weight="900" font-size="20" fill="currentColor">A</text>
-      <text x="14.5" y="11" font-family="ui-sans-serif, system-ui, sans-serif" font-weight="900" font-size="11" fill="currentColor">−</text>
-    </svg>
-  `;
   selectionTextSizeDownChip.addEventListener('click', (e) => {
     e.preventDefault();
     e.stopPropagation();
@@ -816,14 +807,9 @@ function selectElement(el) {
   selectionTextSizeUpChip = document.createElement('div');
   selectionTextSizeUpChip.className = 'adnota-resizer-action-chip';
   selectionTextSizeUpChip.setAttribute('data-adnota-ui', '1');
+  selectionTextSizeUpChip.textContent = 'Aa+';
   selectionTextSizeUpChip.setAttribute('data-adnota-tooltip', 'Bigger text (Shift+click for bigger step)');
   selectionTextSizeUpChip.style.display = 'none';
-  selectionTextSizeUpChip.innerHTML = `
-    <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" style="display:block">
-      <text x="2" y="20" font-family="ui-sans-serif, system-ui, sans-serif" font-weight="900" font-size="20" fill="currentColor">A</text>
-      <text x="14.5" y="11" font-family="ui-sans-serif, system-ui, sans-serif" font-weight="900" font-size="11" fill="currentColor">+</text>
-    </svg>
-  `;
   selectionTextSizeUpChip.addEventListener('click', (e) => {
     e.preventDefault();
     e.stopPropagation();
@@ -841,18 +827,9 @@ function selectElement(el) {
   selectionRecolorBgChip = document.createElement('div');
   selectionRecolorBgChip.className = 'adnota-resizer-action-chip';
   selectionRecolorBgChip.setAttribute('data-adnota-ui', '1');
+  selectionRecolorBgChip.textContent = 'bg';
   selectionRecolorBgChip.setAttribute('data-adnota-tooltip', 'Background — pick any color from the page');
   selectionRecolorBgChip.style.display = 'none';
-  selectionRecolorBgChip.innerHTML = `
-    <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" style="display:block">
-      <g transform="rotate(20 12 12)" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round">
-        <path d="M5 7 L17 7 L15 18 Q11 19.5 7 18 Z"/>
-        <ellipse cx="11" cy="7" rx="6" ry="1.5"/>
-        <path d="M8 7 Q11 12 14 7"/>
-      </g>
-      <path d="M18.5 17 Q21 21 18.5 22 Q16 21 18.5 17 Z" fill="currentColor"/>
-    </svg>
-  `;
   selectionRecolorBgChip.addEventListener('click', (e) => {
     e.preventDefault();
     e.stopPropagation();
@@ -863,14 +840,9 @@ function selectElement(el) {
   selectionRecolorTextChip = document.createElement('div');
   selectionRecolorTextChip.className = 'adnota-resizer-action-chip';
   selectionRecolorTextChip.setAttribute('data-adnota-ui', '1');
+  selectionRecolorTextChip.textContent = 'text';
   selectionRecolorTextChip.setAttribute('data-adnota-tooltip', 'Text color — pick any color from the page');
   selectionRecolorTextChip.style.display = 'none';
-  selectionRecolorTextChip.innerHTML = `
-    <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" style="display:block">
-      <text x="12" y="18" font-family="ui-sans-serif, system-ui, sans-serif" font-weight="900" font-size="20" text-anchor="middle" fill="currentColor">A</text>
-      <rect x="3" y="20" width="18" height="3" fill="currentColor"/>
-    </svg>
-  `;
   selectionRecolorTextChip.addEventListener('click', (e) => {
     e.preventDefault();
     e.stopPropagation();
@@ -882,22 +854,17 @@ function selectElement(el) {
   selectionChipCluster.setAttribute('data-adnota-ui', '1');
   Object.assign(selectionChipCluster.style, {
     position: 'absolute',
-    // selectionChipClusterTopOffset (vs chipClusterTopOffset for hover)
-    // pushes the cluster 14px below the selection's top edge so it clears
-    // the corner chrome (dim pill + ↺ button straddling the line).
-    top: `${selectionChipClusterTopOffset(rect)}px`,
-    // 16px right offset: the cluster sits below the corner chrome (separate
-    // tier) so it doesn't need wide horizontal clearance, just enough breath
-    // from the dashed selection border. Was 14 before the dim moved out
-    // (cluster's rightmost was the wide blue dim pill); the orange chips
-    // wanted a touch more buffer than that without the dim's visual weight.
-    right: '16px',
+    top: `${chipClusterTopOffset(rect)}px`,
+    // The dismiss button (20px) straddles the corner — its left edge
+    // sits 10px inside the selection box. 14px clears the button by 4px,
+    // matching the hover cluster's right:4px breathing room.
+    right: '14px',
     display: 'flex',
     gap: '4px',
     alignItems: 'center',
     zIndex: '2147483647',
   });
-  // Order: parent (when present) → unstick/restick → finite scroll → text-size → recolor → clip → dimension.
+  // Order: parent → unstick → finite scroll → text-size → recolor → clip → dimension.
   selectionChipCluster.appendChild(selectionParentChip);
   selectionChipCluster.appendChild(selectionActionChip);
   selectionChipCluster.appendChild(selectionInfiniteChip);
@@ -906,6 +873,7 @@ function selectElement(el) {
   selectionChipCluster.appendChild(selectionRecolorBgChip);
   selectionChipCluster.appendChild(selectionRecolorTextChip);
   selectionChipCluster.appendChild(selectionClipChip);
+  selectionChipCluster.appendChild(selectionDimBadge);
   selectionBox.appendChild(selectionChipCluster);
 
   updateSelectionChip();
@@ -1102,9 +1070,7 @@ function deselectElement() {
   if (handleBottom) { handleBottom.remove(); handleBottom = null; }
   if (handleCorner) { handleCorner.remove(); handleCorner = null; }
   if (dismissBtn)   { dismissBtn.remove();   dismissBtn = null; }
-  // Dim badge is a documentElement-level sibling of the cluster (so it can
-  // straddle the top corner alongside ↺); needs explicit removal.
-  if (selectionDimBadge) { selectionDimBadge.remove(); }
+  // Cluster removal also drops the dim badge (it's a flex child).
   if (selectionChipCluster) { selectionChipCluster.remove(); selectionChipCluster = null; }
   selectionDimBadge = null;
   selectionActionChip = null;
@@ -1137,17 +1103,12 @@ function positionBox(box, rect, sx, sy) {
   });
 }
 
-function clampToViewport(idealTop, idealLeft, handleW, handleH, sx, sy, margin = 4) {
-  // Clamp so the chrome stays within the visible viewport. Default margin
-  // is 4px (used by drag handles, where you want a comfortable gap from the
-  // edge). Corner chrome (dim/ⓘ/↺) passes a smaller margin so it hugs the
-  // top of the viewport when the selection scrolls past — keeps the corner
-  // group closer to where it "wants" to be (straddling the selection's top
-  // edge) instead of dropping a noticeable amount inward.
-  const vpTop  = sy + margin;
-  const vpBot  = sy + window.innerHeight - handleH - margin;
-  const vpLeft = sx + margin;
-  const vpRight = sx + window.innerWidth - handleW - margin;
+function clampToViewport(idealTop, idealLeft, handleW, handleH, sx, sy) {
+  // Clamp so the handle stays within the visible viewport (with 4px margin)
+  const vpTop  = sy + 4;
+  const vpBot  = sy + window.innerHeight - handleH - 4;
+  const vpLeft = sx + 4;
+  const vpRight = sx + window.innerWidth - handleW - 4;
   return {
     top:  Math.max(vpTop, Math.min(vpBot, idealTop)),
     left: Math.max(vpLeft, Math.min(vpRight, idealLeft)),
@@ -1163,18 +1124,6 @@ function chipClusterTopOffset(rect) {
   const CHIP_H = 32;  // approximate cluster height; safety cap, not exact
   const ideal = Math.max(4, 4 - rect.top);
   const cap   = Math.max(4, rect.height - CHIP_H);
-  return Math.min(ideal, cap);
-}
-
-// Selection-mode cluster sits below the top-right corner chrome (dim badge,
-// ⓘ, ↺ — all straddling rect.top with 10px below the line). Push the cluster
-// down 14px (10px to clear corner buttons + 4px breathing) so the two rows
-// read as distinct tiers rather than colliding on short selections.
-function selectionChipClusterTopOffset(rect) {
-  const CHIP_H = 32;
-  const TOP_GAP = 14;
-  const ideal = Math.max(TOP_GAP, TOP_GAP - rect.top);
-  const cap   = Math.max(TOP_GAP, rect.height - CHIP_H);
   return Math.min(ideal, cap);
 }
 
@@ -1228,42 +1177,15 @@ function positionHandleCorner(h, rect, sx, sy) {
   });
 }
 
-// 1px margin keeps the corner chrome (dim/ⓘ/↺) hugging the viewport top when
-// the selection scrolls past — handle clamping uses 4px since handles need a
-// more comfortable click target gap from the edge.
-const CORNER_VP_MARGIN = 1;
-
 function positionDismiss(btn, rect, sx, sy) {
   const idealTop  = rect.top + sy - 10;
   const idealLeft = rect.right + sx - 10;
-  const clamped = clampToViewport(idealTop, idealLeft, 20, 20, sx, sy, CORNER_VP_MARGIN);
+  const clamped = clampToViewport(idealTop, idealLeft, 20, 20, sx, sy);
   Object.assign(btn.style, {
     top:  `${clamped.top}px`,
     left: `${clamped.left}px`,
   });
 }
-
-// Dimension badge sits 4px to the LEFT of the dismiss button (↺), straddling
-// the selection's top edge. Width depends on the readout text ("792×965" vs
-// "12×8") so we measure offsetWidth/offsetHeight after the badge has been
-// appended to the DOM.
-//   dismiss left edge = rect.right + sx − 20  (centered at rect.right − 10, w=20)
-//   dim's right edge  = rect.right + sx − 20 − 4 = rect.right + sx − 24
-//   dim's left        = rect.right + sx − 24 − dimWidth
-// Clamps with the same tight margin as the dismiss button so both fall together
-// when the selection scrolls past the top of the viewport.
-function positionSelectionDim(badge, rect, sx, sy) {
-  const w = badge.offsetWidth || 56; // fallback if not yet laid out
-  const h = badge.offsetHeight || 18;
-  const idealTop  = rect.top + sy - h / 2;
-  const idealLeft = rect.right + sx - 24 - w;
-  const clamped = clampToViewport(idealTop, idealLeft, w, h, sx, sy, CORNER_VP_MARGIN);
-  Object.assign(badge.style, {
-    top:  `${clamped.top}px`,
-    left: `${clamped.left}px`,
-  });
-}
-
 
 // ─── Drag strategy: helpers shared by all strategies ──────────────────────
 // Originally local consts inside startDrag/onUp. Promoted to module scope
@@ -1863,7 +1785,6 @@ function refreshHandles() {
   if (dismissBtn)   positionDismiss(dismissBtn, rect, scrollX, scrollY);
   if (selectionDimBadge) {
     selectionDimBadge.textContent = `${Math.round(rect.width)}×${Math.round(rect.height)}`;
-    positionSelectionDim(selectionDimBadge, rect, scrollX, scrollY);
   }
   // Pin chip cluster to the visible top edge — keeps it in view when the
   // selection extends above the viewport.

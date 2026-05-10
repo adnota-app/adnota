@@ -177,31 +177,6 @@
   filter: brightness(1.1);
 }
 
-/* SVG-glyph chips (text-size A±, recolor bucket, recolor A) need tighter
-   padding so their 14×14 icon doesn't visually inflate the chip relative to
-   text-content chips like ↺ or "unstick". The :has() selector keeps the rule
-   scoped to chips that actually contain an SVG. */
-.adnota-resizer-action-chip:has(svg) {
-  padding: 2px 5px;
-}
-.adnota-resizer-action-chip svg {
-  display: block;
-}
-
-/* Chip tooltips render BELOW the chip rather than above (the global default).
-   The chip cluster sits inside the selection just below the top-right corner
-   chrome (dim pill / ⓘ / ↺) — an upward-pointing tooltip would collide with
-   that corner chrome's higher stacking order, since the chip's stacking
-   context is bounded by selectionBox. Flipping the tooltip downward sidesteps
-   the collision entirely (tooltips point into the selection's interior, away
-   from the corner). Specificity beats the global tooltip rule, so this only
-   applies to resizer chips. */
-.adnota-resizer-action-chip[data-adnota-tooltip]:hover::after {
-  bottom: auto !important;
-  top: calc(100% + 8px) !important;
-}
-
-
 /* ─── Clip / size-cap warning chip ───────────────────────────────────────
    Surfaces during a drag when growth is being silently masked by a clipping
    ancestor (overflow:hidden|clip) or capped by the element's own
