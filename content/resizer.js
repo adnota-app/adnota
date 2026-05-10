@@ -254,20 +254,9 @@ let selectionActionChip = null;
 let selectionInfiniteChip = null;
 let selectionParentChip = null;
 let selectionClipChip = null;
-let selectionStructureChip = null;
 let selectionTextSizeDownChip = null;
 let selectionTextSizeUpChip = null;
 let selectionChipCluster = null;
-let selectionBreadcrumb = null;
-let breadcrumbHoverOverlay = null;
-
-// Breadcrumb visibility — off by default. The breadcrumb is power-user
-// diagnostic chrome (which container is constraining? what's the
-// nesting?) and on most resize operations users just want to grab a
-// handle. Default-off keeps the selection chrome compact; the toggle
-// chip surfaces the structure on demand. Session-scoped: once toggled
-// on, stays on across selections until toggled off (or reload).
-let breadcrumbExpanded = false;
 
 // Drag-time growth-blocker match. Set by onMove via AdnotaLayout.findGrowthOverflow,
 // latched after pointerup so the chip's click handler can fire post-release.
@@ -701,37 +690,6 @@ function selectElement(el) {
   });
   document.documentElement.appendChild(dismissBtn);
 
-  // Structure-toggle button (ⓘ) — circular sibling of the reset button,
-  // positioned just to its left. Toggles the ancestor breadcrumb above
-  // the chip cluster. Off by default — power-user diagnostic chrome on
-  // demand. Active state (data-active="1") fills with blue so the button
-  // itself signals whether the breadcrumb is currently expanded.
-  selectionStructureChip = document.createElement('button');
-  selectionStructureChip.className = 'adnota-resizer-structure-btn';
-  selectionStructureChip.setAttribute('data-adnota-ui', '1');
-  // Lucide-style info icon: outer circle, vertical stem, round-capped
-  // zero-length line rendering as the top dot. Avoids fill-vs-stroke
-  // cascade issues that the explicit-circle approach had.
-  selectionStructureChip.innerHTML =
-    '<svg viewBox="0 0 16 16" aria-hidden="true">' +
-    '<circle cx="8" cy="8" r="6.5"/>' +
-    '<path d="M8 11.5 V7.5"/>' +
-    '<path d="M8 5 h0.01"/>' +
-    '</svg>';
-  selectionStructureChip.setAttribute('data-adnota-tooltip', 'Show / hide parent elements');
-  if (breadcrumbExpanded) selectionStructureChip.dataset.active = '1';
-  positionStructureBtn(selectionStructureChip, rect, scrollX, scrollY);
-  selectionStructureChip.addEventListener('mousedown', (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-  });
-  selectionStructureChip.addEventListener('click', (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    toggleBreadcrumb();
-  });
-  document.documentElement.appendChild(selectionStructureChip);
-
   // Selection chip cluster — flex row holding the action chips (left) and the
   // dimension badge (right). Sits just to the left of the dismiss button
   // (16px right offset = dismiss button's 10px outdent + 6px gap), entirely
@@ -819,15 +777,6 @@ function selectElement(el) {
     // 'size-cap' is warn-only in v2 — no click action.
   });
 
-  // Breadcrumb — built only when the user has toggled it on (default off).
-  // Floats OUTSIDE the selection (above by default, below if no room)
-  // rather than competing with action chips for inside-selection space.
-  // Position is set in updateTopChromePositions after both elements are
-  // in the DOM (so we can measure breadcrumb height for placement).
-  if (breadcrumbExpanded) {
-    appendBreadcrumb();
-  }
-
   // Text-size chips: Aa−/Aa+ scale the element + common text-bearing
   // descendants via the kind:'text-size' rule. See the text-size helpers
   // section for the cascade rationale (headings/code/forms preserved).
@@ -860,11 +809,14 @@ function selectElement(el) {
     updateSelectionChip();
   });
 
-
   selectionChipCluster = document.createElement('div');
   selectionChipCluster.setAttribute('data-adnota-ui', '1');
   Object.assign(selectionChipCluster.style, {
     position: 'absolute',
+    top: `${chipClusterTopOffset(rect)}px`,
+    // The dismiss button (20px) straddles the corner — its left edge
+    // sits 10px inside the selection box. 14px clears the button by 4px,
+    // matching the hover cluster's right:4px breathing room.
     right: '14px',
     display: 'flex',
     gap: '4px',
@@ -880,8 +832,6 @@ function selectElement(el) {
   selectionChipCluster.appendChild(selectionClipChip);
   selectionChipCluster.appendChild(selectionDimBadge);
   selectionBox.appendChild(selectionChipCluster);
-
-  updateTopChromePositions(rect);
 
   updateSelectionChip();
   updateHUD();
@@ -1069,14 +1019,8 @@ function deselectElement() {
   if (handleBottom) { handleBottom.remove(); handleBottom = null; }
   if (handleCorner) { handleCorner.remove(); handleCorner = null; }
   if (dismissBtn)   { dismissBtn.remove();   dismissBtn = null; }
-  if (selectionStructureChip) { selectionStructureChip.remove(); selectionStructureChip = null; }
-  // Breadcrumb + chip cluster are separately positioned absolute siblings
-  // of selectionBox (split because breadcrumb is allowed to extend past
-  // the selection's right edge on narrow targets, while chips stay
-  // anchored to selection-right). Hover-preview overlay also clears.
-  if (selectionBreadcrumb) { selectionBreadcrumb.remove(); selectionBreadcrumb = null; }
+  // Cluster removal also drops its children (badge + action + infinite + parent chips).
   if (selectionChipCluster) { selectionChipCluster.remove(); selectionChipCluster = null; }
-  if (breadcrumbHoverOverlay) { breadcrumbHoverOverlay.remove(); breadcrumbHoverOverlay = null; }
   selectionDimBadge = null;
   selectionActionChip = null;
   selectionInfiniteChip = null;
@@ -1183,19 +1127,6 @@ function positionHandleCorner(h, rect, sx, sy) {
 function positionDismiss(btn, rect, sx, sy) {
   const idealTop  = rect.top + sy - 10;
   const idealLeft = rect.right + sx - 10;
-  const clamped = clampToViewport(idealTop, idealLeft, 20, 20, sx, sy);
-  Object.assign(btn.style, {
-    top:  `${clamped.top}px`,
-    left: `${clamped.left}px`,
-  });
-}
-
-// Structure-toggle button sits 4px to the LEFT of the dismiss button
-// (dismiss is centered on rect.right − 10; structure is centered on
-// rect.right − 10 − 24 = rect.right − 34). Same vertical alignment.
-function positionStructureBtn(btn, rect, sx, sy) {
-  const idealTop  = rect.top + sy - 10;
-  const idealLeft = rect.right + sx - 10 - 24;
   const clamped = clampToViewport(idealTop, idealLeft, 20, 20, sx, sy);
   Object.assign(btn.style, {
     top:  `${clamped.top}px`,
@@ -1799,13 +1730,14 @@ function refreshHandles() {
   if (handleBottom) positionHandleBottom(handleBottom, rect, scrollX, scrollY);
   if (handleCorner) positionHandleCorner(handleCorner, rect, scrollX, scrollY);
   if (dismissBtn)   positionDismiss(dismissBtn, rect, scrollX, scrollY);
-  if (selectionStructureChip) positionStructureBtn(selectionStructureChip, rect, scrollX, scrollY);
   if (selectionDimBadge) {
     selectionDimBadge.textContent = `${Math.round(rect.width)}×${Math.round(rect.height)}`;
   }
-  // Pin top chrome (breadcrumb + chip cluster) to the visible top edge —
-  // keeps both rows in view when the selection extends above the viewport.
-  updateTopChromePositions(rect);
+  // Pin chip cluster to the visible top edge — keeps it in view when the
+  // selection extends above the viewport.
+  if (selectionChipCluster) {
+    selectionChipCluster.style.top = `${chipClusterTopOffset(rect)}px`;
+  }
   // Re-evaluate chip state in case an undo/restick happened while selection
   // is still active (e.g., user hits Ctrl+Z mid-selection).
   updateSelectionChip();
@@ -1937,239 +1869,6 @@ function applyClipChipState(match) {
     selectionClipChip.setAttribute('data-warn-only', '1');
   }
   selectionClipChip.style.display = '';
-}
-
-
-// ─── Ancestor breadcrumb ──────────────────────────────────────────────────
-// Renders a clickable structural path above the chip cluster on selection.
-// Three-tier visibility rule:
-//   1. Different-rect ancestors (IoU < threshold) → shown normally,
-//      clickable, also reachable via Shift+scroll.
-//   2. Same-rect ancestors WITH a constraint (clip-ancestor for v1) →
-//      shown greyed + ⚠ icon, clickable to promote, Shift+scroll skips
-//      them. The constraint icon is the answer to "why is this segment
-//      surfaced when same-rect would normally be noise?"
-//   3. Same-rect ancestors WITHOUT a constraint → hidden entirely.
-// Together this preserves the established outermost-walk skip behavior
-// for keyboard navigation while still letting users SEE and click-promote
-// to a constraining wrapper they'd otherwise have to differentiate first
-// via the resize-outer trick.
-
-function buildBreadcrumb(selectedEl) {
-  const container = document.createElement('div');
-  container.className = 'adnota-resizer-breadcrumb';
-  container.setAttribute('data-adnota-ui', '1');
-
-  // Compute the clip list ONCE per build. Without this, every visibility
-  // check + every segment construction would re-walk up to 30 ancestors
-  // with getComputedStyle reads — easily ~600 style resolutions per build
-  // on Tailwind-heavy pages. Selection happens often during a resize
-  // session; this is bug-class, not optional polish.
-  const chain = window.AdnotaLayout.getAncestorChain(selectedEl);
-  const clips = window.AdnotaLayout.detectClippingAncestors(selectedEl);
-  const T = window.AdnotaLayout.SAME_RECT_IOU_THRESHOLD;
-
-  // Pre-decorate each chain entry with sameRect + constraint so the
-  // visibility filter and the segment builder don't both pay for the same
-  // IoU + constraint computation per segment.
-  const decorated = chain.map((el) => {
-    if (el === selectedEl) {
-      return { el, isSelected: true, sameRect: false, constraint: null };
-    }
-    const sameRect = window.AdnotaLayout.getRectIoU(selectedEl, el) >= T;
-    const constraint = window.AdnotaLayout.getAncestorConstraint(selectedEl, el, { clips });
-    return { el, isSelected: false, sameRect, constraint };
-  });
-
-  // Three-tier visibility filter. Selected always shows. Different-rect
-  // (sameRect false) always shows. Same-rect-with-constraint shows.
-  // Same-rect-without-constraint drops as pure structural noise.
-  const visible = decorated.filter(
-    (d) => d.isSelected || !d.sameRect || d.constraint !== null
-  );
-
-  for (let i = 0; i < visible.length; i++) {
-    if (i > 0) container.appendChild(makeBreadcrumbSeparator());
-    container.appendChild(makeBreadcrumbSegment(visible[i]));
-  }
-  return container;
-}
-
-function makeBreadcrumbSegment(decorated) {
-  const { el, isSelected, sameRect, constraint } = decorated;
-  const seg = document.createElement('span');
-  seg.className = 'adnota-resizer-breadcrumb-segment';
-  seg.setAttribute('data-adnota-ui', '1');
-  seg.textContent = describeBreadcrumbSegment(el);
-
-  if (isSelected) {
-    seg.dataset.selected = '1';
-    return seg;  // selected segment is non-clickable, no constraint icon, no hover preview
-  }
-  if (sameRect) seg.dataset.sameRect = '1';
-  if (constraint) {
-    seg.appendChild(makeBreadcrumbConstraintIcon(constraint));
-    seg.dataset.constrained = '1';
-  }
-  seg.addEventListener('click', (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    selectElement(el);
-  });
-  // Hover preview — show a dashed-outline overlay over the ancestor while
-  // the cursor is on this segment, so users can see "where would I land
-  // if I clicked this?" without committing to a selection change. Cheap:
-  // one getBoundingClientRect per mouseenter, no per-frame work.
-  seg.addEventListener('mouseenter', () => showBreadcrumbHover(el));
-  seg.addEventListener('mouseleave', hideBreadcrumbHover);
-  return seg;
-}
-
-// Build the breadcrumb and append it to documentElement (NOT selectionBox).
-// Floating outside the selection lets it stretch wider than the selection's
-// own width AND keeps the inside-selection chrome (chips, dim badge,
-// dismiss/structure btns) free of competition for vertical space. Caller
-// is responsible for ensuring breadcrumbExpanded is true and that
-// selectionBreadcrumb is currently null.
-function appendBreadcrumb() {
-  selectionBreadcrumb = buildBreadcrumb(selectedEl);
-  Object.assign(selectionBreadcrumb.style, {
-    position: 'absolute',
-    zIndex: '2147483647',
-    visibility: 'hidden',  // hidden until first position pass measures it
-    top: '0',
-    left: '0',
-  });
-  document.documentElement.appendChild(selectionBreadcrumb);
-}
-
-// Position the floating breadcrumb. Preferred placement: ABOVE the
-// selection's top edge with a 22px gap. The corner ⓘ + ↺ buttons
-// extend ~10px above rect.top and the breadcrumb's drop shadow extends
-// another ~10px below its box; 22px clears both with breathing room
-// even when the breadcrumb wraps to multiple rows. Fallback: BELOW the
-// bottom edge when the selection is too close to the top of the
-// viewport for the breadcrumb to fit above. Horizontal: aligned with
-// selection's left edge, viewport-bounded so the breadcrumb never
-// runs off-screen.
-function positionBreadcrumb(rect, sx, sy) {
-  if (!selectionBreadcrumb) return;
-  const bcH = selectionBreadcrumb.offsetHeight;
-  const bcW = selectionBreadcrumb.offsetWidth;
-  const gap = 22;
-  // Decision: above unless selection's viewport-relative top is too small
-  // to fit the breadcrumb + gap above it. Stable through normal resize
-  // gestures because rect.top only changes on top-edge drags.
-  const placeAbove = rect.top >= bcH + gap;
-  const top = placeAbove
-    ? rect.top + sy - bcH - gap
-    : rect.bottom + sy + gap;
-  // Horizontal: align with selection's left edge, but clamp inside
-  // viewport so a wide breadcrumb on a left-edge selection doesn't
-  // run off the right side (or vice versa).
-  const minLeft = sx + 8;
-  const maxLeft = sx + window.innerWidth - bcW - 8;
-  const idealLeft = rect.left + sx;
-  const left = Math.max(minLeft, Math.min(idealLeft, maxLeft));
-  Object.assign(selectionBreadcrumb.style, {
-    top: `${top}px`,
-    left: `${left}px`,
-    visibility: 'visible',
-  });
-}
-
-// Re-pin top chrome positions on rect changes. The chip cluster lives
-// inside the selection at chipClusterTopOffset (its original anchor —
-// independent of the breadcrumb now that the breadcrumb floats outside).
-// The breadcrumb is positioned via positionBreadcrumb for above/below
-// placement.
-function updateTopChromePositions(rect) {
-  if (selectionChipCluster) {
-    selectionChipCluster.style.top = `${chipClusterTopOffset(rect)}px`;
-  }
-  if (selectionBreadcrumb) {
-    const sx = window.pageXOffset || document.documentElement.scrollLeft;
-    const sy = window.pageYOffset || document.documentElement.scrollTop;
-    positionBreadcrumb(rect, sx, sy);
-  }
-}
-
-function toggleBreadcrumb() {
-  breadcrumbExpanded = !breadcrumbExpanded;
-  if (!selectionStructureChip) return;
-  if (breadcrumbExpanded) {
-    selectionStructureChip.dataset.active = '1';
-    if (selectedEl && !selectionBreadcrumb) appendBreadcrumb();
-  } else {
-    delete selectionStructureChip.dataset.active;
-    if (selectionBreadcrumb) { selectionBreadcrumb.remove(); selectionBreadcrumb = null; }
-    if (breadcrumbHoverOverlay) { breadcrumbHoverOverlay.remove(); breadcrumbHoverOverlay = null; }
-  }
-  if (selectedEl) updateTopChromePositions(selectedEl.getBoundingClientRect());
-}
-
-function showBreadcrumbHover(el) {
-  if (!el || !el.isConnected) return;
-  if (!breadcrumbHoverOverlay) {
-    breadcrumbHoverOverlay = document.createElement('div');
-    breadcrumbHoverOverlay.className = 'adnota-resizer-breadcrumb-hover';
-    breadcrumbHoverOverlay.setAttribute('data-adnota-ui', '1');
-    document.documentElement.appendChild(breadcrumbHoverOverlay);
-  }
-  const rect = el.getBoundingClientRect();
-  const sx = window.pageXOffset || document.documentElement.scrollLeft;
-  const sy = window.pageYOffset || document.documentElement.scrollTop;
-  Object.assign(breadcrumbHoverOverlay.style, {
-    display: 'block',
-    top: `${rect.top + sy}px`,
-    left: `${rect.left + sx}px`,
-    width: `${rect.width}px`,
-    height: `${rect.height}px`,
-  });
-}
-
-function hideBreadcrumbHover() {
-  if (breadcrumbHoverOverlay) breadcrumbHoverOverlay.style.display = 'none';
-}
-
-function describeBreadcrumbSegment(el) {
-  const tag = el.tagName.toLowerCase();
-  // SVG and other namespaced elements have className as SVGAnimatedString,
-  // not string — guard with the typeof check before split.
-  const classes = (el.className && typeof el.className === 'string')
-    ? el.className.split(/\s+/).filter((c) => c && !c.startsWith('adnota-'))
-    : [];
-  if (!classes.length) return tag;
-  // Take FIRST class. In BEM/OOCSS the first class is the block/component
-  // name; modifier classes follow. On utility-CSS (Tailwind) pages a
-  // "longest" heuristic surfaces meaningless tokens like `transition-all`
-  // or `hover:shadow-md` — first-class is usually still the most identifying
-  // token (or at least less misleading than longest). v1.1 could improve
-  // this with a utility-pattern filter; first is the better default.
-  return `${tag}.${classes[0]}`;
-}
-
-function makeBreadcrumbSeparator() {
-  const sep = document.createElement('span');
-  sep.className = 'adnota-resizer-breadcrumb-separator';
-  sep.setAttribute('data-adnota-ui', '1');
-  sep.textContent = '›';
-  return sep;
-}
-
-function makeBreadcrumbConstraintIcon(constraint) {
-  const icon = document.createElement('span');
-  icon.className = 'adnota-resizer-breadcrumb-icon';
-  icon.setAttribute('data-adnota-ui', '1');
-  icon.textContent = '⚠';
-  let tooltip = 'Layout constraint';
-  if (constraint.kind === 'clip-ancestor') {
-    const axes = constraint.axes;
-    const which = axes?.x && axes?.y ? 'X and Y' : axes?.x ? 'X' : 'Y';
-    tooltip = `Clipping ancestor (overflow:hidden on ${which}) — Shift+scroll skips this; click to resize it`;
-  }
-  icon.setAttribute('data-adnota-tooltip', tooltip);
-  return icon;
 }
 
 
@@ -2467,8 +2166,9 @@ function startPositionDrag(e) {
       if (handleBottom) positionHandleBottom(handleBottom, rect, sx, sy);
       if (handleCorner) positionHandleCorner(handleCorner, rect, sx, sy);
       if (dismissBtn)   positionDismiss(dismissBtn, rect, sx, sy);
-      if (selectionStructureChip) positionStructureBtn(selectionStructureChip, rect, sx, sy);
-      updateTopChromePositions(rect);
+      if (selectionChipCluster) {
+        selectionChipCluster.style.top = `${chipClusterTopOffset(rect)}px`;
+      }
     });
   }
 
