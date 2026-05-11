@@ -55,6 +55,13 @@ async function tearDownAllAnnotations() {
     }
     window.AdnotaErasedElements.clear();
   }
+  // Undo history is route-scoped. Without this, Ctrl+Z after a route
+  // change pops entries whose closures reference DOM elements from the
+  // previous route (already torn down above), silently mutating storage
+  // for a page the user isn't on anymore. Full reload already clears the
+  // stack by destroying the content-script context; this is the SPA-nav
+  // equivalent.
+  window.AdnotaUndo?.clear();
 }
 
 function showBrokenAnchorsToast(count) {

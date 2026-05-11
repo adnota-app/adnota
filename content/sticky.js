@@ -741,13 +741,24 @@ window.StickyEngine = {
     });
     resizeObserver.observe(card);
 
-    // Clean up observer when the note is removed from the DOM.
-    new MutationObserver((_, obs) => {
-      if (!document.body.contains(container)) {
-        resizeObserver.disconnect();
-        obs.disconnect();
-      }
-    }).observe(document.body, { childList: true, subtree: true });
+    // Clean up the ResizeObserver if the container is detached. Watches the
+    // sticky overlay (container.parentNode) with childList only — every note
+    // previously registered a `document.body, { subtree: true }` observer
+    // just to detect its own removal, which fired on every DOM mutation
+    // anywhere on the page. With N notes on a heavy SPA (claude.ai, ChatGPT,
+    // Notion) that meant N global subtree observers all firing on every
+    // mutation. childList on the overlay parent fires only when notes are
+    // added/removed; mirrors lib/adnotaUI.js bindAnchorSync.
+    const overlay = container.parentNode;
+    if (overlay) {
+      const cleanupObserver = new MutationObserver(() => {
+        if (!container.isConnected) {
+          resizeObserver.disconnect();
+          cleanupObserver.disconnect();
+        }
+      });
+      cleanupObserver.observe(overlay, { childList: true });
+    }
 
     // ── Bring to front on focus ──────────────────────────────────────────────
     container.addEventListener('mousedown', () => {

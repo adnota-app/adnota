@@ -107,7 +107,7 @@ Candidate-tournament element-identification system that generates rich anchors a
 
 **Resolution**: `findMatch` collects candidates from CSS selector queries, attribute queries, and tag-name scans, then scores every candidate against all six signals additively (max 100). Returns the highest-scoring candidate above a **≥ 40 point** threshold. Scores above 85 short-circuit immediately.
 
-The tag-name scan walks **every** element of the matching tag (no cap — heavy SPAs like Claude.ai / Notion bury content hundreds of divs deep). The quick filter uses `textContent` (no layout cost) and prioritizes elements whose text contains the fingerprint's `prefix` or `suffix` so anchored matches reliably enter the candidate pool; layout-aware `innerText` only runs in `_textScore` on the trimmed pool.
+The tag-name scan (Phase A3) is capped at 200 elements (`SCAN_CAP`) — a perf bound because `getElementsByTagName('div')` on heavy SPAs (Claude.ai, ChatGPT, Notion) returns 5–15k elements and per-element `textContent` reads dominate the loop cost. To reach targets that sit past the cap (e.g., a Gemini table at div index 288 of 699, with chat chrome filling the first 200), Phase A2.5 seeds the candidate pool first via a `.{firstParentClass} > {tagName}` query — `parentClasses[0]` is captured at save time and is far more selective than a raw tag scan. A3's quick filter then uses `textContent` (no layout cost) and prioritizes elements whose text contains the fingerprint's `prefix` or `suffix` so anchored matches reliably enter the pool; layout-aware `innerText` only runs in `_textScore` on the trimmed pool.
 
 Also exposes `generateCSSSelector(el)` as a shared utility (used by the resizer).
 
