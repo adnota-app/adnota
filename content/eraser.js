@@ -1264,6 +1264,112 @@ function _onBatchScrollOrResize() {
   });
 }
 
+// ─── Live discovery: catch lazy-loaded ads that appear mid-review ──────────
+// Most heavy-ad pages use IntersectionObserver-based lazy loading: ad slots
+// are empty placeholders at page load and only inject their network markup
+// (iframe, data-* attrs) when scrolled near the viewport. A one-shot click-
+// time scan can't see them. We keep a MutationObserver alive during review
+// that re-runs findSimilarAds on DOM mutations, appending newly-visible
+// matches to the batch with continuing display numbers.
+//
+// Safeguards:
+// - Debounced ~400ms so a burst of mutations becomes one rescan
+// - Early-bails on mutations that didn't add element nodes (text-only changes,
+//   style flips, etc.)
+// - Skips matches that are already in the batch, were manually skipped via ✕,
+//   or aren't currently visible (off-screen lazy-loads wait their turn)
+// - Tied strictly to active review: observer disconnects on commit/deny/exit
+const BATCH_DISCOVERY_DEBOUNCE_MS = 400;
+let _batchObserver = null;
+let _batchDiscoveryTimer = null;
+
+function _startBatchDiscovery() {
+  if (_batchObserver) return;
+  _batchObserver = new MutationObserver((mutations) => {
+    // Early-bail: nothing structural changed, ignore.
+    let added = false;
+    for (const m of mutations) {
+      for (const n of m.addedNodes) {
+        if (n.nodeType === Node.ELEMENT_NODE) { added = true; break; }
+      }
+      if (added) break;
+    }
+    if (!added) return;
+    // Debounce: collapse mutation bursts (SPA renders, ad-network script
+    // injections) into a single rescan.
+    if (_batchDiscoveryTimer) return;
+    _batchDiscoveryTimer = setTimeout(() => {
+      _batchDiscoveryTimer = null;
+      _runBatchDiscoveryScan();
+    }, BATCH_DISCOVERY_DEBOUNCE_MS);
+  });
+  _batchObserver.observe(document.body, { childList: true, subtree: true });
+}
+
+function _stopBatchDiscovery() {
+  if (_batchObserver) {
+    _batchObserver.disconnect();
+    _batchObserver = null;
+  }
+  if (_batchDiscoveryTimer) {
+    clearTimeout(_batchDiscoveryTimer);
+    _batchDiscoveryTimer = null;
+  }
+}
+
+function _runBatchDiscoveryScan() {
+  if (!batchState || !batchState.seedTarget) return;
+
+  let scan;
+  try {
+    scan = findSimilarAds(batchState.seedTarget);
+  } catch (err) {
+    window.AdnotaLog?.event('eraser', 'batch-discover-error', { error: String(err) });
+    return;
+  }
+
+  const existingEls = new Set(batchState.candidates.map(c => c.el));
+  const additions = [];
+  for (const el of scan.candidates) {
+    if (existingEls.has(el)) continue;
+    if (batchState.skippedEls && batchState.skippedEls.has(el)) continue;
+    // Visibility filter — off-screen lazy-loads wait until the user scrolls
+    // to them. Avoids the "count went up but I don't see anything new"
+    // disorientation.
+    if (!isCandidateVisible(el)) continue;
+    additions.push(el);
+  }
+  if (additions.length === 0) return;
+
+  // Append with continuing display numbers — no renumbering. Numbers reflect
+  // discovery order after the first scan, not strict visual order. Stability
+  // over consistency: the user's mental model around existing numbers stays
+  // intact.
+  const nextNum = batchState.candidates.length > 0
+    ? Math.max(...batchState.candidates.map(c => c.displayNumber)) + 1
+    : 1;
+
+  for (let i = 0; i < additions.length; i++) {
+    const entry = { el: additions[i], displayNumber: nextNum + i };
+    batchState.candidates.push(entry);
+    const w = _paintBatchOverlay(entry);
+    if (!w) continue;
+    batchOverlayMap.set(entry.displayNumber, w);
+    // Fade-in so the new overlay reads as a discovery rather than a glitch.
+    w.style.opacity = '0';
+    w.style.transition = 'opacity 0.28s ease-out';
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => { w.style.opacity = '1'; });
+    });
+  }
+
+  updateHUD(null); // refresh chip count
+  window.AdnotaLog?.event('eraser', 'batch-discover', {
+    added: additions.length,
+    total: batchState.candidates.length,
+  });
+}
+
 // Slide-transition the eraserHudInfo content: old content slides up and out
 // while new content slides up into its place from below. Pure vertical
 // slide — no width animation, no growth-from-middle. The dock width is
@@ -1369,14 +1475,21 @@ function _slideTransitionHud(renderNewContent) {
   }, 360);
 }
 
-function enterBatch(candidates) {
+function enterBatch(candidates, seedTarget) {
   // candidates: HTMLElement[] (visible, document-ordered)
+  // seedTarget: the original clicked element — kept as the signature source
+  // for the live MutationObserver discovery rescans (lazy-loaded ads that
+  // appear as the user scrolls during review).
   if (!candidates || candidates.length === 0) return;
   // If a prior batch is somehow still active, deny it before enter.
   if (batchState) denyBatch('replaced');
 
   batchState = {
     candidates: candidates.map((el, i) => ({ el, displayNumber: i + 1 })),
+    seedTarget: seedTarget || null,
+    // WeakSet of elements the user explicitly skipped via ✕ — prevents the
+    // discovery rescan from re-adding them after removal.
+    skippedEls: new WeakSet(),
   };
 
   // Capture-phase listeners catch scrolls inside nested overflow containers
@@ -1406,6 +1519,9 @@ function enterBatch(candidates) {
       });
     });
   }
+
+  // Start watching for lazy-loaded additions during this review session.
+  if (batchState.seedTarget) _startBatchDiscovery();
 
   window.AdnotaLog?.event('eraser', 'batch-enter', { count: batchState.candidates.length });
 }
@@ -1446,7 +1562,10 @@ function removeBatchCandidate(displayNumber) {
   if (!batchState) return;
   const idx = batchState.candidates.findIndex(c => c.displayNumber === displayNumber);
   if (idx < 0) return;
-  batchState.candidates.splice(idx, 1);
+  const [removed] = batchState.candidates.splice(idx, 1);
+  // Remember user-skipped elements so the live discovery rescan doesn't
+  // re-add them after the user explicitly clicked ✕.
+  if (removed && batchState.skippedEls) batchState.skippedEls.add(removed.el);
   _tearDownBatchOverlay(displayNumber);
   window.AdnotaLog?.event('eraser', 'batch-remove', {
     displayNumber, remaining: batchState.candidates.length,
@@ -1460,6 +1579,7 @@ function removeBatchCandidate(displayNumber) {
 
 function denyBatch(reason) {
   if (!batchState) return;
+  _stopBatchDiscovery();
   _tearDownAllBatchOverlays();
   window.removeEventListener('scroll', _onBatchScrollOrResize, { capture: true });
   window.removeEventListener('resize', _onBatchScrollOrResize);
@@ -1469,23 +1589,35 @@ function denyBatch(reason) {
   updateHUD(null); // clear the chip
 }
 
-function commitBatch() {
+async function commitBatch() {
   if (!batchState || batchState.candidates.length === 0) return;
+  _stopBatchDiscovery();
   const entries = batchState.candidates.slice();
-  // Stash undo functions for the composite entry.
+  // Stash undo functions for the composite entry + pending storage writes
+  // (we'll bulk-save at the end to avoid N parallel saveItem calls racing
+  // each other; see commitErase.skipStorageWrite for the why).
   const perItemUndos = [];
+  const pendingWrites = [];
   let erasedCount = 0;
   for (const entry of entries) {
     if (!entry.el.isConnected) continue; // mid-flight stale
     try {
       // skipAnimation: 7 simultaneous dissolves would be visually chaotic.
       // skipStyleRebuild: rebuild once after the loop instead of N times.
+      // skipStorageWrite: collect into pendingWrites, save once in bulk.
       const result = commitErase(entry.el, {
-        shiftKey: false, // ad-signaled targets auto-promote inside commitErase
+        shiftKey: false,
         skipAnimation: true,
         skipStyleRebuild: true,
+        skipStorageWrite: true,
+        // Force domain-wide for every batch item. The batch only surfaces
+        // when findSimilarAds confirms an ad cluster, so every commit here
+        // is part of that cluster and should match the seed's scope —
+        // don't let per-candidate signal variance create mixed scopes.
+        forceDomain: true,
       });
       perItemUndos.push(result.undoEntry.undo);
+      if (result.storageWrite) pendingWrites.push(result.storageWrite);
       erasedCount++;
     } catch (err) {
       window.AdnotaLog?.event('eraser', 'batch-stale-skip', {
@@ -1495,6 +1627,26 @@ function commitBatch() {
   }
   // Single style-tag rebuild covering all newly-injected rules.
   rebuildEraseStyleTag();
+
+  // Single bulk storage write covering all N items. Awaited before the
+  // confirmation toast so persistence is settled by the time the user sees
+  // "Erased N ads" and reaches for refresh — otherwise the page reload races
+  // an in-flight write and the erases come back. Group by domain (always
+  // one in practice — same page — but defensive).
+  if (pendingWrites.length > 0 && window.AdnotaStorage) {
+    const byDomain = new Map();
+    for (const w of pendingWrites) {
+      if (!byDomain.has(w.domain)) byDomain.set(w.domain, []);
+      byDomain.get(w.domain).push({ path: w.pathScope, payload: w.payload });
+    }
+    try {
+      for (const [domain, list] of byDomain) {
+        await window.AdnotaStorage.saveItems(domain, list);
+      }
+    } catch (err) {
+      window.AdnotaLog?.event('eraser', 'batch-storage-error', { error: String(err) });
+    }
+  }
 
   // One composite undo entry on the shared stack so Ctrl+Z reverses the whole
   // sweep in a single keystroke. Per-item undos inherit skipStyleRebuild from
@@ -1550,6 +1702,13 @@ function commitErase(target, opts = {}) {
     shiftKey = false,
     skipAnimation = false,
     skipStyleRebuild = false,
+    skipStorageWrite = false,
+    // forceDomain: batch-commit and manual-mid-review erases pass this so
+    // every item in the cluster gets the same domain-wide treatment as the
+    // seed click. Without it, per-candidate getEffectiveAdSignals can vary
+    // between scan-time and commit-time (page mutation, viewport changes),
+    // producing mixed page/domain scopes within what should be one cluster.
+    forceDomain = false,
   } = opts;
 
   const rect = target.getBoundingClientRect();
@@ -1563,7 +1722,7 @@ function commitErase(target, opts = {}) {
   // too, since nobody wants to erase the same ad on every article. No chip, no
   // messaging; it just works. Non-ad targets still scope to the current page.
   const adSignals = getEffectiveAdSignals(target);
-  const useDomain = shiftKey || adSignals.length > 0;
+  const useDomain = forceDomain || shiftKey || adSignals.length > 0;
   const pathScope = useDomain ? '*' : location.pathname;
   const domain = location.hostname;
   const id = Date.now() + Math.random().toString();
@@ -1645,9 +1804,18 @@ function commitErase(target, opts = {}) {
     });
   }
 
-  // Save to storage immediately (don't block the animation on I/O).
+  // Save to storage immediately (don't block the animation on I/O). The
+  // batch path sets skipStorageWrite to coalesce N saveItem calls into one
+  // bulk saveItems — N parallel saveItems would race (each reads the same
+  // before-state, writes overwrite each other, only the last lands).
+  const storagePayload = { action: 'ERASE', anchor, selector: cssSelector, _id: id };
+  let storageWrite = null;
   if (window.AdnotaStorage) {
-    window.AdnotaStorage.saveItem(domain, pathScope, { action: 'ERASE', anchor, selector: cssSelector, _id: id }).catch(() => { });
+    if (skipStorageWrite) {
+      storageWrite = { domain, pathScope, payload: storagePayload };
+    } else {
+      window.AdnotaStorage.saveItem(domain, pathScope, storagePayload).catch(() => { });
+    }
   }
 
   // ── Shared undo closure — used by both toast button and Ctrl+Z ──
@@ -1686,7 +1854,7 @@ function commitErase(target, opts = {}) {
     }
   };
 
-  return { undoEntry, id, adSignals, savedCssText };
+  return { undoEntry, id, adSignals, savedCssText, storageWrite };
 }
 
 // ─── Click: erase with animation ─────────────────────────────────────────────
@@ -1723,7 +1891,11 @@ document.addEventListener('click', async (e) => {
       highlightOverlay.style.display = 'none';
       hoveredElement = null;
 
-      const result = commitErase(entry.el, { shiftKey: e.shiftKey });
+      // forceDomain: manual mid-review erases are part of the cluster the
+      // user is reviewing. Treat them with the same domain-wide scope as
+      // the bulk commit so the user doesn't see mixed page/domain scopes
+      // across what's logically one decision.
+      const result = commitErase(entry.el, { shiftKey: e.shiftKey, forceDomain: true });
       const innerUndo = result.undoEntry.undo;
       window.AdnotaUndo.push(result.undoEntry);
 
@@ -1818,7 +1990,7 @@ document.addEventListener('click', async (e) => {
           }),
         });
         if (visible.length > 0 && window.AdnotaState.mode === 'eraser') {
-          enterBatch(visible);
+          enterBatch(visible, target);
         }
       } catch (err) {
         window.AdnotaLog?.event('eraser', 'similars-found-error', { error: String(err) });
