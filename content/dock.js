@@ -366,7 +366,7 @@
       if (data[TUTORIAL_KEY]) return;
       await chrome.storage.local.set({ [TUTORIAL_KEY]: true });
       window.AdnotaUI?.showToast(
-        `Adnota hidden on ${location.hostname}. It'll stay hidden here until you bring it back with Alt+A or the extension icon.`,
+        `Adnota hidden on ${location.hostname}. Open the popup or press Alt+A to bring it back.`,
         { id: 'adnota-dock-dismiss-tutorial', timeout: 7000 }
       );
     } catch (_) { /* context invalidated after extension reload */ }
