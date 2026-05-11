@@ -1357,6 +1357,17 @@ function showHoverDeleteBtn(wrapper) {
 let pendingMarkerHitTest = 0;
 let lastMarkerPointer = null;
 document.addEventListener('mousemove', (e) => {
+  // Early-out when there are no markers on the page. Without this, every
+  // mousemove queues a rAF that calls hitTestMarker, which itself does
+  // document.querySelectorAll('.adnota-marker-wrapper') + per-wrapper
+  // getComputedStyle. document.getElementById is an O(1) hash lookup and
+  // children.length is O(1) so this is dramatically cheaper. Matches the
+  // pattern at content/highlighter.js (liveHighlights.size === 0).
+  const markerOverlayEl = document.getElementById('adnota-marker-overlay');
+  if (!markerOverlayEl || markerOverlayEl.children.length === 0) {
+    hideHoverDeleteBtn();
+    return;
+  }
   lastMarkerPointer = { x: e.clientX, y: e.clientY, target: e.target };
   if (pendingMarkerHitTest) return;
   pendingMarkerHitTest = requestAnimationFrame(() => {
