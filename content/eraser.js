@@ -1171,28 +1171,13 @@ function _paintBatchOverlay(entry) {
   });
   wrapper.appendChild(numBadge);
 
-  // ✕ remove button (top-right, interactive — pointer-events: auto).
-  // <div> not <button> so browser button defaults (gray border, default
-  // typography) don't override .adnota-select-delete. Matches the canonical
-  // pattern in dock.js / marker.js / highlighter.js etc.
-  const xBtn = document.createElement('div');
-  xBtn.className = 'adnota-select-delete';
-  xBtn.setAttribute('data-adnota-ui', '1');
-  xBtn.setAttribute('data-adnota-tooltip', 'Remove from batch');
-  xBtn.textContent = '✕';
-  // Explicit positioning override — .adnota-select-delete defaults to top:-10/
-  // right:-10, which is what we want here too, but we want pointer-events:auto
-  // explicitly since the parent wrapper sets pointer-events:none.
-  xBtn.style.pointerEvents = 'auto';
-  // Block mousedown's default + propagation so the eraser's window-capture
-  // pointer blocker doesn't run anchorFocus and the click cleanly reaches us.
-  xBtn.addEventListener('mousedown', (ev) => { ev.preventDefault(); ev.stopPropagation(); });
-  xBtn.addEventListener('click', (ev) => {
-    ev.preventDefault();
-    ev.stopPropagation();
-    removeBatchCandidate(entry.displayNumber);
-  });
-  wrapper.appendChild(xBtn);
+  // No per-candidate ✕ remove button. Eraser-tool semantics are "click thing
+  // → erase thing"; inventing a tiny ✕ with a different meaning (skip
+  // without erasing) fought that intuition and was the largest source of
+  // confusion in real-user testing. The two clean paths are: click any
+  // candidate to erase that one (manual-mid-review-erase flow) or click
+  // "Erase all N similar?" in the HUD for bulk. The numbered badge still
+  // identifies the candidate without pretending to be interactive.
 
   document.documentElement.appendChild(wrapper);
   return wrapper;
@@ -1332,10 +1317,8 @@ function _runBatchDiscoveryScan() {
   const additions = [];
   for (const el of scan.candidates) {
     if (existingEls.has(el)) continue;
-    if (batchState.skippedEls && batchState.skippedEls.has(el)) continue;
-    // Visibility filter — off-screen lazy-loads wait until the user scrolls
-    // to them. Avoids the "count went up but I don't see anything new"
-    // disorientation.
+    // Manual-erased candidates are display:none → isCandidateVisible returns
+    // false → they're filtered out naturally. No separate skip-set needed.
     if (!isCandidateVisible(el)) continue;
     additions.push(el);
   }
@@ -1487,9 +1470,6 @@ function enterBatch(candidates, seedTarget) {
   batchState = {
     candidates: candidates.map((el, i) => ({ el, displayNumber: i + 1 })),
     seedTarget: seedTarget || null,
-    // WeakSet of elements the user explicitly skipped via ✕ — prevents the
-    // discovery rescan from re-adding them after removal.
-    skippedEls: new WeakSet(),
   };
 
   // Capture-phase listeners catch scrolls inside nested overflow containers
@@ -1562,10 +1542,7 @@ function removeBatchCandidate(displayNumber) {
   if (!batchState) return;
   const idx = batchState.candidates.findIndex(c => c.displayNumber === displayNumber);
   if (idx < 0) return;
-  const [removed] = batchState.candidates.splice(idx, 1);
-  // Remember user-skipped elements so the live discovery rescan doesn't
-  // re-add them after the user explicitly clicked ✕.
-  if (removed && batchState.skippedEls) batchState.skippedEls.add(removed.el);
+  batchState.candidates.splice(idx, 1);
   _tearDownBatchOverlay(displayNumber);
   window.AdnotaLog?.event('eraser', 'batch-remove', {
     displayNumber, remaining: batchState.candidates.length,
