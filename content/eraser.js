@@ -238,6 +238,197 @@ function getEffectiveAdSignals(target) {
   return dominatesViewport(rect) ? [] : detectAdSignals(target);
 }
 
+// ─── Find similar ads (signature → signal-confirm two-stage detector) ────────
+// Two-stage by design: signatures FIND candidates, signals CONFIRM them.
+// Signatures alone produce false positives (e.g., a non-ad sibling sharing
+// classes with an ad-network class); re-running getEffectiveAdSignals per
+// candidate is the safety net that keeps non-ad siblings out of the cluster.
+//
+// Returns { candidates: HTMLElement[], strategies: string[] } where candidates
+// are document-ordered and exclude: the originally-erased target, Adnota
+// chrome, page-level dominators, descendants of already-erased elements, and
+// any candidate whose own getEffectiveAdSignals is empty.
+//
+// Stage 1 of the "Erase 7 similar?" feature: this is the detector only — the
+// caller decides what to do with it (Stage 1 logs; Stage 3 will surface UI).
+const SIMILAR_ADS_CAP = 50;
+const ATTR_PREFIX_BROAD_THRESHOLD = 200; // skip prefixes broader than this — structural class, not ad cluster
+
+// Stem extraction from id-style values like "ad-slot-1234" → "ad-slot-".
+// Returns the stem with trailing hyphen, or null if the value lacks a
+// recognizable variable trailing token. UUID-shaped values (single token of
+// length ≥ 16, no hyphens, alphanumeric) are refused — too easy to match a
+// structural prefix on those.
+function _extractAdStem(value) {
+  if (!value || typeof value !== 'string') return null;
+  if (!value.includes('-') && value.length >= 16 && /^[A-Za-z0-9_]+$/.test(value)) return null;
+  // Last hyphen-followed-by-[A-Za-z0-9]{2,} segment. Group 1 = stem (with trailing hyphen).
+  const match = value.match(/^(.+-)([A-Za-z0-9]{2,})$/);
+  if (!match) return null;
+  const stem = match[1];
+  if (!stem || stem === '-') return null;
+  return stem;
+}
+
+function findSimilarAds(target) {
+  if (!target || !target.tagName) return { candidates: [], strategies: [] };
+
+  const strategies = [];
+  const found = new Set();
+
+  // Strategy 1: Tag-shape match.
+  // If the clicked element is an ad-shaped custom tag (matches the shared
+  // adIdentifierPattern), every other element with the same tag is a
+  // strong candidate. Near-zero false-positive rate — the tag itself names
+  // the slot.
+  if (_adIdentifierPattern.test(target.tagName)) {
+    try {
+      document.querySelectorAll(target.tagName.toLowerCase()).forEach(c => found.add(c));
+      strategies.push('tag-shape');
+    } catch { /* malformed tag — skip */ }
+  }
+
+  // Strategy 2: Ad-attribute presence.
+  // If the seed carries an ad-network attribute (data-freestar-ad,
+  // data-google-query-id, data-prebid, etc., or any attribute matching
+  // _adIdentifierPattern), find every other element with the same attribute.
+  // This is the strongest per-site cluster signal: all slots in the same
+  // ad-network family share the same attribute name regardless of class or
+  // id. Catches sites (Neowin / Freestar, etc.) that use underscored ids and
+  // generic class names but expose their network integration via data-attrs.
+  // The per-candidate signal-confirm stage below still gates membership.
+  if (target.attributes) {
+    for (const attr of target.attributes) {
+      const isAdAttr = _adNetworkAttrSet.has(attr.name) || _adIdentifierPattern.test(attr.name);
+      if (!isAdAttr) continue;
+      try {
+        const selector = `[${CSS.escape(attr.name)}]`;
+        const matches = document.querySelectorAll(selector);
+        if (matches.length > 0 && matches.length <= ATTR_PREFIX_BROAD_THRESHOLD) {
+          matches.forEach(c => found.add(c));
+          if (!strategies.includes('ad-attr-presence')) strategies.push('ad-attr-presence');
+        }
+      } catch { /* malformed selector — skip */ }
+    }
+  }
+
+  // Strategy 3: Class-signature match.
+  // Filter target.classList to ad-keyword-matching classes; build a comma-
+  // separated selector; querySelectorAll. Catches the classic
+  // <div class="adsbygoogle"> × N pattern. CSS.escape handles the
+  // weirder ad-network class names without a manual sanitizer.
+  if (target.classList && target.classList.length > 0) {
+    const adClasses = [];
+    for (const cls of target.classList) {
+      if (_adKeywordPattern.test(cls)) adClasses.push(cls);
+    }
+    if (adClasses.length > 0) {
+      try {
+        const selector = adClasses.map(c => '.' + CSS.escape(c)).join(', ');
+        document.querySelectorAll(selector).forEach(c => found.add(c));
+        strategies.push('class-signature');
+      } catch { /* malformed selector — skip */ }
+    }
+  }
+
+  // Strategy 4: Attribute-prefix match.
+  // For id and data-* values like "ad-slot-1234", extract a stem and rewrite
+  // to a prefix selector ([id^="ad-slot-"]). Skip the result if it matches
+  // > 200 elements — that's not an ad cluster, that's a structural class.
+  const prefixCandidates = [];
+  if (target.id) {
+    const stem = _extractAdStem(target.id);
+    if (stem) prefixCandidates.push({ attr: 'id', stem });
+  }
+  if (target.attributes) {
+    for (const attr of target.attributes) {
+      if (!attr.name.startsWith('data-')) continue;
+      const stem = _extractAdStem(attr.value);
+      if (stem) prefixCandidates.push({ attr: attr.name, stem });
+    }
+  }
+  for (const { attr, stem } of prefixCandidates) {
+    try {
+      // Attribute-selector value escaping: backslash + quote, no \" needed.
+      const escapedStem = stem.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+      const selector = `[${attr}^="${escapedStem}"]`;
+      const matches = document.querySelectorAll(selector);
+      if (matches.length > 0 && matches.length <= ATTR_PREFIX_BROAD_THRESHOLD) {
+        matches.forEach(c => found.add(c));
+        if (!strategies.includes('attr-prefix')) strategies.push('attr-prefix');
+      }
+    } catch { /* malformed selector — skip */ }
+  }
+
+  // ── Signal-confirm stage ──
+  const erasedSet = window.AdnotaErasedElements || new Set();
+  const isErasedDescendant = (c) => {
+    for (const e of erasedSet) {
+      if (e !== c && e.contains && e.contains(c)) return true;
+    }
+    return false;
+  };
+
+  const candidates = [];
+  for (const c of found) {
+    if (c === target) continue;
+    if (isAdnotaElement(c)) continue;
+    if (erasedSet.has(c)) continue;
+    if (isErasedDescendant(c)) continue;
+    const rect = c.getBoundingClientRect();
+    if (dominatesViewport(rect)) continue;
+    // The double-verify: signature got us here, but each candidate must also
+    // pass getEffectiveAdSignals on its own merits before joining the cluster.
+    // This is the false-positive guard.
+    if (getEffectiveAdSignals(c).length === 0) continue;
+    candidates.push(c);
+    if (candidates.length >= SIMILAR_ADS_CAP) break;
+  }
+
+  // Drop descendants whose ancestor is also in the candidate set — keeps
+  // the outermost wrapper (what the user reads as "the ad"). Without this,
+  // Google Ad Manager / Freestar slots that emit both an outer wrapper AND
+  // an inner container (both carrying data-google-query-id or similar)
+  // produce stacked overlays on visually-the-same ad.
+  const deduped = candidates.filter(c => {
+    for (const other of candidates) {
+      if (other !== c && other.contains(c)) return false;
+    }
+    return true;
+  });
+
+  // Visual-position sort: number candidates strictly by their on-screen top
+  // (then left for tie-break), regardless of DOM container. Document order
+  // mostly matches visual order but breaks on sidebar layouts — a sidebar ad
+  // that renders visually above an in-content ad might appear later in the
+  // DOM. Sorting by rect.top is what users actually mean by "top to bottom."
+  // Scroll position is constant at sort-time so we can use viewport coords
+  // directly; tie-break by rect.left for ads in the same horizontal row.
+  deduped.sort((a, b) => {
+    const ra = a.getBoundingClientRect();
+    const rb = b.getBoundingClientRect();
+    if (ra.top !== rb.top) return ra.top - rb.top;
+    return ra.left - rb.left;
+  });
+
+  return { candidates: deduped, strategies };
+}
+
+// True if a candidate is currently visible enough to be reviewable. Used to
+// filter the post-settle candidate list — bare-tag widening on Reddit-style
+// custom ads collapses cluster siblings synchronously via the injected style
+// tag, so a match found by findSimilarAds may already be display:none by the
+// time we surface a prompt. The user-facing count must reflect only what
+// they'd actually be asked to confirm.
+function isCandidateVisible(c) {
+  if (!c || !c.isConnected) return false;
+  const rect = c.getBoundingClientRect();
+  if (rect.width <= 0 || rect.height <= 0) return false;
+  if (c.offsetParent === null) return false; // catches display:none
+  if (getComputedStyle(c).visibility === 'hidden') return false;
+  return true;
+}
+
 // ─── Erase target quality scoring ───────────────────────────────────────────
 // Combines anchorability (how reliably FuzzyAnchor re-finds it) with erase
 // safety (is this scoped to unwanted content, or will it nuke real stuff?).
@@ -408,6 +599,100 @@ function findBetterTarget(el) {
 }
 
 function updateHUD(target) {
+  // Batch-pending state takes precedence over hover/idle — the user has
+  // active business with the cluster the chip references, and we don't
+  // want hover updates to overwrite it.
+  if (batchState && batchState.candidates.length > 0) {
+    // Hover-overlay badges (dimension + likely-ad pill) are owned by
+    // highlightOverlay, not the HUD info section. They reflect whatever the
+    // cursor's over — batch mode shouldn't blank them just because the
+    // chip is in the info section. Non-candidate hovers during review
+    // still get the standard W×H + ad-pill readout.
+    if (target) {
+      const rect = target.getBoundingClientRect();
+      dimensionBadge.textContent = `${Math.round(rect.width)}×${Math.round(rect.height)}`;
+      const hoverSignals = getEffectiveAdSignals(target);
+      adBadge.style.display = hoverSignals.length > 0 ? 'inline-block' : 'none';
+    } else {
+      dimensionBadge.textContent = '';
+      adBadge.style.display = 'none';
+    }
+    const n = batchState.candidates.length;
+    // Idempotent render: skip the rebuild if the chip is already showing
+    // this N. Without this, every mousemove over the dock calls updateHUD
+    // (via the isAdnotaElement branch) and tears down/recreates the buttons
+    // mid-hover, resetting any in-flight transition — visible as a flicker.
+    const stateKey = `batch:${n}`;
+    if (eraserHudInfo.dataset.batchKey === stateKey) return;
+    eraserHudInfo.dataset.batchKey = stateKey;
+
+    // Brand-fit: status pill (informational) sits subtle; nav arrows are bare
+    // glyphs with hover-tint only; the primary action mirrors the canonical
+    // .adnota-select-delete red — so "yes" (Erase) and "no" (✕) read as a
+    // decisive pair in the same red palette. Reading order: what's happening
+    // → how to inspect → what to do.
+    const navBtnStyle = 'display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;color:#fca5a5;font:600 12px/1 -apple-system,BlinkMacSystemFont,sans-serif;background:transparent;border:none;border-radius:4px;cursor:pointer;margin-right:2px;transition:background 0.12s;padding:0';
+    // Solid red matching .adnota-select-delete (rgba(239,68,68,0.9) bg, white
+    // text, soft drop-shadow). The dismiss ✕ uses the same palette — pairing
+    // them as the decisive yes/no.
+    const actionChipStyle = 'background:rgba(239,68,68,0.9);color:#fff;border:none;font:600 11px/1 -apple-system,BlinkMacSystemFont,sans-serif;padding:6px 12px;border-radius:4px;cursor:pointer;margin-right:6px;transition:background 0.15s;box-shadow:0 2px 6px rgba(0,0,0,0.3)';
+    eraserHudInfo.innerHTML =
+      `<button id="adnota-eraser-batch-prev" data-adnota-ui="1" data-adnota-tooltip="Previous similar (scroll into view)" style="${navBtnStyle}">◀</button>` +
+      `<button id="adnota-eraser-batch-next" data-adnota-ui="1" data-adnota-tooltip="Next similar (scroll into view)" style="${navBtnStyle};margin-right:10px">▶</button>` +
+      `<button id="adnota-eraser-batch-commit" data-adnota-ui="1" data-adnota-tooltip="Erase the remaining similar ads" style="${actionChipStyle}"><span style="margin-right:4px">⚠</span>Erase ${n} similar?</button>` +
+      `<div id="adnota-eraser-batch-deny" data-adnota-ui="1" data-adnota-tooltip="Dismiss without erasing" class="adnota-select-delete" style="position:relative;top:0;right:0">✕</div>`;
+    // Wire button handlers — innerHTML wipes prior listeners every time, so
+    // re-bind on each render.
+    const commitBtn = document.getElementById('adnota-eraser-batch-commit');
+    const denyBtn = document.getElementById('adnota-eraser-batch-deny');
+    const prevBtn = document.getElementById('adnota-eraser-batch-prev');
+    const nextBtn = document.getElementById('adnota-eraser-batch-next');
+    const wireHover = (btn, hoverBg) => {
+      if (!btn) return;
+      const origBg = btn.style.background;
+      btn.addEventListener('mouseenter', () => { btn.style.background = hoverBg; });
+      btn.addEventListener('mouseleave', () => { btn.style.background = origBg; });
+    };
+    const wireNav = (btn, dir) => {
+      if (!btn) return;
+      btn.addEventListener('mousedown', (ev) => { ev.preventDefault(); ev.stopPropagation(); });
+      btn.addEventListener('click', (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        navigateBatch(dir);
+      });
+      wireHover(btn, 'rgba(239, 68, 68, 0.18)');
+    };
+    wireNav(prevBtn, -1);
+    wireNav(nextBtn, 1);
+    if (commitBtn) {
+      commitBtn.addEventListener('mousedown', (ev) => { ev.preventDefault(); ev.stopPropagation(); });
+      commitBtn.addEventListener('click', (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        commitBatch();
+      });
+      // Hover deepens to .adnota-select-delete:hover's color (rgba(220,38,38,1)).
+      wireHover(commitBtn, 'rgba(220, 38, 38, 1)');
+    }
+    if (denyBtn) {
+      denyBtn.addEventListener('mousedown', (ev) => { ev.preventDefault(); ev.stopPropagation(); });
+      denyBtn.addEventListener('click', (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        denyBatch('user');
+      });
+    }
+    // No animation here — enterBatch owns the entry fade-in via an opacity
+    // transition on eraserHudInfo. updateHUD only rebuilds the innerHTML;
+    // it doesn't choreograph the reveal.
+    return;
+  }
+
+  // Non-batch render — clear the batch render-key so the next batch entry
+  // doesn't false-positive against a stale match.
+  delete eraserHudInfo.dataset.batchKey;
+
   if (!target) {
     dimensionBadge.textContent = '';
     adBadge.style.display = 'none';
@@ -490,6 +775,15 @@ let hoveredElement = null;
 let rawHoveredEl = null;     // actual element under cursor (before traversal)
 let traverseDepth = 0;       // 0 = raw element, >0 = walked up N parents
 
+// Batch sweep state (helpers + lifecycle live below, after the click handler).
+// Hoisted up here because both updateHUD() and the mode-change subscriber's
+// initial synchronous fire reference batchState — declaring them next to the
+// helpers further down would put us in the TDZ at script-load.
+let batchState = null;
+let batchOverlayMap = new Map(); // displayNumber → wrapper element
+let _batchScrollRafPending = false;
+let _focusedDn = null; // currently-focused candidate's displayNumber (Prev/Next nav)
+
 // Shared set of erased elements — restorer.js also adds to this.
 // AdnotaVisibility iterates this set to toggle show/hide on each erased node.
 window.AdnotaErasedElements = new Set();
@@ -566,6 +860,16 @@ function updateEraserOverlay() {
   const target = getEraserTarget(rawHoveredEl, traverseDepth);
   if (target) {
     hoveredElement = target;
+    // Hover-overlay suppression on candidates during batch-pending — the
+    // candidate's own dashed batch border + numbered badge already says
+    // "this is a target," and a competing solid red hover overlay over a
+    // dashed red border is visually noisy. Hover on non-candidates still
+    // paints normally.
+    if (batchState && isCandidateElement(target)) {
+      highlightOverlay.style.display = 'none';
+      updateHUD(null); // keeps the batch chip visible (HUD branch handles it)
+      return;
+    }
     const rect = target.getBoundingClientRect();
     const scrollY = window.pageYOffset || document.documentElement.scrollTop;
     const scrollX = window.pageXOffset || document.documentElement.scrollLeft;
@@ -657,6 +961,7 @@ window.AdnotaState.subscribe(state => {
     hoveredElement = null;
     rawHoveredEl = null;
     traverseDepth = 0;
+    if (batchState) denyBatch('mode-off');
   }
 });
 
@@ -738,20 +1043,651 @@ document.addEventListener('wheel', (e) => {
   updateEraserOverlay();
 }, { passive: false });
 
-// ─── Click: erase with animation ─────────────────────────────────────────────
-document.addEventListener('click', async (e) => {
-  if (window.AdnotaState.mode !== 'eraser') return;
-  if (isAdnotaElement(e.target)) return;
+// ─── Batch sweep ("Erase 7 similar?") ───────────────────────────────────────
+// State + helpers for the batch-pending UX surfaced after an ad erase. The
+// HUD chip and per-candidate overlays let the user inspect a cluster, remove
+// individuals via the corner ✕, and commit the rest in one undo entry.
+// Detection lives in findSimilarAds; this block owns the live UI.
+//
+// State shape: { candidates: [{ el, displayNumber }] } where displayNumber is
+// stable across removals (removing #3 leaves the survivors at 4, 5, 6 — no
+// renumbering, easier to track visually).
 
-  // Always suppress the page's click — no erase target is better than letting
-  // an ad navigate. A click without a hovered target (e.g. raced the mousemove)
-  // becomes a no-op instead of a page navigation.
-  e.preventDefault();
-  e.stopPropagation();
+// (batchState / batchOverlayMap / _batchScrollRafPending are declared earlier
+// in the file, just before the mode-change subscriber. They're hoisted up
+// because the subscriber's initial fire happens at script-load time and
+// references batchState — putting `let`s here would trip the TDZ.)
 
-  if (!hoveredElement) return;
+// Plain decimal label for the badge. Earlier iteration used Unicode circled
+// digits (①②③), but the surrounding pill already provides the circle —
+// rendering a circled digit inside a circular pill produced a double-circle
+// look. Plain "1" / "2" / "10" inside the pill reads cleaner.
+function _badgeLabel(n) {
+  return String(n);
+}
 
-  const target = hoveredElement;
+// Walk up from el to find the first ancestor (or el itself) that's a current
+// batch candidate. Returns the entry { el, displayNumber } or null.
+//
+// Subtree-aware: candidates can be wrappers with padding, and the eraser's
+// auto-bubble doesn't always promote a hover on a small inner element up to
+// the wrapper (low IoU). Without walking ancestors, hovering / clicking the
+// inner iframe of an ad we've already flagged would treat it as a different
+// element and tear down the review. We treat the candidate's whole DOM
+// subtree as part of the candidate.
+function findContainingCandidate(el) {
+  if (!batchState || !el) return null;
+  let walker = el;
+  while (walker && walker.nodeType === Node.ELEMENT_NODE) {
+    for (const c of batchState.candidates) {
+      if (c.el === walker) return c;
+    }
+    walker = walker.parentElement;
+  }
+  return null;
+}
+
+// Boolean form for the hover-suppression call site that doesn't need the entry.
+function isCandidateElement(el) {
+  return findContainingCandidate(el) !== null;
+}
+
+// Build (or rebuild) the per-candidate overlay positioned over a candidate's
+// current bounding rect. Returns the wrapper element, or null if the candidate
+// is off-viewport / detached / zero-size. Doc-coord positioning so the overlay
+// scrolls naturally with the candidate; we recompute on scroll/resize via the
+// listeners below.
+function _paintBatchOverlay(entry) {
+  if (!entry.el || !entry.el.isConnected) return null;
+  const rect = entry.el.getBoundingClientRect();
+  if (rect.width <= 0 || rect.height <= 0) return null;
+  // Viewport-only painting: skip candidates entirely off-screen so news sites
+  // with 15+ ad slots don't carry 15 dashed boxes off-frame.
+  if (rect.bottom < 0 || rect.top > window.innerHeight) return null;
+  if (rect.right < 0 || rect.left > window.innerWidth) return null;
+
+  const scrollY = window.pageYOffset || document.documentElement.scrollTop;
+  const scrollX = window.pageXOffset || document.documentElement.scrollLeft;
+  const docLeft = rect.left + scrollX;
+  const docTop = rect.top + scrollY;
+
+  // Stack-shift the number badge horizontally if another overlay is already
+  // painted at (approximately) this same doc-position — sites occasionally
+  // render two ad-slot wrappers at identical coords (SPA quirks, layout
+  // overlap), and stacked badges look like one when in fact the user has
+  // two affordances to act on. Side-by-side reads honestly.
+  // 42px badge + 4px gap = 46px stride per stacked peer.
+  let badgeStackOffset = 0;
+  for (const otherWrapper of batchOverlayMap.values()) {
+    const otherLeft = parseFloat(otherWrapper.style.left);
+    const otherTop = parseFloat(otherWrapper.style.top);
+    if (Math.abs(otherLeft - docLeft) < 4 && Math.abs(otherTop - docTop) < 4) {
+      badgeStackOffset++;
+    }
+  }
+
+  const wrapper = document.createElement('div');
+  wrapper.setAttribute('data-adnota-ui', '1');
+  wrapper.dataset.batchNumber = String(entry.displayNumber);
+  Object.assign(wrapper.style, {
+    position: 'absolute',
+    top: `${rect.top + scrollY}px`,
+    left: `${rect.left + scrollX}px`,
+    width: `${rect.width}px`,
+    height: `${rect.height}px`,
+    border: '2px dashed #ef4444',
+    background: 'rgba(239, 68, 68, 0.10)',
+    boxSizing: 'border-box',
+    pointerEvents: 'none', // body clicks fall through to candidate
+    zIndex: '2147483647',
+    borderRadius: '2px',
+  });
+
+  // Number badge — INSIDE the candidate's top-left corner (inset positioning
+  // keeps it visible on candidates flush with the viewport top). Styled to
+  // mirror the canonical .adnota-select-delete ✕: same semi-transparent red,
+  // no hard border. Sized larger (42px vs 20px ✕) so the batch-review
+  // identifier reads as confidently as the action affordances in the HUD
+  // chip — primary identifier first, secondary remove button second.
+  const numBadge = document.createElement('div');
+  numBadge.setAttribute('data-adnota-ui', '1');
+  numBadge.textContent = _badgeLabel(entry.displayNumber);
+  Object.assign(numBadge.style, {
+    position: 'absolute',
+    top: '8px',
+    left: `${8 + badgeStackOffset * 46}px`,
+    background: 'rgba(239, 68, 68, 0.9)',
+    color: '#fff',
+    font: '600 22px/1 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+    minWidth: '42px',
+    height: '42px',
+    padding: '0 12px',
+    boxSizing: 'border-box',
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: '21px',
+    pointerEvents: 'none',
+  });
+  wrapper.appendChild(numBadge);
+
+  // No per-candidate ✕ remove button. Eraser-tool semantics are "click thing
+  // → erase thing"; inventing a tiny ✕ with a different meaning (skip
+  // without erasing) fought that intuition and was the largest source of
+  // confusion in real-user testing. The two clean paths are: click any
+  // candidate to erase that one (manual-mid-review-erase flow) or click
+  // "Erase all N similar?" in the HUD for bulk. The numbered badge still
+  // identifies the candidate without pretending to be interactive.
+
+  document.documentElement.appendChild(wrapper);
+  return wrapper;
+}
+
+function _tearDownBatchOverlay(displayNumber) {
+  const w = batchOverlayMap.get(displayNumber);
+  if (w && w.parentNode) w.parentNode.removeChild(w);
+  batchOverlayMap.delete(displayNumber);
+}
+
+function _tearDownAllBatchOverlays() {
+  for (const w of batchOverlayMap.values()) {
+    if (w && w.parentNode) w.parentNode.removeChild(w);
+  }
+  batchOverlayMap.clear();
+}
+
+// Recompute which candidates should currently have overlays: drop overlays
+// for candidates that left the viewport, create overlays for ones that
+// entered. Stale candidates (detached) are also pruned from batchState here —
+// they survived the post-erase filter but the page mutated since. rAF-throttled
+// so a frenetic scroll doesn't run this hundreds of times per second.
+function _refreshBatchOverlays() {
+  if (!batchState) return;
+  const survivors = [];
+  for (const entry of batchState.candidates) {
+    if (!entry.el.isConnected) {
+      // Stale candidate — drop silently.
+      _tearDownBatchOverlay(entry.displayNumber);
+      window.AdnotaLog?.event('eraser', 'batch-stale-skip', { displayNumber: entry.displayNumber });
+      continue;
+    }
+    survivors.push(entry);
+    const rect = entry.el.getBoundingClientRect();
+    const visible = rect.width > 0 && rect.height > 0 &&
+                    rect.bottom > 0 && rect.top < window.innerHeight &&
+                    rect.right > 0 && rect.left < window.innerWidth;
+    const existing = batchOverlayMap.get(entry.displayNumber);
+    if (visible && !existing) {
+      const w = _paintBatchOverlay(entry);
+      if (w) batchOverlayMap.set(entry.displayNumber, w);
+    } else if (!visible && existing) {
+      _tearDownBatchOverlay(entry.displayNumber);
+    } else if (visible && existing) {
+      // Reposition in-place (resize might have shifted the candidate).
+      const scrollY = window.pageYOffset || document.documentElement.scrollTop;
+      const scrollX = window.pageXOffset || document.documentElement.scrollLeft;
+      Object.assign(existing.style, {
+        top: `${rect.top + scrollY}px`,
+        left: `${rect.left + scrollX}px`,
+        width: `${rect.width}px`,
+        height: `${rect.height}px`,
+      });
+    }
+  }
+  batchState.candidates = survivors;
+  // Self-dismiss if everything went stale.
+  if (batchState.candidates.length === 0) denyBatch('all-removed');
+  else updateHUD(null); // refresh the chip's count
+}
+
+function _onBatchScrollOrResize() {
+  if (_batchScrollRafPending) return;
+  _batchScrollRafPending = true;
+  requestAnimationFrame(() => {
+    _batchScrollRafPending = false;
+    _refreshBatchOverlays();
+  });
+}
+
+// ─── Live discovery: catch lazy-loaded ads that appear mid-review ──────────
+// Most heavy-ad pages use IntersectionObserver-based lazy loading: ad slots
+// are empty placeholders at page load and only inject their network markup
+// (iframe, data-* attrs) when scrolled near the viewport. A one-shot click-
+// time scan can't see them. We keep a MutationObserver alive during review
+// that re-runs findSimilarAds on DOM mutations, appending newly-visible
+// matches to the batch with continuing display numbers.
+//
+// Safeguards:
+// - Debounced ~400ms so a burst of mutations becomes one rescan
+// - Early-bails on mutations that didn't add element nodes (text-only changes,
+//   style flips, etc.)
+// - Skips matches that are already in the batch, were manually skipped via ✕,
+//   or aren't currently visible (off-screen lazy-loads wait their turn)
+// - Tied strictly to active review: observer disconnects on commit/deny/exit
+const BATCH_DISCOVERY_DEBOUNCE_MS = 400;
+let _batchObserver = null;
+let _batchDiscoveryTimer = null;
+
+function _startBatchDiscovery() {
+  if (_batchObserver) return;
+  _batchObserver = new MutationObserver((mutations) => {
+    // Early-bail: nothing structural changed, ignore.
+    let added = false;
+    for (const m of mutations) {
+      for (const n of m.addedNodes) {
+        if (n.nodeType === Node.ELEMENT_NODE) { added = true; break; }
+      }
+      if (added) break;
+    }
+    if (!added) return;
+    // Debounce: collapse mutation bursts (SPA renders, ad-network script
+    // injections) into a single rescan.
+    if (_batchDiscoveryTimer) return;
+    _batchDiscoveryTimer = setTimeout(() => {
+      _batchDiscoveryTimer = null;
+      _runBatchDiscoveryScan();
+    }, BATCH_DISCOVERY_DEBOUNCE_MS);
+  });
+  _batchObserver.observe(document.body, { childList: true, subtree: true });
+}
+
+function _stopBatchDiscovery() {
+  if (_batchObserver) {
+    _batchObserver.disconnect();
+    _batchObserver = null;
+  }
+  if (_batchDiscoveryTimer) {
+    clearTimeout(_batchDiscoveryTimer);
+    _batchDiscoveryTimer = null;
+  }
+}
+
+function _runBatchDiscoveryScan() {
+  if (!batchState || !batchState.seedTarget) return;
+
+  let scan;
+  try {
+    scan = findSimilarAds(batchState.seedTarget);
+  } catch (err) {
+    window.AdnotaLog?.event('eraser', 'batch-discover-error', { error: String(err) });
+    return;
+  }
+
+  const existingEls = new Set(batchState.candidates.map(c => c.el));
+  const additions = [];
+  for (const el of scan.candidates) {
+    if (existingEls.has(el)) continue;
+    // Manual-erased candidates are display:none → isCandidateVisible returns
+    // false → they're filtered out naturally. No separate skip-set needed.
+    if (!isCandidateVisible(el)) continue;
+    additions.push(el);
+  }
+  if (additions.length === 0) return;
+
+  // Append with continuing display numbers — no renumbering. Numbers reflect
+  // discovery order after the first scan, not strict visual order. Stability
+  // over consistency: the user's mental model around existing numbers stays
+  // intact.
+  const nextNum = batchState.candidates.length > 0
+    ? Math.max(...batchState.candidates.map(c => c.displayNumber)) + 1
+    : 1;
+
+  for (let i = 0; i < additions.length; i++) {
+    const entry = { el: additions[i], displayNumber: nextNum + i };
+    batchState.candidates.push(entry);
+    const w = _paintBatchOverlay(entry);
+    if (!w) continue;
+    batchOverlayMap.set(entry.displayNumber, w);
+    // Fade-in so the new overlay reads as a discovery rather than a glitch.
+    w.style.opacity = '0';
+    w.style.transition = 'opacity 0.28s ease-out';
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => { w.style.opacity = '1'; });
+    });
+  }
+
+  updateHUD(null); // refresh chip count
+  window.AdnotaLog?.event('eraser', 'batch-discover', {
+    added: additions.length,
+    total: batchState.candidates.length,
+  });
+}
+
+// Slide-transition the eraserHudInfo content: old content slides up and out
+// while new content slides up into its place from below. Pure vertical
+// slide — no width animation, no growth-from-middle. The dock width is
+// locked once at the start to fit whichever content is wider; that's the
+// only dimensional change, and it happens within a single frame so it's
+// not perceived as continuous growth.
+//
+// renderNewContent is called mid-transition; it must populate eraserHudInfo
+// (typically via updateHUD which sets innerHTML and wires handlers).
+function _slideTransitionHud(renderNewContent) {
+  const oldRect = eraserHudInfo.getBoundingClientRect();
+
+  // `width: max-content` makes each wrapper size to its own natural content
+  // even when position:absolute, so we can measure new content's width
+  // accurately before animation starts.
+  const wrapperStyle = {
+    position: 'absolute',
+    left: '0',
+    top: '0',
+    height: '100%',
+    width: 'max-content',
+    display: 'inline-flex',
+    alignItems: 'center',
+    whiteSpace: 'nowrap',
+    transition: 'transform 0.32s ease-out, opacity 0.32s ease-out',
+  };
+
+  // Capture current children into oldContent.
+  const oldContent = document.createElement('span');
+  oldContent.setAttribute('data-adnota-ui', '1');
+  while (eraserHudInfo.firstChild) oldContent.appendChild(eraserHudInfo.firstChild);
+  Object.assign(oldContent.style, wrapperStyle);
+  oldContent.style.pointerEvents = 'none';
+  oldContent.style.transform = 'translateY(0)';
+
+  // Render the new innerHTML into eraserHudInfo (handlers wired by updateHUD
+  // via getElementById, which still works because we've cleared old children
+  // out of eraserHudInfo first).
+  renderNewContent();
+
+  // Move that fresh content into newContent (starts off-screen below).
+  const newContent = document.createElement('span');
+  newContent.setAttribute('data-adnota-ui', '1');
+  while (eraserHudInfo.firstChild) newContent.appendChild(eraserHudInfo.firstChild);
+  Object.assign(newContent.style, wrapperStyle);
+  newContent.style.transform = 'translateY(100%)';
+  newContent.style.opacity = '0';
+
+  // Append both wrappers; measure new content's natural width.
+  eraserHudInfo.appendChild(oldContent);
+  eraserHudInfo.appendChild(newContent);
+  const newWidth = newContent.offsetWidth;
+  const lockWidth = Math.max(oldRect.width, newWidth);
+
+  // Lock dimensions for the duration of the slide — set once, no transition.
+  // The dock may snap-grow by a few px at this instant if new is wider than
+  // old, but it's a one-frame change (not continuous), so it reads as part
+  // of the slide kicking off rather than its own animation.
+  const prev = {
+    position: eraserHudInfo.style.position,
+    overflow: eraserHudInfo.style.overflow,
+    height: eraserHudInfo.style.height,
+    width: eraserHudInfo.style.width,
+    minWidth: eraserHudInfo.style.minWidth,
+    transition: eraserHudInfo.style.transition,
+  };
+  Object.assign(eraserHudInfo.style, {
+    position: 'relative',
+    overflow: 'hidden',
+    height: oldRect.height + 'px',
+    width: lockWidth + 'px',
+    minWidth: lockWidth + 'px',
+    transition: '', // explicit: no transition on container dimensions
+  });
+
+  // Double rAF: commit initial state to layout, then trigger transition.
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      oldContent.style.transform = 'translateY(-100%)';
+      oldContent.style.opacity = '0';
+      newContent.style.transform = 'translateY(0)';
+      newContent.style.opacity = '1';
+    });
+  });
+
+  setTimeout(() => {
+    // Defensive: a denyBatch / mode-off / new render may have wiped
+    // eraserHudInfo's children mid-flight. Only clean up wrappers we still
+    // own.
+    if (oldContent.parentNode === eraserHudInfo) {
+      eraserHudInfo.removeChild(oldContent);
+    }
+    if (newContent.parentNode === eraserHudInfo) {
+      while (newContent.firstChild) eraserHudInfo.appendChild(newContent.firstChild);
+      eraserHudInfo.removeChild(newContent);
+    }
+    eraserHudInfo.style.position = prev.position;
+    eraserHudInfo.style.overflow = prev.overflow;
+    eraserHudInfo.style.height = prev.height;
+    eraserHudInfo.style.width = prev.width;
+    eraserHudInfo.style.minWidth = prev.minWidth;
+    eraserHudInfo.style.transition = prev.transition;
+  }, 360);
+}
+
+function enterBatch(candidates, seedTarget) {
+  // candidates: HTMLElement[] (visible, document-ordered)
+  // seedTarget: the original clicked element — kept as the signature source
+  // for the live MutationObserver discovery rescans (lazy-loaded ads that
+  // appear as the user scrolls during review).
+  if (!candidates || candidates.length === 0) return;
+  // If a prior batch is somehow still active, deny it before enter.
+  if (batchState) denyBatch('replaced');
+
+  batchState = {
+    candidates: candidates.map((el, i) => ({ el, displayNumber: i + 1 })),
+    seedTarget: seedTarget || null,
+  };
+
+  // Capture-phase listeners catch scrolls inside nested overflow containers
+  // (window scroll events don't bubble from inner scrollers).
+  window.addEventListener('scroll', _onBatchScrollOrResize, { passive: true, capture: true });
+  window.addEventListener('resize', _onBatchScrollOrResize, { passive: true });
+
+  // HUD slide-transition: old content slides up and out, new batch chip
+  // slides up into place. Smooth, deliberate, single coordinated movement.
+  _slideTransitionHud(() => updateHUD(null));
+
+  // Overlay stagger reveal — opacity-only, no transforms (pure scale on
+  // absolutely-positioned elements read as "boundary calculation glitches"
+  // in earlier iteration). Stagger gives the scanning feel.
+  let visibleIdx = 0;
+  for (const entry of batchState.candidates) {
+    const w = _paintBatchOverlay(entry);
+    if (!w) continue;
+    batchOverlayMap.set(entry.displayNumber, w);
+    const delay = visibleIdx * 50;
+    visibleIdx++;
+    w.style.opacity = '0';
+    w.style.transition = `opacity 0.3s ease-out ${delay}ms`;
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        w.style.opacity = '1';
+      });
+    });
+  }
+
+  // Start watching for lazy-loaded additions during this review session.
+  if (batchState.seedTarget) _startBatchDiscovery();
+
+  window.AdnotaLog?.event('eraser', 'batch-enter', { count: batchState.candidates.length });
+}
+
+// Smooth-scroll the next/previous candidate into view. Wraps around at ends.
+// Pure navigation aid — does not commit, remove, or otherwise mutate the
+// batch. Tracks the "focused" candidate by displayNumber (stable across
+// removals) so a remove of the currently-focused entry just reorients on
+// the next nav click.
+function navigateBatch(direction) {
+  if (!batchState || batchState.candidates.length === 0) return;
+  // Sort by displayNumber ascending — these were assigned in document order
+  // at batch-enter time, so this matches "page top-to-bottom" navigation.
+  const sorted = batchState.candidates.slice().sort((a, b) => a.displayNumber - b.displayNumber);
+  let idx;
+  if (_focusedDn === null) {
+    idx = direction > 0 ? 0 : sorted.length - 1;
+  } else {
+    const cur = sorted.findIndex(c => c.displayNumber === _focusedDn);
+    if (cur === -1) {
+      // Focused candidate was removed — restart at the relevant end.
+      idx = direction > 0 ? 0 : sorted.length - 1;
+    } else {
+      idx = (cur + direction + sorted.length) % sorted.length;
+    }
+  }
+  const target = sorted[idx];
+  _focusedDn = target.displayNumber;
+  if (target.el && target.el.isConnected) {
+    target.el.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' });
+  }
+  window.AdnotaLog?.event('eraser', 'batch-navigate', {
+    displayNumber: target.displayNumber, direction,
+  });
+}
+
+function removeBatchCandidate(displayNumber) {
+  if (!batchState) return;
+  const idx = batchState.candidates.findIndex(c => c.displayNumber === displayNumber);
+  if (idx < 0) return;
+  batchState.candidates.splice(idx, 1);
+  _tearDownBatchOverlay(displayNumber);
+  window.AdnotaLog?.event('eraser', 'batch-remove', {
+    displayNumber, remaining: batchState.candidates.length,
+  });
+  if (batchState.candidates.length === 0) {
+    denyBatch('all-removed');
+  } else {
+    updateHUD(null); // refresh chip count
+  }
+}
+
+function denyBatch(reason) {
+  if (!batchState) return;
+  _stopBatchDiscovery();
+  _tearDownAllBatchOverlays();
+  window.removeEventListener('scroll', _onBatchScrollOrResize, { capture: true });
+  window.removeEventListener('resize', _onBatchScrollOrResize);
+  window.AdnotaLog?.event('eraser', 'batch-deny', { reason: reason || 'unknown' });
+  batchState = null;
+  _focusedDn = null;
+  updateHUD(null); // clear the chip
+}
+
+async function commitBatch() {
+  if (!batchState || batchState.candidates.length === 0) return;
+  _stopBatchDiscovery();
+  const entries = batchState.candidates.slice();
+  // Stash undo functions for the composite entry + pending storage writes
+  // (we'll bulk-save at the end to avoid N parallel saveItem calls racing
+  // each other; see commitErase.skipStorageWrite for the why).
+  const perItemUndos = [];
+  const pendingWrites = [];
+  let erasedCount = 0;
+  for (const entry of entries) {
+    if (!entry.el.isConnected) continue; // mid-flight stale
+    try {
+      // skipAnimation: 7 simultaneous dissolves would be visually chaotic.
+      // skipStyleRebuild: rebuild once after the loop instead of N times.
+      // skipStorageWrite: collect into pendingWrites, save once in bulk.
+      const result = commitErase(entry.el, {
+        shiftKey: false,
+        skipAnimation: true,
+        skipStyleRebuild: true,
+        skipStorageWrite: true,
+        // Force domain-wide for every batch item. The batch only surfaces
+        // when findSimilarAds confirms an ad cluster, so every commit here
+        // is part of that cluster and should match the seed's scope —
+        // don't let per-candidate signal variance create mixed scopes.
+        forceDomain: true,
+      });
+      perItemUndos.push(result.undoEntry.undo);
+      if (result.storageWrite) pendingWrites.push(result.storageWrite);
+      erasedCount++;
+    } catch (err) {
+      window.AdnotaLog?.event('eraser', 'batch-stale-skip', {
+        displayNumber: entry.displayNumber, error: String(err),
+      });
+    }
+  }
+  // Single style-tag rebuild covering all newly-injected rules.
+  rebuildEraseStyleTag();
+
+  // Single bulk storage write covering all N items. Awaited before the
+  // confirmation toast so persistence is settled by the time the user sees
+  // "Erased N ads" and reaches for refresh — otherwise the page reload races
+  // an in-flight write and the erases come back. Group by domain (always
+  // one in practice — same page — but defensive).
+  if (pendingWrites.length > 0 && window.AdnotaStorage) {
+    const byDomain = new Map();
+    for (const w of pendingWrites) {
+      if (!byDomain.has(w.domain)) byDomain.set(w.domain, []);
+      byDomain.get(w.domain).push({ path: w.pathScope, payload: w.payload });
+    }
+    try {
+      for (const [domain, list] of byDomain) {
+        await window.AdnotaStorage.saveItems(domain, list);
+      }
+    } catch (err) {
+      window.AdnotaLog?.event('eraser', 'batch-storage-error', { error: String(err) });
+    }
+  }
+
+  // One composite undo entry on the shared stack so Ctrl+Z reverses the whole
+  // sweep in a single keystroke. Per-item undos inherit skipStyleRebuild from
+  // commit time (closure capture), so they delete from AdnotaEraseRules
+  // without re-rendering the style tag — we rebuild once at the end here,
+  // matching the commit-side optimization.
+  const compositeUndo = {
+    undo: async () => {
+      // Reverse order so storage row deletions back-track the insertion order.
+      for (let i = perItemUndos.length - 1; i >= 0; i--) {
+        try { await perItemUndos[i](); } catch { /* per-item already consumed */ }
+      }
+      rebuildEraseStyleTag();
+      window.AdnotaUndo.remove(compositeUndo);
+    },
+  };
+  window.AdnotaUndo.push(compositeUndo);
+
+  window.AdnotaUI.showToast(`Erased ${erasedCount} ${erasedCount === 1 ? 'ad' : 'ads'}`, {
+    id: 'adnota-eraser-batch-toast',
+    onUndo: () => compositeUndo.undo(),
+  });
+
+  window.AdnotaLog?.event('eraser', 'batch-commit', { erasedCount });
+
+  // Tear down the UI (state is null after this).
+  _tearDownAllBatchOverlays();
+  window.removeEventListener('scroll', _onBatchScrollOrResize, { capture: true });
+  window.removeEventListener('resize', _onBatchScrollOrResize);
+  batchState = null;
+  _focusedDn = null;
+  updateHUD(null);
+}
+
+// ─── commitErase: shared erase commit (single-click + future batch path) ────
+// Extracted from the click handler so the future batch sweep can reuse the
+// exact same anchor capture / rule injection / animation / storage / undo
+// pipeline. Returns the constructed undo entry; the caller owns pushing it
+// onto AdnotaUndo (single-click path pushes immediately; batch path collects
+// per-item undos into one composite entry).
+//
+// Options:
+//   shiftKey         — whether the original gesture held Shift (forces domain scope)
+//   skipAnimation    — bypass dissolve + flash; apply display:none immediately
+//                       (batch path: 7 simultaneous dissolves would be visually chaotic)
+//   skipStyleRebuild — set the rule on AdnotaEraseRules but defer the style-tag
+//                       rebuild to the caller (batch path: rebuild once after the
+//                       loop instead of N times)
+//
+// Returns { undoEntry, id, adSignals, savedCssText }.
+function commitErase(target, opts = {}) {
+  const {
+    shiftKey = false,
+    skipAnimation = false,
+    skipStyleRebuild = false,
+    skipStorageWrite = false,
+    // forceDomain: batch-commit and manual-mid-review erases pass this so
+    // every item in the cluster gets the same domain-wide treatment as the
+    // seed click. Without it, per-candidate getEffectiveAdSignals can vary
+    // between scan-time and commit-time (page mutation, viewport changes),
+    // producing mixed page/domain scopes within what should be one cluster.
+    forceDomain = false,
+  } = opts;
+
   const rect = target.getBoundingClientRect();
   const savedCssText = target.style.cssText;
 
@@ -762,7 +1698,8 @@ document.addEventListener('click', async (e) => {
   // If the target looks like an ad we silently promote the scope to domain-wide
   // too, since nobody wants to erase the same ad on every article. No chip, no
   // messaging; it just works. Non-ad targets still scope to the current page.
-  const useDomain = e.shiftKey || getEffectiveAdSignals(target).length > 0;
+  const adSignals = getEffectiveAdSignals(target);
+  const useDomain = forceDomain || shiftKey || adSignals.length > 0;
   const pathScope = useDomain ? '*' : location.pathname;
   const domain = location.hostname;
   const id = Date.now() + Math.random().toString();
@@ -772,7 +1709,6 @@ document.addEventListener('click', async (e) => {
   // we widen the rule to also match the bare tag, so the next impression in the
   // same slot is hidden too without a second click. No-op for generic tags.
   const ruleSelector = window.AdnotaUI.maybeGeneralizeAdSelector(cssSelector, target.tagName);
-  const adSignals = getEffectiveAdSignals(target);
   // Snapshot the element's inline style and a short outerHTML at click time —
   // when an erased ad reappears, the diagnostic question is almost always
   // "did the page have inline display:block !important that beats our rule?"
@@ -780,8 +1716,8 @@ document.addEventListener('click', async (e) => {
   window.AdnotaLog?.event('eraser', 'click', {
     el: window.AdnotaLog.el(target),
     scope: useDomain ? 'domain' : 'page',
-    promotedSilent: !e.shiftKey && adSignals.length > 0,
-    shiftClick: !!e.shiftKey,
+    promotedSilent: !shiftKey && adSignals.length > 0,
+    shiftClick: !!shiftKey,
     adSignals,
     ruleSelector,
     savedSelector: cssSelector,
@@ -793,72 +1729,70 @@ document.addEventListener('click', async (e) => {
     id,
   });
   window.AdnotaEraseRules.set(id, ruleSelector);
-  rebuildEraseStyleTag();
+  if (!skipStyleRebuild) rebuildEraseStyleTag();
 
-  highlightOverlay.style.display = 'none';
-  updateHUD(null);
-  hoveredElement = null;
-
-  // ── Fire animation effects in parallel ──
-  spawnFlash(rect);
-  let activeAnimation = dissolveTarget(target);
-
-  // After dissolve completes → apply permanent display:none.
+  // ── Animation + post-animation display:none ──
+  let activeAnimation = null;
   let consumed = false;
-  activeAnimation.finished.then(() => {
-    if (!consumed) {
-      target.style.setProperty('display', 'none', 'important');
-      window.AdnotaErasedElements.add(target);
-      window.AdnotaUI.attachEraseStyleGuard(target, {
-        id, ruleSelector, reason: 'click',
-      });
-      try { activeAnimation.cancel(); } catch { }
-      activeAnimation = null;
-      // One-shot "did our erase actually take?" probe. Two rAFs to give the
-      // browser a paint cycle for any ad-system MutationObserver to react and
-      // re-assert inline display:block !important. If the element is still
-      // visible, log it loudly — that's the Freestar-style override pattern.
-      requestAnimationFrame(() => requestAnimationFrame(() => {
-        try {
-          if (!target.isConnected) return;
-          const cs = getComputedStyle(target);
-          if (cs.display !== 'none') {
-            window.AdnotaLog?.event('eraser', 'erase-defeated', {
-              id,
-              ruleSelector,
-              computedDisplay: cs.display,
-              targetInlineStyle: target.style.cssText || null,
-              parentInlineStyle: target.parentElement?.style.cssText || null,
-              parentComputedDisplay: target.parentElement
-                ? getComputedStyle(target.parentElement).display : null,
-            });
-          }
-        } catch { }
-      }));
-    }
-  }).catch(() => {
-    // Animation was cancelled by undo — do nothing.
-  });
-
-  // Save to storage immediately (don't block the animation on I/O).
-  if (window.AdnotaStorage) {
-    window.AdnotaStorage.saveItem(domain, pathScope, { action: 'ERASE', anchor, selector: cssSelector, _id: id }).catch(() => { });
+  if (!skipAnimation) {
+    spawnFlash(rect);
+    activeAnimation = dissolveTarget(target);
+    activeAnimation.finished.then(() => {
+      if (!consumed) {
+        target.style.setProperty('display', 'none', 'important');
+        window.AdnotaErasedElements.add(target);
+        window.AdnotaUI.attachEraseStyleGuard(target, {
+          id, ruleSelector, reason: 'click',
+        });
+        try { activeAnimation.cancel(); } catch { }
+        activeAnimation = null;
+        // One-shot "did our erase actually take?" probe. Two rAFs to give the
+        // browser a paint cycle for any ad-system MutationObserver to react and
+        // re-assert inline display:block !important. If the element is still
+        // visible, log it loudly — that's the Freestar-style override pattern.
+        requestAnimationFrame(() => requestAnimationFrame(() => {
+          try {
+            if (!target.isConnected) return;
+            const cs = getComputedStyle(target);
+            if (cs.display !== 'none') {
+              window.AdnotaLog?.event('eraser', 'erase-defeated', {
+                id,
+                ruleSelector,
+                computedDisplay: cs.display,
+                targetInlineStyle: target.style.cssText || null,
+                parentInlineStyle: target.parentElement?.style.cssText || null,
+                parentComputedDisplay: target.parentElement
+                  ? getComputedStyle(target.parentElement).display : null,
+              });
+            }
+          } catch { }
+        }));
+      }
+    }).catch(() => {
+      // Animation was cancelled by undo — do nothing.
+    });
+  } else {
+    // Batch path: skip the dissolve, apply display:none + guard immediately.
+    // The batch UI's overlay tear-down provides commit feedback instead.
+    target.style.setProperty('display', 'none', 'important');
+    window.AdnotaErasedElements.add(target);
+    window.AdnotaUI.attachEraseStyleGuard(target, {
+      id, ruleSelector, reason: 'batch-commit',
+    });
   }
 
-  // First-time domain-scope tutorial. Only fires on a plain click against a
-  // non-ad target — Shift+Click means the user already knows the keystroke,
-  // and ads are silently auto-promoted to domain scope so the lesson would
-  // be redundant. If a user only ever erases ads, they never see this toast.
-  if (!e.shiftKey && adSignals.length === 0) {
-    const TUTORIAL_KEY = 'adnotaEraserDomainTutorialShown';
-    chrome.storage.local.get(TUTORIAL_KEY).then((data) => {
-      if (data[TUTORIAL_KEY]) return;
-      chrome.storage.local.set({ [TUTORIAL_KEY]: true });
-      window.AdnotaUI?.showToast(
-        'Tip: hold Shift while clicking to erase across the entire domain.',
-        { id: 'adnota-eraser-domain-tutorial', timeout: 7000 }
-      );
-    }).catch(() => { /* context invalidated after extension reload */ });
+  // Save to storage immediately (don't block the animation on I/O). The
+  // batch path sets skipStorageWrite to coalesce N saveItem calls into one
+  // bulk saveItems — N parallel saveItems would race (each reads the same
+  // before-state, writes overwrite each other, only the last lands).
+  const storagePayload = { action: 'ERASE', anchor, selector: cssSelector, _id: id };
+  let storageWrite = null;
+  if (window.AdnotaStorage) {
+    if (skipStorageWrite) {
+      storageWrite = { domain, pathScope, payload: storagePayload };
+    } else {
+      window.AdnotaStorage.saveItem(domain, pathScope, storagePayload).catch(() => { });
+    }
   }
 
   // ── Shared undo closure — used by both toast button and Ctrl+Z ──
@@ -882,7 +1816,7 @@ document.addEventListener('click', async (e) => {
 
       // Remove the CSS rule that prevents re-creation.
       window.AdnotaEraseRules.delete(id);
-      rebuildEraseStyleTag();
+      if (!skipStyleRebuild) rebuildEraseStyleTag();
 
       // Delete the erasure record from storage.
       if (window.AdnotaStorage) {
@@ -896,6 +1830,88 @@ document.addEventListener('click', async (e) => {
       window.AdnotaUndo.remove(undoEntry);
     }
   };
+
+  return { undoEntry, id, adSignals, savedCssText, storageWrite };
+}
+
+// ─── Click: erase with animation ─────────────────────────────────────────────
+document.addEventListener('click', async (e) => {
+  if (window.AdnotaState.mode !== 'eraser') return;
+  if (isAdnotaElement(e.target)) return;
+
+  // Always suppress the page's click — no erase target is better than letting
+  // an ad navigate. A click without a hovered target (e.g. raced the mousemove)
+  // becomes a no-op instead of a page navigation.
+  e.preventDefault();
+  e.stopPropagation();
+
+  if (!hoveredElement) return;
+
+  const target = hoveredElement;
+
+  // Manual erase within an active batch — if the user clicks anywhere inside
+  // a highlighted candidate (including descendants like the inner iframe of
+  // an ad), erase that candidate and stay in review. No findSimilarAds
+  // rescan (we're already reviewing this cluster), no implicit deny. This
+  // is literally what "Erase all N more?" does under the hood, but user-
+  // driven one at a time. removeBatchCandidate self-dismisses the batch
+  // when the count drops to zero.
+  //
+  // We check the click's actual DOM target (e.target) — not the eraser's
+  // bubbled hoveredElement — so a click on a tiny inner ad (which the
+  // auto-bubble may not have promoted to the wrapper, low IoU on padded
+  // candidates) still resolves to its containing candidate via the
+  // ancestor walk.
+  if (batchState) {
+    const entry = findContainingCandidate(e.target) || findContainingCandidate(target);
+    if (entry) {
+      highlightOverlay.style.display = 'none';
+      hoveredElement = null;
+
+      // forceDomain: manual mid-review erases are part of the cluster the
+      // user is reviewing. Treat them with the same domain-wide scope as
+      // the bulk commit so the user doesn't see mixed page/domain scopes
+      // across what's logically one decision.
+      const result = commitErase(entry.el, { shiftKey: e.shiftKey, forceDomain: true });
+      const innerUndo = result.undoEntry.undo;
+      window.AdnotaUndo.push(result.undoEntry);
+
+      window.AdnotaUI.showToast('Element erased', {
+        id: 'adnota-eraser-toast',
+        onUndo: () => innerUndo(),
+      });
+
+      removeBatchCandidate(entry.displayNumber);
+
+      window.AdnotaLog?.event('eraser', 'batch-manual-erase', {
+        displayNumber: entry.displayNumber,
+        remaining: batchState ? batchState.candidates.length : 0,
+      });
+      return; // skip the rest of the click handler (no rescan)
+    }
+  }
+
+  // Implicit deny: any erase click outside the active batch's candidates
+  // signals the user is done with the current cluster. Tear it down before
+  // running the standard erase so the new target's findSimilarAds
+  // (post-settle) can surface a fresh batch on its own merits.
+  if (batchState) denyBatch('second-erase');
+
+  // Hover-state teardown — click-handler concern, not commitErase.
+  highlightOverlay.style.display = 'none';
+  updateHUD(null);
+  hoveredElement = null;
+
+  // Commit the erase: anchor + rule + animation + storage + undo entry.
+  const { undoEntry, id, adSignals } = commitErase(target, { shiftKey: e.shiftKey });
+  // Wrap the seed undo so undoing the trigger click also tears down any
+  // batch UI surfaced from it. The batch was caused by this erase — if the
+  // user reverses that decision, the batch context is stale.
+  const seedUndoOriginal = undoEntry.undo;
+  undoEntry.undo = async () => {
+    if (batchState) denyBatch('seed-undo');
+    await seedUndoOriginal();
+  };
   window.AdnotaUndo.push(undoEntry);
 
   // ── Toast ──
@@ -903,6 +1919,61 @@ document.addEventListener('click', async (e) => {
     id: 'adnota-eraser-toast',
     onUndo: () => undoEntry.undo(),
   });
+
+  // First-time domain-scope tutorial. Only fires on a plain click against a
+  // non-ad target — Shift+Click means the user already knows the keystroke,
+  // and ads are silently auto-promoted to domain scope so the lesson would
+  // be redundant. If a user only ever erases ads, they never see this toast.
+  if (!e.shiftKey && adSignals.length === 0) {
+    const TUTORIAL_KEY = 'adnotaEraserDomainTutorialShown';
+    chrome.storage.local.get(TUTORIAL_KEY).then((data) => {
+      if (data[TUTORIAL_KEY]) return;
+      chrome.storage.local.set({ [TUTORIAL_KEY]: true });
+      window.AdnotaUI?.showToast(
+        'Tip: hold Shift while clicking to erase across the entire domain.',
+        { id: 'adnota-eraser-domain-tutorial', timeout: 7000 }
+      );
+    }).catch(() => { /* context invalidated after extension reload */ });
+  }
+
+  // ─── Post-settle: findSimilarAds → maybe surface batch ────────────────────
+  // Two requestAnimationFrame callbacks intentionally — DO NOT collapse to one.
+  // The dissolve animation collapses the erased element in the same frame as
+  // the click, AND maybeGeneralizeAdSelector's bare-tag widening hides every
+  // cluster sibling synchronously via the rebuilt style tag's !important
+  // display:none. Running findSimilarAds synchronously means the visibility
+  // filter sees transitional state — getBoundingClientRect returns pre-collapse
+  // rects, getComputedStyle hasn't applied the new !important display:none yet.
+  // Empirically: 1 rAF on Reddit reports 7 visible cluster siblings, 2 rAF
+  // correctly reports 0 (the bare-tag widening already hid them).
+  // Two frames is the conservative tradeoff between imperceptible (~32ms)
+  // latency and correctness.
+  if (target && target.tagName) {
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      try {
+        const { candidates, strategies } = findSimilarAds(target);
+        const visible = candidates.filter(isCandidateVisible);
+        window.AdnotaLog?.event('eraser', 'similars-found', {
+          seedId: id,
+          seedTag: target.tagName,
+          seedClasses: target.className || null,
+          totalCount: candidates.length,
+          visibleCount: visible.length,
+          cappedAt: candidates.length === SIMILAR_ADS_CAP ? SIMILAR_ADS_CAP : null,
+          strategies,
+          // First few visible candidates for diagnostic — what did we actually find?
+          sampleSelectors: visible.slice(0, 5).map(c => {
+            try { return window.FuzzyAnchor.generateCSSSelector(c); } catch { return '?'; }
+          }),
+        });
+        if (visible.length > 0 && window.AdnotaState.mode === 'eraser') {
+          enterBatch(visible, target);
+        }
+      } catch (err) {
+        window.AdnotaLog?.event('eraser', 'similars-found-error', { error: String(err) });
+      }
+    }));
+  }
 
 }, true); // Capture phase — intercept before the page's own handlers.
 
