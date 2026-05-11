@@ -639,7 +639,7 @@ function updateHUD(target) {
     eraserHudInfo.innerHTML =
       `<button id="adnota-eraser-batch-prev" data-adnota-ui="1" data-adnota-tooltip="Previous similar (scroll into view)" style="${navBtnStyle}">◀</button>` +
       `<button id="adnota-eraser-batch-next" data-adnota-ui="1" data-adnota-tooltip="Next similar (scroll into view)" style="${navBtnStyle};margin-right:10px">▶</button>` +
-      `<button id="adnota-eraser-batch-commit" data-adnota-ui="1" data-adnota-tooltip="Erase the remaining similar ads" style="${actionChipStyle}"><span style="margin-right:4px">⚠</span>Erase ${n} more?</button>` +
+      `<button id="adnota-eraser-batch-commit" data-adnota-ui="1" data-adnota-tooltip="Erase the remaining similar ads" style="${actionChipStyle}"><span style="margin-right:4px">⚠</span>Erase ${n} similar?</button>` +
       `<div id="adnota-eraser-batch-deny" data-adnota-ui="1" data-adnota-tooltip="Dismiss without erasing" class="adnota-select-delete" style="position:relative;top:0;right:0">✕</div>`;
     // Wire button handlers — innerHTML wipes prior listeners every time, so
     // re-bind on each render.
