@@ -52,6 +52,35 @@
           <label class="sort-label" for="sort-select">Sort</label>
           <select id="sort-select" class="sort-select"></select>
         </div>
+
+        <!-- Kebab menu: home for "less frequent" actions. Single source for
+             re-opening the welcome page and jumping to the marketing site. -->
+        <div class="header-menu-wrap" id="header-menu-wrap">
+          <button id="header-menu-btn" class="header-menu-btn" type="button"
+                  aria-haspopup="menu" aria-expanded="false" aria-label="More">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+              <circle cx="12" cy="5"  r="1.8"/>
+              <circle cx="12" cy="12" r="1.8"/>
+              <circle cx="12" cy="19" r="1.8"/>
+            </svg>
+          </button>
+          <div id="header-menu" class="header-menu" role="menu" hidden>
+            <a class="header-menu-item" role="menuitem" href="welcome.html">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+              </svg>
+              <span>Welcome page</span>
+            </a>
+            <a class="header-menu-item" role="menuitem" href="https://adnota.app/" target="_blank" rel="noopener noreferrer">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
+                <polyline points="15 3 21 3 21 9"/>
+                <line x1="10" y1="14" x2="21" y2="3"/>
+              </svg>
+              <span>Visit adnota.app</span>
+            </a>
+          </div>
+        </div>
       </div>
     </div>
 

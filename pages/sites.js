@@ -1235,6 +1235,39 @@
     setFeedType(chip.dataset.type);
   });
 
+  // ─── Header kebab menu ───────────────────────────────────────────────────
+  // Home for "less frequent" actions: re-open the welcome page, jump to the
+  // marketing site. Same open/close pattern as the bug-report popover below.
+  (() => {
+    const root = document.getElementById('header-menu-wrap');
+    if (!root) return;
+    const btn  = document.getElementById('header-menu-btn');
+    const menu = document.getElementById('header-menu');
+    const setOpen = (open) => {
+      menu.hidden = !open;
+      btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    };
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      setOpen(menu.hidden);
+    });
+    // Clicking an item closes the menu; the link's default navigation/new-tab
+    // behavior still fires because we don't preventDefault.
+    menu.addEventListener('click', (e) => {
+      if (e.target.closest('.header-menu-item')) setOpen(false);
+    });
+    document.addEventListener('click', (e) => {
+      if (menu.hidden) return;
+      if (!root.contains(e.target)) setOpen(false);
+    });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && !menu.hidden) {
+        setOpen(false);
+        btn.focus();
+      }
+    });
+  })();
+
   // ─── Bug-report popover ──────────────────────────────────────────────────
   // Floating button (bottom-right) → small note + clickable mailto link.
   // Pre-release feedback path; opt-in click so the page stays calm at rest.

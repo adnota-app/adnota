@@ -2,6 +2,17 @@
 
 importScripts('lib/log.js');
 
+// ─── First-run welcome ───────────────────────────────────────────────────────
+// Open the welcome tab the first time the extension is installed. Skipped on
+// browser-restart wake-ups and on updates — `reason === 'update'` is reserved
+// for a future changelog page.
+
+chrome.runtime.onInstalled.addListener(({ reason }) => {
+  if (reason === 'install') {
+    chrome.tabs.create({ url: chrome.runtime.getURL('pages/welcome.html') });
+  }
+});
+
 // ─── Badge helpers ────────────────────────────────────────────────────────────
 
 /**
