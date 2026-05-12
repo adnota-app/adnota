@@ -1,0 +1,58 @@
+name: Release
+
+# Triggered by pushing a tag matching v* (e.g. v0.9.0, v1.0.0, v1.0.0-rc.1).
+# Builds the extension zip and publishes a GitHub Release with the zip
+# attached. Tags containing a `-` (semver pre-release) are flagged as
+# pre-releases so they don't replace "Latest" on the repo page.
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write   # required to create the GitHub Release
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Guard against tag/manifest skew — the Chrome Web Store rejects
+      # mismatched versions on upload, so catch it here instead.
+      - name: Verify manifest version matches tag
+        run: |
+          MANIFEST_VERSION=$(node -p "require('./manifest.json').version")
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          TAG_BASE="${TAG_VERSION%%-*}"      # strip -rc.1 / -beta suffix
+          if [ "$MANIFEST_VERSION" != "$TAG_BASE" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME (base: $TAG_BASE) does not match manifest version $MANIFEST_VERSION"
+            exit 1
+          fi
+          echo "Packaging Adnota $TAG_VERSION (manifest $MANIFEST_VERSION)"
+
+      # Explicit include-list so stray dev files (notes.md, TODO, tools/,
+      # screenshots) never end up in a shipped zip — safer than maintaining
+      # an exclude list as the repo grows.
+      - name: Build zip
+        run: |
+          ZIP_NAME="adnota-${GITHUB_REF_NAME}.zip"
+          zip -r "$ZIP_NAME" \
+            manifest.json \
+            background.js \
+            LICENSE \
+            content \
+            icons \
+            lib \
+            pages \
+            popup \
+            -x "*.DS_Store" -x "*/.*"
+          echo "ZIP_NAME=$ZIP_NAME" >> "$GITHUB_ENV"
+          ls -lh "$ZIP_NAME"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ env.ZIP_NAME }}
+          generate_release_notes: true
+          prerelease: ${{ contains(github.ref_name, '-') }}
