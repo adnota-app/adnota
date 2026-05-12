@@ -1,0 +1,548 @@
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+:root {
+  --bg: #f0f0f5;
+  --surface: #ffffff;
+  --surface-2: #f9f9fc;
+  --border: rgba(0, 0, 0, 0.07);
+  --border-strong: rgba(0, 0, 0, 0.11);
+  --text-1: #111827;
+  --text-2: #4b5563;
+  --text-3: #6b7280;
+  --text-4: #9ca3af;
+  --shadow-card: 0 1px 3px rgba(0,0,0,0.07), 0 1px 2px rgba(0,0,0,0.04);
+  --shadow-hover: 0 4px 20px rgba(0,0,0,0.10), 0 2px 6px rgba(0,0,0,0.06);
+  --radius: 14px;
+  --radius-sm: 9px;
+  --radius-xs: 6px;
+  --header-dark:
+    linear-gradient(135deg, rgba(124, 58, 237, 0.20), rgba(147, 51, 234, 0.04)),
+    #0f0f1a;
+}
+
+html {
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+body {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  background: var(--bg);
+  color: var(--text-1);
+  min-height: 100vh;
+  line-height: 1.5;
+}
+
+/* ═══════════════════════════════════════════════
+   HEADER
+═══════════════════════════════════════════════ */
+.header {
+  background: var(--header-dark);
+  border-bottom: 1px solid rgba(124, 58, 237, 0.18);
+  position: relative;
+  overflow: hidden;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.35);
+}
+.header::before {
+  content: '';
+  position: absolute;
+  top: -60px; right: -40px;
+  width: 200px; height: 200px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(124,58,237,0.30) 0%, transparent 70%);
+  pointer-events: none;
+  opacity: 0.6;
+}
+.header::after {
+  content: '';
+  position: absolute;
+  bottom: -30px; left: 60px;
+  width: 140px; height: 140px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(236,72,153,0.10) 0%, transparent 70%);
+  pointer-events: none;
+}
+
+.header-inner {
+  max-width: 800px;
+  margin: 0 auto;
+  padding: 28px;
+  position: relative;
+  z-index: 1;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.brand-monogram {
+  width: 48px; height: 48px;
+  flex-shrink: 0;
+  filter: drop-shadow(0 0 15px rgba(124, 58, 237, 0.45));
+}
+
+.brand-name {
+  font-size: 22px;
+  font-weight: 800;
+  color: #fff;
+  letter-spacing: -0.4px;
+  line-height: 1.1;
+}
+
+.brand-sub {
+  font-size: 13px;
+  color: rgba(255,255,255,0.55);
+  margin-top: 4px;
+  letter-spacing: 0.01em;
+}
+
+/* ═══════════════════════════════════════════════
+   MAIN
+═══════════════════════════════════════════════ */
+.welcome-main {
+  max-width: 800px;
+  margin: 0 auto;
+  padding: 32px 28px 64px;
+  display: flex;
+  flex-direction: column;
+  gap: 36px;
+}
+
+.welcome-lede {
+  font-size: 17px;
+  line-height: 1.55;
+  color: var(--text-2);
+  margin-top: 4px;
+}
+
+.welcome-section {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.welcome-h2 {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-4);
+  margin-bottom: 2px;
+}
+
+.welcome-p {
+  font-size: 15px;
+  line-height: 1.6;
+  color: var(--text-2);
+}
+.welcome-p--muted { color: var(--text-3); font-size: 14px; }
+.welcome-p strong { color: var(--text-1); font-weight: 600; }
+
+.welcome-p kbd {
+  font-family: 'Inter', monospace;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-3);
+  background: #f3f4f6;
+  border: 1px solid #e5e7eb;
+  border-bottom: 2px solid #d1d5db;
+  border-radius: 5px;
+  padding: 2px 6px;
+  letter-spacing: 0.02em;
+}
+
+.welcome-caveats {
+  font-size: 12.5px;
+  color: var(--text-4);
+  line-height: 1.6;
+  border-top: 1px solid var(--border);
+  padding-top: 20px;
+  margin-top: 4px;
+}
+.welcome-caveats a { color: #7c3aed; text-decoration: none; }
+.welcome-caveats a:hover { text-decoration: underline; }
+
+/* ─── Notice (where it works) ─── */
+.notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  background: rgba(124, 58, 237, 0.06);
+  border: 1px solid rgba(124, 58, 237, 0.20);
+  border-radius: var(--radius);
+  padding: 14px 18px;
+  color: var(--text-2);
+  font-size: 14px;
+  line-height: 1.5;
+}
+.notice svg {
+  color: #7c3aed;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+.notice code {
+  font-family: ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  background: rgba(0,0,0,0.05);
+  padding: 1px 5px;
+  border-radius: 4px;
+}
+.notice strong { color: var(--text-1); font-weight: 600; }
+
+/* ═══════════════════════════════════════════════
+   THE DIAGRAM (dock + 4 tool cards + colored connectors)
+═══════════════════════════════════════════════ */
+.diagram {
+  position: relative;
+  width: 720px;
+  max-width: 100%;
+  margin: 8px auto 4px;
+  display: grid;
+  grid-template-columns: 320px 80px 320px;
+  grid-template-rows: 130px 50px 42px 50px 130px;
+  grid-template-areas:
+    "eraser  .     sticky"
+    ".       .     .     "
+    "dock    dock  dock  "
+    ".       .     .     "
+    "draw    .     resizer";
+}
+
+/* Connector SVG sits behind the cards & dock so the colored lines disappear
+   underneath the card edges, giving the visual of lines "plugging into" cards. */
+.diagram-connectors {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 0;
+  overflow: visible;
+}
+.diagram-connectors path {
+  fill: none;
+  stroke-width: 2.25;
+  stroke-linecap: round;
+}
+
+.diagram .tool-card,
+.diagram .diagram-dock {
+  position: relative;
+  z-index: 1;
+}
+
+.diagram-dock {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+/* ─── Tool card (rendered in resting state) ─── */
+.tool-card {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  box-shadow: var(--shadow-card);
+  text-align: left;
+  width: 100%;
+  overflow: hidden;
+}
+
+.tool-accent {
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  width: 3px;
+  background: var(--accent);
+  border-radius: 14px 0 0 14px;
+  opacity: 0.85;
+}
+
+.tool-icon-wrap {
+  width: 40px; height: 40px;
+  border-radius: 10px;
+  background: var(--chip-bg);
+  color: var(--chip-color);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.tool-info { flex: 1; min-width: 0; }
+
+.tool-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-1);
+  line-height: 1.25;
+}
+
+.tool-desc {
+  font-size: 12px;
+  color: var(--text-3);
+  margin-top: 3px;
+  line-height: 1.4;
+}
+
+kbd, kbd.shortcut {
+  font-family: 'Inter', monospace;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-3);
+  background: #f3f4f6;
+  border: 1px solid #e5e7eb;
+  border-bottom: 2px solid #d1d5db;
+  border-radius: 5px;
+  padding: 3px 7px;
+  flex-shrink: 0;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  line-height: 1.5;
+}
+
+/* ─── Dock mock (scoped — does not collide with #adnota-dock) ─── */
+.welcome-dock-mock {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 10px;
+  height: 42px;
+  background: rgba(15, 15, 15, 0.92);
+  color: #e4e4e7;
+  border-radius: 10px;
+  border: 1px solid rgba(124, 58, 237, 0.45);
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.5);
+  white-space: nowrap;
+}
+.welcome-dock-mock .wdm-home { display: inline-flex; align-items: center; flex-shrink: 0; }
+.welcome-dock-mock .wdm-logo {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px; height: 26px;
+  border-radius: 6px;
+  background: linear-gradient(135deg, #7c3aed 0%, #d946ef 100%);
+  color: #fff;
+  font-weight: 800;
+  font-size: 14px;
+  letter-spacing: -0.5px;
+}
+.welcome-dock-mock .wdm-logo--hover {
+  border-radius: 50%;
+  background: rgba(124, 58, 237, 0.28);
+  color: #c084fc;
+}
+.welcome-dock-mock .wdm-tools {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 8px;
+}
+.welcome-dock-mock .wdm-tool {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px; height: 28px;
+  border: 1px solid transparent;
+  border-radius: 50%;
+  background: transparent;
+  padding: 0;
+  cursor: default;
+  flex-shrink: 0;
+}
+.welcome-dock-mock .wdm-tool svg {
+  width: 14px; height: 14px;
+  fill: none;
+  stroke: #94a3b8;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* Linked tools (the four with detail cards) ring with their tool color so
+   the connector's destination is unambiguous. */
+.welcome-dock-mock .wdm-tool--linked[data-accent="eraser"]    { border-color: rgba(239, 68, 68, 0.55);  box-shadow: 0 0 8px rgba(239, 68, 68, 0.25); }
+.welcome-dock-mock .wdm-tool--linked[data-accent="sticky"]    { border-color: rgba(245, 158, 11, 0.55); box-shadow: 0 0 8px rgba(245, 158, 11, 0.25); }
+.welcome-dock-mock .wdm-tool--linked[data-accent="highlight"] { border-color: rgba(124, 58, 237, 0.55); box-shadow: 0 0 8px rgba(124, 58, 237, 0.25); }
+.welcome-dock-mock .wdm-tool--linked[data-accent="resizer"]   { border-color: rgba(59, 130, 246, 0.55); box-shadow: 0 0 8px rgba(59, 130, 246, 0.25); }
+
+.welcome-dock-mock .wdm-tool[data-accent="eraser"]    svg { stroke: #ef4444; }
+.welcome-dock-mock .wdm-tool[data-accent="sticky"]    svg { stroke: #f59e0b; }
+.welcome-dock-mock .wdm-tool[data-accent="highlight"] svg { stroke: #c084fc; }
+.welcome-dock-mock .wdm-tool[data-accent="resizer"]   svg { stroke: #3b82f6; }
+
+/* ═══════════════════════════════════════════════
+   CALLOUTS
+═══════════════════════════════════════════════ */
+.callout {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 18px 20px;
+  box-shadow: var(--shadow-card);
+}
+
+.callout--privacy {
+  background:
+    linear-gradient(135deg, rgba(124, 58, 237, 0.05), rgba(124, 58, 237, 0.01)),
+    var(--surface);
+  border-color: rgba(124, 58, 237, 0.20);
+}
+
+.shortcut-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.shortcut-list li {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.shortcut-list span {
+  color: var(--text-2);
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.bullets {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.bullets li {
+  position: relative;
+  padding-left: 20px;
+  color: var(--text-2);
+  font-size: 14px;
+  line-height: 1.5;
+}
+.bullets li::before {
+  content: '';
+  position: absolute;
+  left: 4px;
+  top: 9px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #7c3aed;
+}
+.bullets code {
+  font-family: ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  background: rgba(0,0,0,0.05);
+  padding: 1px 5px;
+  border-radius: 4px;
+}
+
+.welcome-soon { color: var(--text-4); font-size: 13px; }
+
+/* ═══════════════════════════════════════════════
+   PIN SECTION
+═══════════════════════════════════════════════ */
+.pin-card {
+  display: flex;
+  gap: 24px;
+  align-items: center;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 20px 22px;
+  box-shadow: var(--shadow-card);
+}
+.pin-mock {
+  width: 240px;
+  height: 168px;
+  flex-shrink: 0;
+  border-radius: var(--radius-sm);
+  background: rgba(15, 15, 26, 0.04);
+}
+.pin-steps {
+  list-style: decimal;
+  padding-left: 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  color: var(--text-2);
+  font-size: 14.5px;
+  line-height: 1.5;
+}
+.pin-steps strong { color: var(--text-1); font-weight: 600; }
+
+/* ═══════════════════════════════════════════════
+   CTAs
+═══════════════════════════════════════════════ */
+.cta-row {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  align-items: flex-start;
+}
+
+.btn-primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  padding: 11px 18px;
+  border-radius: 10px;
+  cursor: pointer;
+  text-decoration: none;
+  border: 1px solid transparent;
+  background: #7c3aed;
+  color: #fff;
+  transition: background 0.15s, transform 0.12s, box-shadow 0.15s;
+}
+.btn-primary:hover {
+  background: #6d28d9;
+  box-shadow: 0 4px 14px rgba(124,58,237,0.38);
+  transform: translateY(-1px);
+}
+
+/* ═══════════════════════════════════════════════
+   RESPONSIVE: stack the diagram below 800px viewport.
+   Above: 720px-wide grid with positioned cards + connectors.
+   Below: single-column flow, dock on top, cards stacked, no connectors.
+═══════════════════════════════════════════════ */
+@media (max-width: 800px) {
+  .diagram {
+    width: 100%;
+    grid-template-columns: 1fr;
+    grid-template-rows: auto;
+    grid-template-areas:
+      "dock"
+      "eraser"
+      "sticky"
+      "draw"
+      "resizer";
+    gap: 12px;
+  }
+  .diagram-connectors { display: none; }
+  .diagram-dock { padding: 8px 0; }
+  .pin-card { flex-direction: column; align-items: stretch; }
+  .pin-mock { width: 100%; max-width: 280px; align-self: center; }
+}
+
+@media (max-width: 640px) {
+  .header-inner { padding: 20px; }
+  .welcome-main { padding: 24px 20px 48px; gap: 28px; }
+  .welcome-lede { font-size: 15.5px; }
+  .brand-monogram { width: 40px; height: 40px; }
+  .brand-name { font-size: 19px; }
+  .notice { font-size: 13px; padding: 12px 14px; }
+}
