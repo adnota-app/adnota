@@ -251,6 +251,7 @@ let selectionActionChip = null;
 let selectionInfiniteChip = null;
 let selectionParentChip = null;
 let selectionClipChip = null;
+let selectionLiftChip = null;
 let selectionTextSizeDownChip = null;
 let selectionTextSizeUpChip = null;
 let selectionRecolorBgChip = null;
@@ -261,6 +262,16 @@ let selectionChipCluster = null;
 // latched after pointerup so the chip's click handler can fire post-release.
 // Cleared on selection change, mode exit, and at the top of each new startDrag.
 let currentClipMatch = null;
+
+// Position-drag occlusion match (higher-z neighbor that overlaps the dragged
+// rect). Lifecycle mirrors currentClipMatch: set by position-drag onMove,
+// latched on successful drop so the "Bring to front" chip's click handler can
+// fire post-release, cleared on selection change / mode exit / tiny-drag cancel.
+let currentLiftMatch = null;
+// Last rect we ran findOcclusion against, used as a motion gate inside the
+// position-drag rAF so we skip the elementsFromPoint sweep on frames where the
+// rect barely moved.
+let lastOcclusionCheckRect = null;
 
 // ─── Drag state ──────────────────────────────────────────────────────────────
 let dragAxis = null;       // 'x' | 'x-left' | 'y' | 'y-top' | 'xy'
@@ -780,6 +791,22 @@ function selectElement(el) {
     // 'size-cap' is warn-only in v2 — no click action.
   });
 
+  // Lift chip — surfaces during position drag when an overlapping non-Adnota
+  // neighbor has a higher z-index than the dragged element. Latches after drop
+  // so the click can fire post-release (same dance as the clip chip). Click
+  // re-detects against fresh state (latched currentLiftMatch is only good for
+  // "should chip exist") and commits a kind:'z-lift' rule above the occluder.
+  selectionLiftChip = document.createElement('div');
+  selectionLiftChip.className = 'adnota-resizer-action-chip adnota-resizer-lift-chip';
+  selectionLiftChip.setAttribute('data-adnota-ui', '1');
+  selectionLiftChip.style.display = 'none';
+  selectionLiftChip.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!selectedEl) return;
+    performLift(selectedEl);
+  });
+
   // Text-size chips: Aa−/Aa+ scale the element + common text-bearing
   // descendants via the kind:'text-size' rule. See the text-size helpers
   // section for the cascade rationale (headings/code/forms preserved).
@@ -867,6 +894,7 @@ function selectElement(el) {
   selectionChipCluster.appendChild(selectionRecolorBgChip);
   selectionChipCluster.appendChild(selectionRecolorTextChip);
   selectionChipCluster.appendChild(selectionClipChip);
+  selectionChipCluster.appendChild(selectionLiftChip);
   selectionChipCluster.appendChild(selectionDimBadge);
   selectionBox.appendChild(selectionChipCluster);
 
@@ -1071,11 +1099,14 @@ function deselectElement() {
   selectionInfiniteChip = null;
   selectionParentChip = null;
   selectionClipChip = null;
+  selectionLiftChip = null;
   selectionTextSizeDownChip = null;
   selectionTextSizeUpChip = null;
   selectionRecolorBgChip = null;
   selectionRecolorTextChip = null;
   currentClipMatch = null;
+  currentLiftMatch = null;
+  lastOcclusionCheckRect = null;
   if (hadSelection && window.AdnotaState.mode === 'resizer') updateHUD();
   updateReflowButtonStates();
 }
@@ -1924,6 +1955,195 @@ function applyClipChipState(match) {
 }
 
 
+// ─── Lift-chip state helpers (Bring to front) ────────────────────────────────
+// Surfaces during a position drag when an overlapping non-Adnota neighbor has
+// a higher effective z-index than the dragged element. Scope is intentionally
+// "elements we're touching" — sampling at the dragged rect's corners + center,
+// gated by an area-overlap threshold so corner tooltips and focus rings don't
+// trip the chip. Stacking-context boundaries can still foreclose the lift; we
+// handle that empirically in performLift (re-check after commit, roll back if
+// the occluder is still on top).
+
+// Cap on candidates inspected per check. Deep portal stacks (Slack, Discord)
+// can return many hits per point; cap keeps the loop bounded.
+const OCCLUSION_MAX_SURVIVORS = 16;
+// Minimum fraction of the dragged rect's area that must be covered by a
+// candidate occluder for it to qualify (vs. a tiny badge or focus ring
+// nicking the corner of the rect).
+const OCCLUSION_MIN_AREA_FRAC = 0.15;
+// Z-index cap. Some sites ship cookie banners at 2147483647 (max int);
+// max + 1 would overflow / lose meaning. If we're already lifting near this
+// ceiling, the element is effectively on the top layer — surface a distinct
+// message instead of an invented bigger number.
+const Z_LIFT_CEILING = 9999;
+
+function _zIndexAsInt(el) {
+  const z = getComputedStyle(el).zIndex;
+  if (z === 'auto' || z === '') return 0;
+  const n = parseInt(z, 10);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function findOcclusion(el) {
+  if (!el) return null;
+  const rect = el.getBoundingClientRect();
+  const rectArea = Math.max(0, rect.width) * Math.max(0, rect.height);
+  if (rectArea <= 0) return null;
+
+  // 9 sample points: 4 corners (inset 1px), 4 edge midpoints, center.
+  // Corner-only sampling falls apart on rounded elements — a card with
+  // border-radius:16px has corner pixels inside the bounding rect but
+  // OUTSIDE the painted area, so elementsFromPoint at those points doesn't
+  // return the card. Edge midpoints and center are safely inside the
+  // painted area for any border-radius up to ~half the smaller dimension.
+  const cx = (rect.left + rect.right) / 2;
+  const cy = (rect.top + rect.bottom) / 2;
+  const points = [
+    [rect.left + 1,  rect.top + 1],
+    [rect.right - 1, rect.top + 1],
+    [rect.left + 1,  rect.bottom - 1],
+    [rect.right - 1, rect.bottom - 1],
+    [cx,             rect.top + 1],
+    [cx,             rect.bottom - 1],
+    [rect.left + 1,  cy],
+    [rect.right - 1, cy],
+    [cx,             cy],
+  ];
+
+  const seen = new Set();
+  let best = null;
+  let bestZ = -Infinity;
+
+  // Occlusion = "painted in front of el," which is exactly what
+  // elementsFromPoint encodes: hits[0] is topmost, el sits somewhere in the
+  // middle, anything BEFORE el's index is rendered above it at that point.
+  // Comparing z-index alone misses the common case where a same-z (auto)
+  // sibling paints over us via DOM order (later siblings stack on top), so
+  // we use array-index order as the truth and only consult z-index to pick
+  // the lift target. Area threshold weeds out tiny corner-clipping noise.
+  for (const [x, y] of points) {
+    if (x < 0 || y < 0 || x > window.innerWidth || y > window.innerHeight) continue;
+    const hits = document.elementsFromPoint(x, y);
+    const ourIdx = hits.indexOf(el);
+    // If el isn't at this point (rounded-corner cutout, transformed beyond
+    // bounds, etc.), the sample is unreliable — skip it. We still have 8
+    // other points covering the rest of the rect.
+    if (ourIdx < 0) continue;
+    for (let i = 0; i < ourIdx; i++) {
+      const hit = hits[i];
+      if (seen.size >= OCCLUSION_MAX_SURVIVORS) break;
+      if (!hit || hit === el) continue;
+      if (el.contains(hit) || hit.contains(el)) continue;
+      if (window.AdnotaUI?.isAdnotaElement(hit)) continue;
+      if (seen.has(hit)) continue;
+      seen.add(hit);
+
+      const hRect = hit.getBoundingClientRect();
+      const iw = Math.max(0, Math.min(hRect.right, rect.right) - Math.max(hRect.left, rect.left));
+      const ih = Math.max(0, Math.min(hRect.bottom, rect.bottom) - Math.max(hRect.top, rect.top));
+      const inter = iw * ih;
+      if (inter / rectArea < OCCLUSION_MIN_AREA_FRAC) continue;
+
+      const hitZ = _zIndexAsInt(hit);
+      if (hitZ > bestZ) { best = hit; bestZ = hitZ; }
+    }
+    if (seen.size >= OCCLUSION_MAX_SURVIVORS) break;
+  }
+
+  return best ? { maxZ: bestZ, top: best } : null;
+}
+
+function liftChipChanged(a, b) {
+  if (a === b) return false;            // both null
+  if (!a || !b) return true;            // one null, one set
+  return a.top !== b.top;               // chip text doesn't depend on maxZ
+}
+
+function applyLiftChipState(match) {
+  if (!selectionLiftChip) return;
+  if (!match) {
+    selectionLiftChip.style.display = 'none';
+    return;
+  }
+  selectionLiftChip.textContent = 'Bring to front';
+  selectionLiftChip.setAttribute(
+    'data-adnota-tooltip',
+    `Move above the overlapping ${match.top.tagName.toLowerCase()}`,
+  );
+  selectionLiftChip.style.display = '';
+}
+
+// Lift-chip click handler. The latched currentLiftMatch is only good for
+// "should the chip exist" — by click time the page may have reflowed,
+// scrolled, or mutated, so re-detect against fresh state before committing.
+//
+// Stacking-context boundaries can foreclose a z-index lift: if the dragged
+// element's parent has a stacking context below the occluder's ancestor
+// context, bumping our z-index does nothing. We don't try to reason about
+// that statically; commit, re-check, roll back + toast on failure. The
+// empirical check is the source of truth.
+async function performLift(el) {
+  if (!el) return;
+
+  const fresh = findOcclusion(el);
+  if (!fresh) {
+    // Page moved out from under us between latch and click. Quietly hide
+    // the chip — no toast (visible state didn't change, no user surprise).
+    applyLiftChipState(null);
+    currentLiftMatch = null;
+    return;
+  }
+
+  if (fresh.maxZ >= Z_LIFT_CEILING) {
+    // Sites that ship banners at max-int (2147483647) leave nowhere to go.
+    // Distinct message from the stacking-context failure so the user knows
+    // it's a ceiling, not a stacking-context defeat.
+    window.AdnotaUI?.showToast(
+      'This element is already on the page’s top layer',
+      { timeout: 4000 }
+    );
+    return;
+  }
+
+  // Target needs to be (a) above the highest in-front occluder, AND (b) at
+  // least 1 — z-index:0 still paints by DOM order against z:auto siblings,
+  // so jumping to 1 is the floor that converts us into a positioned-with-
+  // z-index element. Without this floor, lifting a z:auto card over a z:auto
+  // mock that comes later in DOM order would compute target=1 already, but
+  // a negative-z occluder (rare) would compute a non-positive target.
+  const targetZ = Math.max(fresh.maxZ + 1, 1);
+
+  // Defensive: position-drag commit already wrote position: relative|absolute|
+  // fixed before this click became reachable, so computed position shouldn't
+  // be 'static' here. Guard regardless — z-index does nothing on static
+  // elements, and the cost of an extra `position: relative` line is nil.
+  const needsPosition = getComputedStyle(el).position === 'static';
+  const cssText = needsPosition
+    ? `position: relative !important; z-index: ${targetZ} !important`
+    : `z-index: ${targetZ} !important`;
+  await commitResizeRule(el, cssText, 'z-lift');
+
+  // Empirical re-check after the rebuilt style tag has rendered.
+  requestAnimationFrame(() => {
+    const recheck = findOcclusion(el);
+    if (recheck && recheck.maxZ >= targetZ) {
+      // Stacking-context blocked the lift. Surgically remove just our
+      // z-lift rule and tell the user.
+      removeResizeRule(el, 'z-lift');
+      window.AdnotaUI?.showToast(
+        `Couldn’t bring above ${recheck.top.tagName.toLowerCase()}`,
+        { timeout: 4000 }
+      );
+    } else {
+      // Success — the visible result is the feedback (element pops to
+      // front). Hide chip and clear state; no success toast.
+      applyLiftChipState(null);
+      currentLiftMatch = null;
+    }
+  });
+}
+
+
 // ─── Position (body-drag to reposition) ─────────────────────────────────────
 // Drag the body of a selected element to reposition it via injected CSS
 // `top/left`. Drag a handle = resize (below). The two are mutually exclusive
@@ -2068,6 +2288,13 @@ function startPositionDrag(e) {
     applyClipChipState(null);
     currentClipMatch = null;
   }
+  // Same for any latched lift-chip from a prior position drag — fresh drag
+  // re-detects from scratch (driven by movement, not selection).
+  if (currentLiftMatch) {
+    applyLiftChipState(null);
+    currentLiftMatch = null;
+  }
+  lastOcclusionCheckRect = null;
 
   // Snapshot inline state with priority. After the first commit, a persisted
   // `<style>` rule exists for this selector with top/left/position/right/
@@ -2221,6 +2448,22 @@ function startPositionDrag(e) {
       if (selectionChipCluster) {
         selectionChipCluster.style.top = `${chipClusterTopOffset(rect)}px`;
       }
+
+      // Lift-chip occlusion check, motion-gated. Skipping the elementsFromPoint
+      // sweep on frames where the rect barely moved keeps the drag cheap on
+      // heavy pages without time-based throttling (which would add visible chip
+      // latency at the start of a drag burst).
+      const movedFar = !lastOcclusionCheckRect ||
+        Math.abs(rect.left - lastOcclusionCheckRect.left) > 5 ||
+        Math.abs(rect.top  - lastOcclusionCheckRect.top)  > 5;
+      if (movedFar) {
+        lastOcclusionCheckRect = { left: rect.left, top: rect.top };
+        const match = findOcclusion(selectedEl);
+        if (liftChipChanged(match, currentLiftMatch)) {
+          applyLiftChipState(match);
+          currentLiftMatch = match;
+        }
+      }
     });
   }
 
@@ -2235,6 +2478,14 @@ function startPositionDrag(e) {
     if (Math.abs(dx) < 3 && Math.abs(dy) < 3) {
       restoreInlineSnapshot();
       dragAxis = null;
+      // Tiny-drag cancel — also drop any lift chip that surfaced mid-drag.
+      // Position didn't actually change, so don't leave the "Bring to front"
+      // affordance dangling.
+      if (currentLiftMatch) {
+        applyLiftChipState(null);
+        currentLiftMatch = null;
+      }
+      lastOcclusionCheckRect = null;
       return;
     }
 
@@ -2252,6 +2503,13 @@ function startPositionDrag(e) {
 
     dragAxis = null;
     refreshHandles();   // full refresh on release: chip/HUD/reflow re-sync
+
+    // currentLiftMatch intentionally NOT cleared here — if it's truthy on the
+    // final frame, the "Bring to front" chip stays latched (visible) so its
+    // click handler can fire post-release. Cleared by selection change, mode
+    // exit, the next position drag, or performLift's success/failure path.
+    // Same dance as currentClipMatch in the resize-drag onUp.
+    lastOcclusionCheckRect = null;
   }
 
   document.addEventListener('mousemove', onMove);
@@ -2709,6 +2967,12 @@ function startDrag(e, axis) {
 // the storage row so the chip handler can find a specific entry to remove
 // (the unstick entry vs a coexisting width/height entry on the same selector).
 //
+// Known kinds: 'position', 'unstick', 'finite-scroll', 'text-size', 'recolor-bg',
+// 'recolor-text', 'reflow:swap-panels', 'reflow:toggle-stack', 'reflow:order-end',
+// 'reflow:dom-reorder', 'z-lift' (Bring-to-front lift on overlapping higher-z
+// neighbors). All kind-bearing commits coexist on the same selector with
+// orthogonal cssText; same-kind replays dedup via the loop below.
+//
 // Resizes default to domain-wide (`path: '*'`). Unlike the eraser — where
 // domain-wide is an explicit user override (Shift+Click) or silent ad-scope
 // promotion — resize targets are almost always structural containers (nav,
@@ -2873,8 +3137,56 @@ async function commitResizeRule(el, cssText, kind) {
     },
   };
   window.AdnotaUndo.push(undoEntry);
+  // Stash a back-pointer from the live rule to its undo entry so callers like
+  // performLift's failure path can rescind specifically THIS commit's undo
+  // instead of popping AdnotaUndo's top (fragile if another commit raced in).
+  const liveRule = window.AdnotaResizeRules.get(id);
+  if (liveRule) liveRule._undoEntry = undoEntry;
   updateReflowButtonStates();
   return id;
+}
+
+// ─── Surgical rule removal (for empirical-fail rollbacks) ────────────────────
+// Mirrors the rule-removal half of commitResizeRule's undo closure but takes a
+// specific (element, kind) pair instead of popping the global undo stack. Used
+// by the lift-chip empirical re-check: if the z-index commit didn't actually
+// uncross a stacking context, we want to remove just OUR rule and leave the
+// rest of the undo history untouched. Same-kind dedup guarantees at most one
+// rule matches.
+async function removeResizeRule(el, kind) {
+  if (!el || !kind) return;
+  const selector = generateCSSSelector(el);
+  let removedId = null;
+  let undoEntry = null;
+  for (const [id, rule] of window.AdnotaResizeRules) {
+    if (rule.selector === selector && rule.kind === kind) {
+      removedId = id;
+      undoEntry = rule._undoEntry || null;
+      window.AdnotaResizeRules.delete(id);
+      break;
+    }
+  }
+  if (!removedId) return;
+  rebuildResizeStyleTag();
+
+  // Force reflow so the dropped rule's effects unwind immediately.
+  if (el.isConnected) void el.offsetHeight;
+
+  if (window.AdnotaStorage) {
+    const domain = location.hostname;
+    const data = await chrome.storage.local.get(domain);
+    if (data[domain]) {
+      data[domain].items = (data[domain].items || []).filter(i => i._id !== removedId);
+      await chrome.storage.local.set({ [domain]: data[domain] });
+    }
+  }
+  if (undoEntry) window.AdnotaUndo.remove(undoEntry);
+
+  window.AdnotaLog?.event('resizer', `${kind}-rollback`, {
+    id: removedId, sel: selector, el: window.AdnotaLog?.el?.(el),
+  });
+  refreshHandles();
+  updateReflowButtonStates();
 }
 
 // Drag-resize commit: thin wrapper over commitResizeRule with no `kind`.
