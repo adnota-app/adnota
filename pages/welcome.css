@@ -568,7 +568,7 @@ kbd, kbd.shortcut {
   color: #fff;
   font-size: 10px;
   font-weight: 700;
-  vertical-align: -2px;
+  vertical-align: 1px;
   margin: 0 2px;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.18);
   line-height: 1;
