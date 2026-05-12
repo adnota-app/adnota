@@ -1,7 +1,8 @@
 // popup/popup.js
 
 document.addEventListener('DOMContentLoaded', async () => {
-  const btnClear      = document.getElementById('btn-clear');
+  const btnClearPage  = document.getElementById('btn-clear-page');
+  const btnClearSite  = document.getElementById('btn-clear-site');
   const btnVisibility = document.getElementById('btn-visibility');
   const btnMySites    = document.getElementById('btn-my-sites');
   const brand         = document.querySelector('.brand');
@@ -265,24 +266,43 @@ document.addEventListener('DOMContentLoaded', async () => {
       });
     });
 
-    // ── Clear ALL page edits ──────────────────────────────────────────────
-    btnClear.addEventListener('click', async () => {
-      const total = erasures + notes + highlights + strokes + resizes;
-      if (total === 0) return;
+    // ── Footer clear buttons (strict scope, contextual) ───────────────────
+    // Strict counts: page-scoped vs domain-wide. The stat-cards above still
+    // collapse both into a "what applies here" union (legacy behavior, callers
+    // outside the popup depend on it). The footer buttons opt into strict
+    // scope so a click on "Clear Page Edits" doesn't silently nuke a user's
+    // domain-wide resize rules.
+    let pageStrict = 0, siteStrict = 0;
+    for (const item of allItems) {
+      if (item.path === '*') siteStrict++;
+      else if (item.path === path) pageStrict++;
+    }
 
-      const noun = window.AdnotaUI.pluralize(total, 'edit', 'edits');
-      const ok = await window.AdnotaUI.confirmDialog({
-        message: `Delete ${total} ${noun} from this page?`,
-        subtext: '',
+    function setupClearButton(btn, count, scope, scopeLabel) {
+      if (count === 0) { btn.hidden = true; return; }
+      btn.hidden = false;
+      // Button label always plural — count in parens disambiguates and a fixed
+      // footer reads cleaner without word-length jitter on each render. The
+      // confirm dialog stays grammatically pluralized since it's prose.
+      btn.querySelector('.btn-label').textContent = `Clear ${scopeLabel} Edits (${count})`;
+      btn.addEventListener('click', async () => {
+        const noun = window.AdnotaUI.pluralize(count, 'edit', 'edits');
+        const ok = await window.AdnotaUI.confirmDialog({
+          message: `Delete ${count} ${noun} from ${scope === 'site' ? 'this site' : 'this page'}?`,
+          subtext: '',
+        });
+        if (!ok) return;
+        sendSoftDelete({
+          singular: 'edit',
+          plural: 'edits',
+          actionTypes: ['ERASE', 'NOTE', 'HIGHLIGHT', 'MARKER', 'RESIZE'],
+          skipConfirm: true,
+          scope,
+        });
       });
-      if (!ok) return;
+    }
 
-      sendSoftDelete({
-        singular: 'edit',
-        plural: 'edits',
-        actionTypes: ['ERASE', 'NOTE', 'HIGHLIGHT', 'MARKER', 'RESIZE'],
-        skipConfirm: true,
-      });
-    });
+    setupClearButton(btnClearPage, pageStrict, 'page', 'Page');
+    setupClearButton(btnClearSite, siteStrict, 'site', 'Site-Wide');
   });
 });

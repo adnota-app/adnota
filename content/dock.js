@@ -128,7 +128,7 @@
   const dismissBtn = document.createElement('div');
   dismissBtn.className = 'adnota-select-delete adnota-dock-dismiss';
   dismissBtn.textContent = '✕';
-  dismissBtn.setAttribute('data-adnota-tooltip', 'Hide on this site (Alt+A restores)');
+  dismissBtn.setAttribute('data-adnota-tooltip', 'Hide on this site until restored (Alt+A)');
   dock.appendChild(dismissBtn);
 
   // Page-edit count badge — small notification pill anchored to the OUTER
@@ -366,7 +366,7 @@
       if (data[TUTORIAL_KEY]) return;
       await chrome.storage.local.set({ [TUTORIAL_KEY]: true });
       window.AdnotaUI?.showToast(
-        `Adnota hidden on ${location.hostname}. It'll stay hidden here until you bring it back with Alt+A or the extension icon.`,
+        `Adnota hidden on ${location.hostname}. Open the popup or press Alt+A to bring it back.`,
         { id: 'adnota-dock-dismiss-tutorial', timeout: 7000 }
       );
     } catch (_) { /* context invalidated after extension reload */ }

@@ -10,16 +10,26 @@ importScripts('lib/log.js');
  */
 async function updateBadgeForTab(tabId, url) {
   try {
-    const hostname = new URL(url).hostname;
+    const parsed = new URL(url);
+    const hostname = parsed.hostname;
+    const pathname = parsed.pathname;
 
     if (!hostname) {
       await chrome.action.setBadgeText({ text: '', tabId });
+      await chrome.action.setTitle({ title: 'Adnota', tabId });
       return;
     }
 
     const data = await chrome.storage.local.get(hostname);
     const items = data[hostname]?.items || [];
     const count = items.length;
+
+    let pageCount = 0;
+    let siteCount = 0;
+    for (const item of items) {
+      if (item.path === '*') siteCount++;
+      else if (item.path === pathname) pageCount++;
+    }
 
     if (count > 0) {
       const label = count > 99 ? '99+' : String(count);
@@ -30,10 +40,26 @@ async function updateBadgeForTab(tabId, url) {
     } else {
       await chrome.action.setBadgeText({ text: '', tabId });
     }
+
+    await chrome.action.setTitle({ title: buildTooltip(count, pageCount, siteCount), tabId });
   } catch {
     // chrome://, about:blank, file://, and other restricted URLs — clear silently.
     try { await chrome.action.setBadgeText({ text: '', tabId }); } catch { }
+    try { await chrome.action.setTitle({ title: 'Adnota', tabId }); } catch { }
   }
+}
+
+function buildTooltip(total, pageCount, siteCount) {
+  if (total === 0) return 'Adnota';
+  const plural = (n) => (n === 1 ? '' : 's');
+  const parts = [];
+  if (pageCount > 0) parts.push(`${pageCount} page edit${plural(pageCount)}`);
+  if (siteCount > 0) parts.push(`${siteCount} site-wide edit${plural(siteCount)}`);
+  // Items scoped to other paths on the same host fall outside both buckets;
+  // surface them so the tooltip total reconciles with the badge count.
+  const otherCount = total - pageCount - siteCount;
+  if (otherCount > 0) parts.push(`${otherCount} edit${plural(otherCount)} elsewhere on this site`);
+  return parts.length ? `Adnota — ${parts.join(' · ')}` : 'Adnota';
 }
 
 // ─── Triggers ─────────────────────────────────────────────────────────────────
