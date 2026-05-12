@@ -20,12 +20,20 @@
         <div class="brand-sub">Make Any Webpage Yours</div>
       </div>
     </div>
-    <button id="btn-visibility" class="icon-btn" title="Show / hide all annotations (Alt+S)">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
-        <circle cx="12" cy="12" r="3"/>
-      </svg>
-    </button>
+    <div class="header-actions">
+      <button id="btn-my-sites" class="icon-btn" title="My edited sites">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+          <polyline points="9 22 9 12 15 12 15 22"/>
+        </svg>
+      </button>
+      <button id="btn-visibility" class="icon-btn" title="Show / hide all annotations (Alt+S)">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+          <circle cx="12" cy="12" r="3"/>
+        </svg>
+      </button>
+    </div>
   </header>
 
   <!-- ─── Body ─── -->
@@ -175,19 +183,19 @@
 
   <!-- ─── Footer ─── -->
   <footer class="footer">
-    <button id="btn-my-sites" class="sites-btn">
-      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
-        <polyline points="9 22 9 12 15 12 15 22"/>
-      </svg>
-      My Edited Sites
-    </button>
-    <button id="btn-clear" class="danger-btn">
+    <button id="btn-clear-page" class="danger-btn" hidden>
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
         <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
         <path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/>
       </svg>
-      Clear All Page Edits
+      <span class="btn-label">Clear Page Edits</span>
+    </button>
+    <button id="btn-clear-site" class="danger-btn" hidden>
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+        <path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/>
+      </svg>
+      <span class="btn-label">Clear Site-Wide Edits</span>
     </button>
     <p class="bug-link">
       Spot a bug? Email <a id="bug-link" href="mailto:support@adnota.app?subject=Adnota%20bug">support</a>

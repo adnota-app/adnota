@@ -89,6 +89,13 @@ body {
   margin-top: 2px;
 }
 
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
 .icon-btn {
   background: rgba(255, 255, 255, 0.08);
   border: 1px solid rgba(255, 255, 255, 0.12);
@@ -434,39 +441,18 @@ kbd.shortcut {
 
 /* ─── Footer ─── */
 .footer {
-  padding: 10px 14px 8px;
-  border-top: 1px solid rgba(0, 0, 0, 0.06);
+  padding: 4px 14px 8px;
   display: flex;
   flex-direction: column;
   gap: 6px;
 }
 
-.sites-btn {
-  width: 100%;
-  background: transparent;
-  border: 1px solid rgba(124, 58, 237, 0.25);
-  border-radius: var(--radius-sm);
-  color: #7c3aed;
-  font-size: 12px;
-  font-weight: 500;
-  font-family: 'Inter', sans-serif;
-  cursor: pointer;
-  padding: 9px 14px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  transition: all 0.15s ease;
-  letter-spacing: 0.01em;
-}
-
-.sites-btn:hover {
-  background: rgba(124, 58, 237, 0.06);
-  border-color: rgba(124, 58, 237, 0.4);
-}
-
-.sites-btn:active {
-  background: rgba(124, 58, 237, 0.10);
+/* Divider + roomier top padding only when at least one clear button is
+   visible; otherwise the footer is just the bug-link and shouldn't read as
+   its own section. */
+.footer:has(.danger-btn:not([hidden])) {
+  padding-top: 10px;
+  border-top: 1px solid rgba(0, 0, 0, 0.06);
 }
 
 .danger-btn {
@@ -487,6 +473,8 @@ kbd.shortcut {
   transition: all 0.15s ease;
   letter-spacing: 0.01em;
 }
+
+.danger-btn[hidden] { display: none; }
 
 /* Tiny muted footnote — prose stays plain text, only `support` is the click
    target. No underline at rest; hover reveals it so the affordance shows up
