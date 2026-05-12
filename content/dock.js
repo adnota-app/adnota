@@ -128,7 +128,7 @@
   const dismissBtn = document.createElement('div');
   dismissBtn.className = 'adnota-select-delete adnota-dock-dismiss';
   dismissBtn.textContent = '✕';
-  dismissBtn.setAttribute('data-adnota-tooltip', 'Hide on this site (Alt+A restores)');
+  dismissBtn.setAttribute('data-adnota-tooltip', 'Hide on this site until restored (Alt+A)');
   dock.appendChild(dismissBtn);
 
   // Page-edit count badge — small notification pill anchored to the OUTER
