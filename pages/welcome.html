@@ -53,26 +53,24 @@
 
       <div class="diagram" aria-hidden="true">
 
-        <!-- Connectors emerge from inside the illustration's expanded dock.
-             Drawn above the dark backdrop (so the colored lines exit the dock
-             cleanly) but below the cards (so each connector tail tucks under
-             its card edge). Viewbox matches the grid total (720 × 470).
-             Tool centers in the expanded dock:
-               eraser 365, sticky 397, draw 429, resizer 461
-             Dock vertical center y=224 (top y=210, bottom y=238). -->
-        <svg class="diagram-connectors" viewBox="0 0 720 470" preserveAspectRatio="none">
-          <!-- Eraser: tool top (365,210) → eraser card bottom anchor (300,130) -->
-          <path d="M365 210 C 365 180, 330 150, 300 130" stroke="#ef4444"/>
-          <circle cx="300" cy="130" r="3.5" fill="#ef4444"/>
-          <!-- Sticky: tool top (397,210) → sticky card bottom anchor (420,130) -->
-          <path d="M397 210 C 400 180, 415 150, 420 130" stroke="#f59e0b"/>
-          <circle cx="420" cy="130" r="3.5" fill="#f59e0b"/>
-          <!-- Draw: tool bottom (429,238) → draw card top anchor (300,340) -->
-          <path d="M429 238 C 425 275, 345 320, 300 340" stroke="#7c3aed"/>
-          <circle cx="300" cy="340" r="3.5" fill="#7c3aed"/>
-          <!-- Resizer: tool bottom (461,238) → resizer card top anchor (420,340) -->
-          <path d="M461 238 C 458 280, 425 320, 420 340" stroke="#3b82f6"/>
-          <circle cx="420" cy="340" r="3.5" fill="#3b82f6"/>
+        <!-- Connectors emerge from the linked tool buttons inside the expanded
+             dock and trace orthogonal step paths to each card's facing edge.
+             Viewbox matches grid total (720 × 390). Coordinates:
+               row 1 cards bottom: y=90       (cards align to row bottom)
+               gap 1 mid:          y=110
+               row 3 dock tools:   y=170-198  (vertical center y=184)
+               gap 2 mid:          y=280
+               row 5 cards top:    y=300      (cards align to row top)
+             Tool x-centers: eraser 365, sticky 397, draw 429, resizer 461. -->
+        <svg class="diagram-connectors" viewBox="0 0 720 390" preserveAspectRatio="none">
+          <!-- Eraser: up, left, up -->
+          <polyline points="365,170 365,110 300,110 300,90" stroke="#ef4444"/>
+          <!-- Sticky: up, right, up -->
+          <polyline points="397,170 397,110 420,110 420,90" stroke="#f59e0b"/>
+          <!-- Draw: down, left, down -->
+          <polyline points="429,198 429,280 300,280 300,300" stroke="#7c3aed"/>
+          <!-- Resizer: straight down -->
+          <polyline points="461,198 461,300" stroke="#3b82f6"/>
         </svg>
 
         <!-- Eraser card -->
@@ -304,6 +302,14 @@
             <polyline points="9 22 9 12 15 12 15 22"/>
           </svg>
           Open My Edited Sites
+        </a>
+        <a class="btn-secondary" href="https://adnota.app/" target="_blank" rel="noopener noreferrer">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
+            <polyline points="15 3 21 3 21 9"/>
+            <line x1="10" y1="14" x2="21" y2="3"/>
+          </svg>
+          Visit adnota.app
         </a>
       </div>
     </section>
