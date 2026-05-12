@@ -144,6 +144,16 @@ body {
 .welcome-p--muted { color: var(--text-3); font-size: 14px; }
 .welcome-p strong { color: var(--text-1); font-weight: 600; }
 
+.welcome-p a {
+  color: #7c3aed;
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 2px;
+  text-decoration-color: rgba(124, 58, 237, 0.4);
+  transition: text-decoration-color 0.15s;
+}
+.welcome-p a:hover { text-decoration-color: #7c3aed; }
+
 .welcome-p kbd {
   font-family: 'Inter', monospace;
   font-size: 11px;
@@ -536,55 +546,6 @@ kbd, kbd.shortcut {
   line-height: 1.5;
 }
 .pin-steps strong { color: var(--text-1); font-weight: 600; }
-
-/* ═══════════════════════════════════════════════
-   CTAs
-═══════════════════════════════════════════════ */
-.cta-row {
-  display: flex;
-  gap: 12px;
-  flex-wrap: wrap;
-  align-items: flex-start;
-}
-
-.btn-primary,
-.btn-secondary {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  font-family: inherit;
-  font-size: 14px;
-  font-weight: 600;
-  padding: 11px 18px;
-  border-radius: 10px;
-  cursor: pointer;
-  text-decoration: none;
-  border: 1px solid transparent;
-  transition: background 0.15s, transform 0.12s, box-shadow 0.15s, border-color 0.15s, color 0.15s;
-}
-
-.btn-primary {
-  background: #7c3aed;
-  color: #fff;
-}
-.btn-primary:hover {
-  background: #6d28d9;
-  box-shadow: 0 4px 14px rgba(124,58,237,0.38);
-  transform: translateY(-1px);
-}
-
-.btn-secondary {
-  background: var(--surface);
-  color: var(--text-2);
-  border-color: var(--border-strong);
-  box-shadow: var(--shadow-card);
-}
-.btn-secondary:hover {
-  color: var(--text-1);
-  border-color: rgba(124, 58, 237, 0.4);
-  box-shadow: var(--shadow-hover);
-  transform: translateY(-1px);
-}
 
 /* ─── Inline red X — matches the dock's dismiss button ───
    Visual parity with content/marker.css .adnota-select-delete so that prose
