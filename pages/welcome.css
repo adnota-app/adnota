@@ -211,7 +211,7 @@ body {
   margin: 8px auto 4px;
   display: grid;
   grid-template-columns: 320px 80px 320px;
-  grid-template-rows: 130px 40px 130px 40px 130px;
+  grid-template-rows: 90px 40px 130px 40px 90px;
   grid-template-areas:
     "eraser  .       sticky"
     ".       .       .     "
@@ -219,6 +219,14 @@ body {
     ".       .       .     "
     "draw    .       resizer";
 }
+
+/* Top cards hug the bottom of their row, bottom cards hug the top — so each
+   card sits right next to the dock illustration with the connector entering
+   the card's facing edge cleanly. */
+.diagram .tool-card[data-tool="eraser"],
+.diagram .tool-card[data-tool="sticky"]  { align-self: end; }
+.diagram .tool-card[data-tool="draw"],
+.diagram .tool-card[data-tool="resizer"] { align-self: start; }
 
 /* Connector SVG sits behind the cards & dock so the colored lines disappear
    underneath the card edges, giving the visual of lines "plugging into" cards. */
@@ -231,10 +239,12 @@ body {
   z-index: 0;
   overflow: visible;
 }
-.diagram-connectors path {
+.diagram-connectors path,
+.diagram-connectors polyline {
   fill: none;
   stroke-width: 2.25;
   stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .diagram .tool-card,
@@ -283,7 +293,8 @@ body {
   flex-shrink: 0;
 }
 
-/* ─── Tool card (rendered in resting state) ─── */
+/* ─── Tool card — matches popup/style.css so users recognize these cards
+       when they later open the toolbar popup. ─── */
 .tool-card {
   position: relative;
   display: flex;
@@ -292,7 +303,7 @@ body {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 14px 16px;
+  padding: 11px 13px;
   box-shadow: var(--shadow-card);
   text-align: left;
   width: 100%;
@@ -309,7 +320,7 @@ body {
 }
 
 .tool-icon-wrap {
-  width: 40px; height: 40px;
+  width: 38px; height: 38px;
   border-radius: 10px;
   background: var(--chip-bg);
   color: var(--chip-color);
@@ -322,17 +333,17 @@ body {
 .tool-info { flex: 1; min-width: 0; }
 
 .tool-name {
-  font-size: 14px;
+  font-size: 13.5px;
   font-weight: 600;
   color: var(--text-1);
   line-height: 1.25;
 }
 
 .tool-desc {
-  font-size: 12px;
+  font-size: 11px;
   color: var(--text-3);
-  margin-top: 3px;
-  line-height: 1.4;
+  margin-top: 2px;
+  line-height: 1.35;
 }
 
 kbd, kbd.shortcut {
@@ -350,6 +361,10 @@ kbd, kbd.shortcut {
   white-space: nowrap;
   line-height: 1.5;
 }
+
+/* Cards' shortcut kbd uses the tighter popup size (10px) so it sits
+   compactly in the row. Other kbd usages keep the larger 11px base. */
+.tool-card kbd.shortcut { font-size: 10px; }
 
 /* ─── Dock mock (scoped — does not collide with #adnota-dock) ─── */
 .welcome-dock-mock {
@@ -532,7 +547,8 @@ kbd, kbd.shortcut {
   align-items: flex-start;
 }
 
-.btn-primary {
+.btn-primary,
+.btn-secondary {
   display: inline-flex;
   align-items: center;
   gap: 8px;
@@ -544,13 +560,29 @@ kbd, kbd.shortcut {
   cursor: pointer;
   text-decoration: none;
   border: 1px solid transparent;
+  transition: background 0.15s, transform 0.12s, box-shadow 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.btn-primary {
   background: #7c3aed;
   color: #fff;
-  transition: background 0.15s, transform 0.12s, box-shadow 0.15s;
 }
 .btn-primary:hover {
   background: #6d28d9;
   box-shadow: 0 4px 14px rgba(124,58,237,0.38);
+  transform: translateY(-1px);
+}
+
+.btn-secondary {
+  background: var(--surface);
+  color: var(--text-2);
+  border-color: var(--border-strong);
+  box-shadow: var(--shadow-card);
+}
+.btn-secondary:hover {
+  color: var(--text-1);
+  border-color: rgba(124, 58, 237, 0.4);
+  box-shadow: var(--shadow-hover);
   transform: translateY(-1px);
 }
 
