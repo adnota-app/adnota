@@ -53,20 +53,26 @@
 
       <div class="diagram" aria-hidden="true">
 
-        <!-- Connectors: drawn behind cards, hidden on narrow viewports. -->
-        <svg class="diagram-connectors" viewBox="0 0 720 402" preserveAspectRatio="none">
-          <!-- Eraser: tool button (297,187) → eraser card bottom (300,130) -->
-          <path d="M297 187 C 297 165, 300 148, 300 130" stroke="#ef4444"/>
+        <!-- Connectors emerge from inside the illustration's expanded dock.
+             Drawn above the dark backdrop (so the colored lines exit the dock
+             cleanly) but below the cards (so each connector tail tucks under
+             its card edge). Viewbox matches the grid total (720 × 470).
+             Tool centers in the expanded dock:
+               eraser 365, sticky 397, draw 429, resizer 461
+             Dock vertical center y=224 (top y=210, bottom y=238). -->
+        <svg class="diagram-connectors" viewBox="0 0 720 470" preserveAspectRatio="none">
+          <!-- Eraser: tool top (365,210) → eraser card bottom anchor (300,130) -->
+          <path d="M365 210 C 365 180, 330 150, 300 130" stroke="#ef4444"/>
           <circle cx="300" cy="130" r="3.5" fill="#ef4444"/>
-          <!-- Sticky: tool button (329,187) → sticky card bottom (420,130) -->
-          <path d="M329 187 C 329 165, 420 152, 420 130" stroke="#f59e0b"/>
+          <!-- Sticky: tool top (397,210) → sticky card bottom anchor (420,130) -->
+          <path d="M397 210 C 400 180, 415 150, 420 130" stroke="#f59e0b"/>
           <circle cx="420" cy="130" r="3.5" fill="#f59e0b"/>
-          <!-- Draw: tool button (361,215) → draw card top (300,272) -->
-          <path d="M361 215 C 361 240, 320 260, 300 272" stroke="#7c3aed"/>
-          <circle cx="300" cy="272" r="3.5" fill="#7c3aed"/>
-          <!-- Resizer: tool button (393,215) → resizer card top (420,272) -->
-          <path d="M393 215 C 393 240, 415 260, 420 272" stroke="#3b82f6"/>
-          <circle cx="420" cy="272" r="3.5" fill="#3b82f6"/>
+          <!-- Draw: tool bottom (429,238) → draw card top anchor (300,340) -->
+          <path d="M429 238 C 425 275, 345 320, 300 340" stroke="#7c3aed"/>
+          <circle cx="300" cy="340" r="3.5" fill="#7c3aed"/>
+          <!-- Resizer: tool bottom (461,238) → resizer card top anchor (420,340) -->
+          <path d="M461 238 C 458 280, 425 320, 420 340" stroke="#3b82f6"/>
+          <circle cx="420" cy="340" r="3.5" fill="#3b82f6"/>
         </svg>
 
         <!-- Eraser card -->
@@ -102,32 +108,46 @@
           <div class="tool-accent" style="--accent:#f59e0b;"></div>
         </div>
 
-        <!-- The dock (expanded) -->
-        <div class="diagram-dock" style="grid-area: dock;">
-          <div class="welcome-dock-mock">
-            <div class="wdm-home">
-              <span class="wdm-logo wdm-logo--hover">A</span>
+        <!-- Illustration: idle dock → expanded dock, dark backdrop, labels.
+             The expanded dock is the connectors' origin. -->
+        <div class="diagram-illust" style="grid-area: illust;">
+          <div class="illust-state">
+            <div class="welcome-dock-mock welcome-dock-mock--idle">
+              <div class="wdm-home"><span class="wdm-logo">A</span></div>
             </div>
-            <div class="wdm-tools">
-              <button class="wdm-tool wdm-tool--linked" data-accent="eraser" tabindex="-1">
-                <svg viewBox="0 0 24 24"><path d="m7 21-4.3-4.3c-1-1-1-2.5 0-3.4l9.6-9.6c1-1 2.5-1 3.4 0l5.6 5.6c1 1 1 2.5 0 3.4L13 21"/><path d="M22 21H7"/><path d="m5 11 9 9"/></svg>
-              </button>
-              <button class="wdm-tool wdm-tool--linked" data-accent="sticky" tabindex="-1">
-                <svg viewBox="0 0 24 24"><path d="M15.5 3H5a2 2 0 0 0-2 2v14c0 1.1.9 2 2 2h14a2 2 0 0 0 2-2V8.5L15.5 3z"/><polyline points="15 3 15 9 21 9"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="12" y2="17"/></svg>
-              </button>
-              <button class="wdm-tool wdm-tool--linked" data-accent="highlight" tabindex="-1">
-                <svg viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
-              </button>
-              <button class="wdm-tool wdm-tool--linked" data-accent="resizer" tabindex="-1">
-                <svg viewBox="0 0 24 24"><path d="M15 3h6v6"/><path d="M9 21H3v-6"/><path d="M21 3l-7 7"/><path d="M3 21l7-7"/></svg>
-              </button>
-              <button class="wdm-tool" tabindex="-1" title="Page snippets (f)">
-                <svg viewBox="0 0 24 24"><line x1="6" y1="5" x2="14" y2="5"/><line x1="6" y1="10" x2="18" y2="10"/><line x1="6" y1="15" x2="18" y2="15"/><line x1="6" y1="20" x2="14" y2="20"/></svg>
-              </button>
-              <button class="wdm-tool" tabindex="-1" title="Show / hide all (Alt+S)">
-                <svg viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-              </button>
+            <div class="illust-label">Idle</div>
+          </div>
+
+          <svg class="illust-arrow" viewBox="0 0 30 14" aria-hidden="true">
+            <path d="M2 7h22" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+            <path d="M19 2l6 5-6 5" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+
+          <div class="illust-state">
+            <div class="welcome-dock-mock welcome-dock-mock--expanded">
+              <div class="wdm-home"><span class="wdm-logo wdm-logo--hover">A</span></div>
+              <div class="wdm-tools">
+                <button class="wdm-tool wdm-tool--linked" data-accent="eraser" tabindex="-1">
+                  <svg viewBox="0 0 24 24"><path d="m7 21-4.3-4.3c-1-1-1-2.5 0-3.4l9.6-9.6c1-1 2.5-1 3.4 0l5.6 5.6c1 1 1 2.5 0 3.4L13 21"/><path d="M22 21H7"/><path d="m5 11 9 9"/></svg>
+                </button>
+                <button class="wdm-tool wdm-tool--linked" data-accent="sticky" tabindex="-1">
+                  <svg viewBox="0 0 24 24"><path d="M15.5 3H5a2 2 0 0 0-2 2v14c0 1.1.9 2 2 2h14a2 2 0 0 0 2-2V8.5L15.5 3z"/><polyline points="15 3 15 9 21 9"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="12" y2="17"/></svg>
+                </button>
+                <button class="wdm-tool wdm-tool--linked" data-accent="highlight" tabindex="-1">
+                  <svg viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+                </button>
+                <button class="wdm-tool wdm-tool--linked" data-accent="resizer" tabindex="-1">
+                  <svg viewBox="0 0 24 24"><path d="M15 3h6v6"/><path d="M9 21H3v-6"/><path d="M21 3l-7 7"/><path d="M3 21l7-7"/></svg>
+                </button>
+                <button class="wdm-tool" tabindex="-1" title="Page snippets (f)">
+                  <svg viewBox="0 0 24 24"><line x1="6" y1="5" x2="14" y2="5"/><line x1="6" y1="10" x2="18" y2="10"/><line x1="6" y1="15" x2="18" y2="15"/><line x1="6" y1="20" x2="14" y2="20"/></svg>
+                </button>
+                <button class="wdm-tool" tabindex="-1" title="Show / hide all (Alt+S)">
+                  <svg viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                </button>
+              </div>
             </div>
+            <div class="illust-label">Expanded on hover</div>
           </div>
         </div>
 
@@ -177,8 +197,9 @@
         <strong>Show / Hide All</strong> (<kbd>Alt+S</kbd>) — utilities, not tools.
       </p>
       <p class="welcome-p welcome-p--muted">
-        Closed the dock with the <strong>✕</strong>? Adnota goes silent on that
-        site. Press <kbd>Alt+A</kbd> or click the toolbar icon to bring it back.
+        Closed the dock with the <span class="adnota-x-inline" aria-label="red close button">✕</span>?
+        Adnota goes silent on that site. Press <kbd>Alt+A</kbd> or click the
+        toolbar icon to bring it back.
       </p>
     </section>
 
@@ -205,36 +226,44 @@
               <stop offset="100%" stop-color="#d946ef"/>
             </linearGradient>
           </defs>
+
           <!-- Chrome toolbar slice -->
-          <rect x="6" y="6" width="228" height="34" rx="6" fill="#1c1c2a" stroke="rgba(255,255,255,0.08)"/>
-          <!-- Three tab/window controls (left) -->
-          <circle cx="20" cy="23" r="3" fill="rgba(255,255,255,0.18)"/>
-          <circle cx="30" cy="23" r="3" fill="rgba(255,255,255,0.18)"/>
-          <circle cx="40" cy="23" r="3" fill="rgba(255,255,255,0.18)"/>
-          <!-- Puzzle-piece icon (the target) -->
-          <g transform="translate(192 14)" fill="none" stroke="#c084fc" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round">
-            <path d="M3 8.5 V5 a1.5 1.5 0 0 1 1.5-1.5 H7 a1.25 1.25 0 0 0 2.5 0 H12 a1.5 1.5 0 0 1 1.5 1.5 V7.5 a1.25 1.25 0 0 0 0 2.5 V12.5 a1.5 1.5 0 0 1-1.5 1.5 H9.5 a1.25 1.25 0 0 1-2.5 0 H4.5 a1.5 1.5 0 0 1-1.5-1.5 V10 a1.25 1.25 0 0 0 0-1.5z"/>
+          <rect x="6" y="6" width="228" height="40" rx="8" fill="#1c1c2a" stroke="rgba(255,255,255,0.08)"/>
+          <!-- Window controls (left) -->
+          <circle cx="22" cy="26" r="3.2" fill="rgba(255,255,255,0.18)"/>
+          <circle cx="33" cy="26" r="3.2" fill="rgba(255,255,255,0.18)"/>
+          <circle cx="44" cy="26" r="3.2" fill="rgba(255,255,255,0.18)"/>
+          <!-- Stub address bar -->
+          <rect x="60" y="19" width="106" height="14" rx="7" fill="rgba(255,255,255,0.07)"/>
+          <!-- Puzzle icon — Material "extension" path (24×24 native), scaled to 20×20 at (198,16) -->
+          <g transform="translate(198 16) scale(0.833)" fill="#c084fc">
+            <path d="M20.5 11H19V7c0-1.1-.9-2-2-2h-4V3.5C13 2.12 11.88 1 10.5 1S8 2.12 8 3.5V5H4c-1.1 0-1.99.9-1.99 2v3.8H3.5c1.49 0 2.7 1.21 2.7 2.7s-1.21 2.7-2.7 2.7H2V20c0 1.1.9 2 2 2h3.8v-1.5c0-1.49 1.21-2.7 2.7-2.7 1.49 0 2.7 1.21 2.7 2.7V22H17c1.1 0 2-.9 2-2v-4h1.5c1.38 0 2.5-1.12 2.5-2.5S21.88 11 20.5 11z"/>
           </g>
+
           <!-- Dropdown menu panel -->
-          <rect x="124" y="50" width="106" height="110" rx="8" fill="#1c1c2a" stroke="rgba(124,58,237,0.35)"/>
-          <text x="134" y="66" fill="rgba(255,255,255,0.45)" font-family="Inter, sans-serif" font-size="8" font-weight="600" letter-spacing="0.5">EXTENSIONS</text>
+          <rect x="120" y="56" width="114" height="106" rx="8" fill="#1c1c2a" stroke="rgba(124,58,237,0.35)"/>
+          <text x="130" y="72" fill="rgba(255,255,255,0.5)" font-family="Inter, sans-serif" font-size="8" font-weight="600" letter-spacing="0.6">EXTENSIONS</text>
+
           <!-- Adnota row (highlighted) -->
-          <rect x="130" y="76" width="94" height="22" rx="4" fill="rgba(124,58,237,0.15)" stroke="rgba(124,58,237,0.45)"/>
-          <rect x="136" y="82" width="10" height="10" rx="2" fill="url(#pin-monogram-grad)"/>
-          <text x="151" y="90" fill="#fff" font-family="Inter, sans-serif" font-size="8" font-weight="700">Adnota</text>
-          <!-- Pin icon (the action target, right of Adnota row) -->
-          <g transform="translate(208 81)" fill="none" stroke="#c084fc" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M5 1.5 V0.5 H1 V1.5 L2 4 V7 H4 V4 L5 1.5 Z" fill="rgba(192,132,252,0.25)"/>
-            <line x1="3" y1="7" x2="3" y2="9.5"/>
+          <rect x="126" y="80" width="102" height="24" rx="5" fill="rgba(124,58,237,0.18)" stroke="rgba(124,58,237,0.55)"/>
+          <rect x="132" y="86" width="12" height="12" rx="2.5" fill="url(#pin-monogram-grad)"/>
+          <text x="149" y="95" fill="#fff" font-family="Inter, sans-serif" font-size="9" font-weight="700">Adnota</text>
+          <!-- Pin icon — Material "push-pin" (24×24 native), scaled to 14×14 at (210,84) -->
+          <g transform="translate(210 84) scale(0.583)" fill="#c084fc">
+            <path d="M16 9V4h1c.55 0 1-.45 1-1s-.45-1-1-1H7c-.55 0-1 .45-1 1s.45 1 1 1h1v5c0 1.66-1.34 3-3 3v2h5.97v7l1 1 1-1v-7H19v-2c-1.66 0-3-1.34-3-3z"/>
           </g>
+
           <!-- Other rows (dimmed) -->
-          <rect x="136" y="106" width="64" height="6" rx="2" fill="rgba(255,255,255,0.10)"/>
-          <rect x="136" y="118" width="52" height="6" rx="2" fill="rgba(255,255,255,0.10)"/>
-          <rect x="136" y="130" width="58" height="6" rx="2" fill="rgba(255,255,255,0.10)"/>
-          <rect x="136" y="142" width="48" height="6" rx="2" fill="rgba(255,255,255,0.10)"/>
-          <!-- Curved arrow from puzzle icon → pin icon -->
-          <path d="M198 32 Q 180 56 207 82" fill="none" stroke="#f59e0b" stroke-width="1.8" stroke-linecap="round" stroke-dasharray="3 3"/>
-          <path d="M203 76 L 209 84 L 215 78" fill="none" stroke="#f59e0b" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+          <rect x="132" y="112" width="68" height="6" rx="2.5" fill="rgba(255,255,255,0.10)"/>
+          <rect x="132" y="124" width="56" height="6" rx="2.5" fill="rgba(255,255,255,0.10)"/>
+          <rect x="132" y="136" width="62" height="6" rx="2.5" fill="rgba(255,255,255,0.10)"/>
+          <rect x="132" y="148" width="50" height="6" rx="2.5" fill="rgba(255,255,255,0.10)"/>
+
+          <!-- Solid arrow from puzzle → pin -->
+          <path d="M 208 40 Q 178 64 214 84" fill="none" stroke="#f59e0b" stroke-width="2" stroke-linecap="round"/>
+          <!-- Arrowhead: wings rotated ±30° off the curve's back-tangent at (214,84),
+               so the chevron points along the curve direction (down-and-right). -->
+          <path d="M 210 77 L 214 84 L 206 84" fill="none" stroke="#f59e0b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
         </svg>
         <ol class="pin-steps">
           <li>Click the puzzle-piece icon in Chrome's toolbar.</li>

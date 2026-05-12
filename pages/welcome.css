@@ -196,7 +196,13 @@ body {
 .notice strong { color: var(--text-1); font-weight: 600; }
 
 /* ═══════════════════════════════════════════════
-   THE DIAGRAM (dock + 4 tool cards + colored connectors)
+   THE DIAGRAM
+   2×2 of tool cards around a centered idle → expanded
+   dock illustration. Colored cubic-Bézier connectors
+   emerge from the linked tools inside the expanded dock
+   and tuck under each card's facing edge.
+   Locked to 720×470 at >=800px viewport; below that the
+   grid collapses to a single column and connectors hide.
 ═══════════════════════════════════════════════ */
 .diagram {
   position: relative;
@@ -205,13 +211,13 @@ body {
   margin: 8px auto 4px;
   display: grid;
   grid-template-columns: 320px 80px 320px;
-  grid-template-rows: 130px 50px 42px 50px 130px;
+  grid-template-rows: 130px 40px 130px 40px 130px;
   grid-template-areas:
-    "eraser  .     sticky"
-    ".       .     .     "
-    "dock    dock  dock  "
-    ".       .     .     "
-    "draw    .     resizer";
+    "eraser  .       sticky"
+    ".       .       .     "
+    "illust  illust  illust"
+    ".       .       .     "
+    "draw    .       resizer";
 }
 
 /* Connector SVG sits behind the cards & dock so the colored lines disappear
@@ -232,15 +238,49 @@ body {
 }
 
 .diagram .tool-card,
-.diagram .diagram-dock {
+.diagram .diagram-illust {
   position: relative;
   z-index: 1;
 }
 
-.diagram-dock {
+/* ─── Idle → Expanded illustration ─── */
+.diagram-illust {
   display: flex;
-  justify-content: center;
   align-items: center;
+  justify-content: center;
+  gap: 30px;
+  background:
+    linear-gradient(180deg, rgba(15, 15, 26, 0.92) 0%, rgba(20, 20, 35, 0.92) 100%);
+  border: 1px solid rgba(124, 58, 237, 0.22);
+  border-radius: var(--radius);
+  padding: 18px 24px;
+  box-shadow: var(--shadow-card);
+}
+
+.illust-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.illust-label {
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.illust-arrow {
+  width: 30px;
+  height: 14px;
+  color: rgba(255, 255, 255, 0.35);
+  /* Pull the arrow up a touch so it sits opposite the dock row, not the
+     center line of the dock+label stack. */
+  margin-bottom: 22px;
+  flex-shrink: 0;
 }
 
 /* ─── Tool card (rendered in resting state) ─── */
@@ -514,10 +554,29 @@ kbd, kbd.shortcut {
   transform: translateY(-1px);
 }
 
+/* ─── Inline red X — matches the dock's dismiss button ───
+   Visual parity with content/marker.css .adnota-select-delete so that prose
+   references to "the ✕" point to something the user has actually seen. */
+.adnota-x-inline {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: rgba(239, 68, 68, 0.9);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  vertical-align: -2px;
+  margin: 0 2px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.18);
+  line-height: 1;
+  letter-spacing: 0;
+}
+
 /* ═══════════════════════════════════════════════
    RESPONSIVE: stack the diagram below 800px viewport.
-   Above: 720px-wide grid with positioned cards + connectors.
-   Below: single-column flow, dock on top, cards stacked, no connectors.
 ═══════════════════════════════════════════════ */
 @media (max-width: 800px) {
   .diagram {
@@ -525,7 +584,7 @@ kbd, kbd.shortcut {
     grid-template-columns: 1fr;
     grid-template-rows: auto;
     grid-template-areas:
-      "dock"
+      "illust"
       "eraser"
       "sticky"
       "draw"
@@ -533,9 +592,15 @@ kbd, kbd.shortcut {
     gap: 12px;
   }
   .diagram-connectors { display: none; }
-  .diagram-dock { padding: 8px 0; }
   .pin-card { flex-direction: column; align-items: stretch; }
   .pin-mock { width: 100%; max-width: 280px; align-self: center; }
+}
+
+/* Very narrow: stack the idle→expanded illustration vertically so the
+   expanded dock isn't forced to scroll horizontally. */
+@media (max-width: 540px) {
+  .diagram-illust { flex-direction: column; gap: 18px; padding: 20px 16px; }
+  .illust-arrow { transform: rotate(90deg); margin-bottom: 0; }
 }
 
 @media (max-width: 640px) {
