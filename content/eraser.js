@@ -360,6 +360,56 @@ function findSimilarAds(target) {
     } catch { /* malformed selector — skip */ }
   }
 
+  // Strategy 5: Creative-similarity match.
+  // Ad networks (and house promos) routinely render the SAME creative into
+  // structurally different wrappers — an inline banner slot AND a sticky
+  // sidebar slot sharing one image. The structural strategies above cluster
+  // within a slot family but can't bridge two families that just happen to
+  // share a creative. This strategy uses the creative itself as the link:
+  // the first non-pixel <img src> and the first non-trivial <a href> inside
+  // the seed, queried page-wide, each match bubbled back up to its visual
+  // root so we land on the slot wrapper the user would have clicked.
+  // The per-candidate signal-confirm stage below still gates membership —
+  // a logo reused on the page won't survive unless its bubbled wrapper also
+  // looks like an ad.
+  const creativeSelectors = [];
+  const seedImg = target.tagName === 'IMG'
+    ? target
+    : (target.querySelector && target.querySelector('img[src]'));
+  if (seedImg) {
+    const src = seedImg.getAttribute('src');
+    const imgRect = seedImg.getBoundingClientRect();
+    const isPixel = imgRect.width <= 2 && imgRect.height <= 2;
+    if (src && src.length >= 8 && !isPixel && !src.startsWith('data:')) {
+      const escaped = src.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+      creativeSelectors.push(`img[src="${escaped}"]`);
+    }
+  }
+  const seedAnchor = target.tagName === 'A'
+    ? target
+    : (target.querySelector && target.querySelector('a[href]'));
+  if (seedAnchor) {
+    const href = seedAnchor.getAttribute('href');
+    if (href && href.length >= 4 &&
+        !href.startsWith('#') && !href.startsWith('javascript:')) {
+      const escaped = href.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+      creativeSelectors.push(`a[href="${escaped}"]`);
+    }
+  }
+  if (creativeSelectors.length > 0) {
+    try {
+      const matches = document.querySelectorAll(creativeSelectors.join(', '));
+      if (matches.length > 0 && matches.length <= ATTR_PREFIX_BROAD_THRESHOLD) {
+        for (const m of matches) {
+          if (isAdnotaElement(m)) continue;
+          const root = window.AdnotaUI.bubbleToVisualRoot(m);
+          if (root && root !== target) found.add(root);
+        }
+        strategies.push('creative-similarity');
+      }
+    } catch { /* malformed selector — skip */ }
+  }
+
   // ── Signal-confirm stage ──
   const erasedSet = window.AdnotaErasedElements || new Set();
   const isErasedDescendant = (c) => {
