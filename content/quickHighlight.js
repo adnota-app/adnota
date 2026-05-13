@@ -235,12 +235,11 @@
         text: cur.range.toString(),
       });
       positionPopup(rect);
-      // Pre-fill the tag input from the highlight the selection will
-      // supersede (if any). Sharing tagFromSupersedeTargets with the
-      // commit path means pre-fill and click can never disagree on which
-      // highlight is being edited — they consult the same target list.
-      const existingTag =
-        window.AdnotaHighlighter?.tagFromSupersedeTargets?.(cur.range) || '';
+      // If the selection overlaps a tagged highlight, pre-fill the tag input
+      // so the user can re-apply or edit the same tag without retyping it.
+      const cx = rect.left + rect.width / 2;
+      const cy = rect.top + rect.height / 2;
+      const existingTag = window.AdnotaHighlighter?.tagAtPoint?.(cx, cy) || '';
       if (tagInput) tagInput.value = existingTag;
     }, SHOW_DELAY_MS);
   }, true);
@@ -296,25 +295,12 @@
                       : (cachedRange ? cachedRange.cloneRange() : null);
     if (!range) { hidePopup(); return; }
     window.AdnotaVisibility?.show?.();
-    // Snapshot the tag *before* hidePopup clears the input. The popup's tag
-    // is taken verbatim — '' means the user explicitly cleared it, which is
-    // an intentional "remove the tag" action distinct from "no tag passed."
+    // Snapshot the tag *before* hidePopup clears the input.
     const tag = window.AdnotaTags
       ? window.AdnotaTags.normalize(tagInput?.value || '')
       : (tagInput?.value || '').trim();
     hidePopup();
     try { cur?.selection?.removeAllRanges(); } catch (err) {}
-
-    // If the selection meets the supersede threshold against existing
-    // highlights, edit them instead of creating a duplicate. Otherwise
-    // create a fresh highlight (any sub-threshold overlap zone keeps its
-    // natural CSS-Highlights blend).
-    const targets = window.AdnotaHighlighter?.findSupersedeTargets?.(range) || [];
-    if (targets.length > 0) {
-      await window.AdnotaHighlighter.supersedeWithRange(
-        targets.map(t => t.id), range, colorKey, tag);
-    } else {
-      await window.AdnotaHighlighter?.createHighlightFromRange?.(range, colorKey, tag);
-    }
+    await window.AdnotaHighlighter?.createHighlightFromRange?.(range, colorKey, tag);
   }
 })();
