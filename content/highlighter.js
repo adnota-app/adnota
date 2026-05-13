@@ -1071,7 +1071,19 @@ document.addEventListener('mouseup', async (e) => {
   // Hide mode must never obscure work — reveal everything before applying.
   window.AdnotaVisibility.show();
 
-  await createHighlightFromRange(range, window.AdnotaState.color);
+  // Same supersede branch as the popup. The Draw HUD has no tag input, so
+  // inherit the tag of the largest-overlap consumed target — otherwise
+  // re-painting an existing tagged highlight from the HUD would silently
+  // drop its tag. Inheritance is a call-site policy here, not in
+  // supersedeWithRange (which takes tag verbatim).
+  const targets = findSupersedeTargets(range);
+  if (targets.length > 0) {
+    const inheritedTag = targets[0]?.entry?.tag || '';
+    await supersedeWithRange(targets.map(t => t.id), range,
+                             window.AdnotaState.color, inheritedTag);
+  } else {
+    await createHighlightFromRange(range, window.AdnotaState.color);
+  }
 
   try {
     selection.removeAllRanges();
