@@ -883,6 +883,177 @@ async function createHighlightFromRange(range, color, tag = '') {
   return payload;
 }
 
+// ── Supersede surface ──────────────────────────────────────────────────────
+// When a new selection meets the bidirectional 80% overlap threshold against
+// an existing highlight, the new highlight "supersedes" the old one — old is
+// deleted, new is created at the new range. Wired into the popup's swatch
+// click and the Draw HUD mouseup so re-selecting an existing highlight (to
+// change colour or tag) edits it instead of piling up duplicates. The
+// threshold is bidirectional — max(overlap/|new|, overlap/|existing|) — so
+// both shrink (selection inside existing) and extend (selection contains
+// existing) trigger supersede symmetrically. Sub-threshold overlaps (e.g. a
+// 1-word edge graze between adjacent highlights) skip supersede entirely,
+// keeping the natural CSS-Highlights blend at the overlap zone.
+
+// Computes the visible-text length of the intersection of two Ranges. Returns
+// 0 if the Ranges are disjoint. Uses range.toString().length, which counts
+// whitespace + punctuation in the visible text — the 0.80 threshold has slack
+// for that, so a sub-character mismatch never tips the metric.
+function _rangeIntersectionLength(rangeA, rangeB) {
+  // Disjoint: A.end <= B.start, or A.start >= B.end.
+  if (rangeA.compareBoundaryPoints(Range.END_TO_START, rangeB) <= 0) return 0;
+  if (rangeA.compareBoundaryPoints(Range.START_TO_END, rangeB) >= 0) return 0;
+
+  const intersection = rangeA.cloneRange();
+  // intersection.start = max(A.start, B.start)
+  if (rangeA.compareBoundaryPoints(Range.START_TO_START, rangeB) < 0) {
+    intersection.setStart(rangeB.startContainer, rangeB.startOffset);
+  }
+  // intersection.end = min(A.end, B.end)
+  if (rangeA.compareBoundaryPoints(Range.END_TO_END, rangeB) > 0) {
+    intersection.setEnd(rangeB.endContainer, rangeB.endOffset);
+  }
+  return intersection.toString().length;
+}
+
+// Returns live highlights that meet the supersede threshold against newRange,
+// sorted by ratio descending (largest-overlap first — that's the tag-
+// inheritance source and the user's most likely intent).
+//
+// v1 scope: CSS-path entries only. Fallback entries (no entry.range) are
+// intentionally skipped — unifying the metric across paths needs Range
+// reconstruction for fallback on both create + restore, deferred to v2 if
+// real users hit it. Mixed-path supersede falls back to "create new"; no
+// regression vs today (still dup-creates on Shadow DOM, same as before).
+//
+// Multi-target consolidation is intentional: if three adjacent highlights
+// all meet threshold against one new selection, supersede consumes all
+// three into one merged highlight. Not a bug — it's the same rule applied
+// consistently.
+function findSupersedeTargets(newRange, threshold = 0.80) {
+  const newLen = newRange.toString().length;
+  if (newLen === 0) return [];
+
+  const candidates = [];
+  for (const [id, entry] of liveHighlights) {
+    if (!entry.range) continue;                           // v1: CSS path only
+    if (!entry.range.startContainer ||
+        !entry.range.startContainer.isConnected) {
+      // Stale Range from SPA DOM swap — self-clean, mirroring rectsForHighlight.
+      liveHighlights.delete(id);
+      continue;
+    }
+
+    const overlapLen = _rangeIntersectionLength(newRange, entry.range);
+    if (overlapLen === 0) continue;
+    const existingLen = entry.range.toString().length;
+    if (existingLen === 0) continue;
+
+    const ratio = Math.max(overlapLen / newLen, overlapLen / existingLen);
+    if (ratio >= threshold) candidates.push({ id, entry, ratio });
+  }
+  candidates.sort((a, b) => b.ratio - a.ratio);
+  return candidates;
+}
+
+// Tag of the largest-overlap supersede target, or '' if no target meets
+// threshold. Used by the popup to pre-fill the tag input — sharing the same
+// target list as the supersede commit means pre-fill and click can never
+// disagree on which highlight is being edited.
+function tagFromSupersedeTargets(newRange) {
+  const targets = findSupersedeTargets(newRange);
+  return targets[0]?.entry?.tag || '';
+}
+
+// Atomic supersede: deletes the consumed highlights and creates a new one,
+// pushing a single composed undo entry that reverses both halves. `tag` is
+// taken verbatim — callers decide policy (popup uses input value, Draw HUD
+// looks up targets[0]?.entry?.tag for inheritance).
+//
+// Order is create-then-delete so a mid-supersede create failure leaves the
+// consumed highlights intact (no "lost N, got 0" failure mode). Brief
+// visual overlap between create and delete is ~milliseconds and invisible.
+async function supersedeWithRange(consumedIds, newRange, color, tag) {
+  // 1. Capture full storage payloads for the consumed highlights — needed to
+  //    restore on undo. Read before any teardown.
+  const items = await window.AdnotaStorage.getAnchorsForUrl(location.href);
+  const consumedPayloads = consumedIds
+    .map(id => items.find(i => i._id === id))
+    .filter(Boolean);
+
+  // 2. Create the new highlight FIRST.
+  const { payload: newPayload, removeFn: removeNewFn } =
+    await _createHighlightCore(newRange, color, tag);
+
+  // 3. Delete consumed AFTER. skipRebuild because supersede controls the
+  //    registry state across all N — running rebuild N times mid-flight
+  //    would repaint partial intermediate states.
+  for (const id of consumedIds) {
+    await _deleteHighlightCore(id, { skipRebuild: true });
+  }
+
+  window.AdnotaLog?.event('highlight', 'supersede', {
+    newId: newPayload._id,
+    consumedIds,
+    color,
+    tag: tag || null,
+  });
+
+  // 4. One composed undo entry: tear down the new highlight, then re-render
+  //    each consumed payload (per-iteration try/catch so one bad anchor
+  //    doesn't block the rest), then a single batched storage write.
+  //    saveItems instead of N parallel saveItem calls — closes the
+  //    read-modify-write race window if the user hammers Ctrl+Z.
+  window.AdnotaUndo.push({
+    undo: async () => {
+      window.AdnotaLog?.event('highlight', 'supersede-undo',
+        { newId: newPayload._id, restoring: consumedPayloads.length });
+      await removeNewFn();
+
+      const restored = [];
+      let failed = 0;
+      for (const p of consumedPayloads) {
+        try {
+          const match = window.FuzzyAnchor.findMatch(p.anchor);
+          if (match.confidence >= 40 && match.element) {
+            if (p.isFallback) {
+              window.AdnotaHighlighter.renderFallback(match.element, p);
+            } else {
+              window.AdnotaHighlighter.applyStoredHighlight(match.element, p);
+            }
+            restored.push(p);
+          } else {
+            // Anchor confidence too low to re-render. Deliberately do NOT
+            // write storage either — storage/view stay aligned. The user
+            // sees nothing happen for that payload; a future restorer pass
+            // could rescue it if the DOM shifts back, but for now alignment
+            // beats divergence.
+            failed += 1;
+          }
+        } catch (err) {
+          window.AdnotaLog?.event('highlight', 'supersede-undo-fail',
+            { id: p._id, err: String(err) });
+          failed += 1;
+        }
+      }
+
+      if (restored.length && window.AdnotaStorage?.saveItems) {
+        await window.AdnotaStorage.saveItems(
+          location.hostname,
+          restored.map(p => ({ path: location.pathname, payload: p })));
+      }
+
+      if (failed > 0) {
+        window.AdnotaUI?.showToast?.(
+          `Restored ${restored.length} of ${consumedPayloads.length} highlights`,
+          { id: 'adnota-supersede-undo-partial' });
+      }
+    }
+  });
+
+  return newPayload;
+}
+
 document.addEventListener('mouseup', async (e) => {
   if (window.AdnotaState.mode !== 'highlight') return;
 
@@ -910,6 +1081,9 @@ document.addEventListener('mouseup', async (e) => {
 window.AdnotaHighlighter = {
   createHighlightFromRange,
   deleteHighlight,
+  findSupersedeTargets,
+  tagFromSupersedeTargets,
+  supersedeWithRange,
 
   // Drop every rendered highlight (CSS Custom Highlights + fallback
   // wrappers) from the page. Called on SPA URL change so highlights
