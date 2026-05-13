@@ -658,11 +658,11 @@ document.addEventListener('mousemove', (e) => {
 window.addEventListener('scroll', () => { cancelHide(); hideTagTooltip(); hideDeleteBtn(); }, { passive: true, capture: true });
 window.addEventListener('resize', () => { cancelHide(); hideTagTooltip(); hideDeleteBtn(); }, { passive: true });
 
-// Single-item delete. Tears down visual (CSS registry entry or fallback
-// wrapper), drops the storage row, pushes an undo, and shows a 5s toast —
-// matches the eraser/sticky pattern. The `consumed` guard inside the undo
-// closure makes Ctrl+Z and the toast Undo button safely idempotent.
-async function deleteHighlight(id) {
+// No-undo core: tears down visual + storage row, returns the captured storage
+// payload (so callers can compose a multi-restore undo). `skipRebuild` is set
+// by the supersede orchestrator, which controls registry state across N
+// deletions and doesn't want to repaint partial intermediate states.
+async function _deleteHighlightCore(id, { skipRebuild = false } = {}) {
   const entry = liveHighlights.get(id);
   if (!entry) return null;
   const items = await window.AdnotaStorage.getAnchorsForUrl(location.href);
@@ -688,10 +688,22 @@ async function deleteHighlight(id) {
   // duplicate range painted that we can't surgically remove. Storage is
   // already authoritative at this point, so rebuilding from storage clears
   // anything stranded and reflects reality. Skipped for fallback because
-  // wrapper.remove() is definitive.
-  if (!wasFallback && window.AdnotaUI?._rebuildLiveHighlights) {
+  // wrapper.remove() is definitive; also skipped by supersede (orchestrator
+  // rebuilds once at the end if needed, not N times mid-flight).
+  if (!skipRebuild && !wasFallback && window.AdnotaUI?._rebuildLiveHighlights) {
     await window.AdnotaUI._rebuildLiveHighlights();
   }
+
+  return payload;
+}
+
+// Single-item delete. Tears down visual (CSS registry entry or fallback
+// wrapper), drops the storage row, pushes an undo, and shows a 5s toast —
+// matches the eraser/sticky pattern. The `consumed` guard inside the undo
+// closure makes Ctrl+Z and the toast Undo button safely idempotent.
+async function deleteHighlight(id) {
+  const payload = await _deleteHighlightCore(id);
+  if (!payload) return null;
 
   let consumed = false;
   const undoEntry = {
@@ -742,11 +754,12 @@ function getOccurrenceIndex(range, anchorElement) {
   return count;
 }
 
-// Shared highlight creation — used by the Draw-HUD highlight mouseup handler
-// AND by the contextual "quick highlight" popup. Accepts any range and color,
-// writes to storage, adds to the CSS Highlights registry (or renders fallback),
-// and pushes an undo entry. Selection clearing is the caller's responsibility.
-async function createHighlightFromRange(range, color, tag = '') {
+// No-undo core: does the visible + storage work to materialize a highlight and
+// returns `{ payload, removeFn }`. `removeFn` tears down everything this call
+// just created (registry/fallback wrapper, liveHighlights entry, storage row)
+// — the public wrapper uses it as the undo body; the supersede composer
+// composes it into a larger multi-restore undo entry.
+async function _createHighlightCore(range, color, tag = '') {
   let anchorElement = range.commonAncestorContainer;
   if (anchorElement.nodeType !== Node.ELEMENT_NODE) {
     anchorElement = anchorElement.parentNode;
@@ -839,22 +852,34 @@ async function createHighlightFromRange(range, color, tag = '') {
   const capturedColor = color;
   const capturedRange = payload._clonedRange || null;
   const capturedFallback = payload.isFallback || false;
+  const removeFn = async () => {
+    if (capturedFallback) {
+      const fallbackEl = document.querySelector(`.adnota-highlight-fallback[data-highlight-id="${capturedId}"]`);
+      if (fallbackEl) fallbackEl.remove();
+    } else if (capturedRange) {
+      highlightRegistries[capturedColor]?.delete(capturedRange);
+    }
+    unregisterLiveHighlight(capturedId);
+    if (window.AdnotaStorage) {
+      await window.AdnotaStorage.deleteItem(location.hostname, '_id', capturedId);
+    }
+  };
+
+  return { payload, removeFn };
+}
+
+// Shared highlight creation — used by the Draw-HUD highlight mouseup handler
+// AND by the contextual "quick highlight" popup. Accepts any range and color,
+// writes to storage, adds to the CSS Highlights registry (or renders fallback),
+// and pushes an undo entry. Selection clearing is the caller's responsibility.
+async function createHighlightFromRange(range, color, tag = '') {
+  const { payload, removeFn } = await _createHighlightCore(range, color, tag);
   window.AdnotaUndo.push({
     undo: async () => {
-      window.AdnotaLog?.event('highlight', 'undo', { id: capturedId });
-      if (capturedFallback) {
-        const fallbackEl = document.querySelector(`.adnota-highlight-fallback[data-highlight-id="${capturedId}"]`);
-        if (fallbackEl) fallbackEl.remove();
-      } else if (capturedRange) {
-        highlightRegistries[capturedColor]?.delete(capturedRange);
-      }
-      unregisterLiveHighlight(capturedId);
-      if (window.AdnotaStorage) {
-        await window.AdnotaStorage.deleteItem(location.hostname, '_id', capturedId);
-      }
+      window.AdnotaLog?.event('highlight', 'undo', { id: payload._id });
+      await removeFn();
     }
   });
-
   return payload;
 }
 
