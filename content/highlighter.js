@@ -852,6 +852,18 @@ async function createHighlightFromRange(range, color, tag = '') {
       if (window.AdnotaStorage) {
         await window.AdnotaStorage.deleteItem(location.hostname, '_id', capturedId);
       }
+      // Defensive: same safeguard deleteHighlight already uses. The CSS
+      // Highlight registry's delete() is object-identity based, so if the
+      // restorer's periodic pass had re-applied this highlight (it builds a
+      // fresh Range each pass via applyStoredHighlight + registry.add) we
+      // captured only one of the two registered Ranges and the other is
+      // stranded — visible paint persists after the undo. Storage is already
+      // authoritative here, so rebuilding from it clears anything stranded
+      // and reflects reality. Skipped for fallback because wrapper.remove()
+      // is definitive — no equivalent stranding mode for fallback overlays.
+      if (!capturedFallback && window.AdnotaUI?._rebuildLiveHighlights) {
+        await window.AdnotaUI._rebuildLiveHighlights();
+      }
     }
   });
 
