@@ -2266,12 +2266,22 @@ function startPositionDrag(e) {
   e.stopPropagation();
   if (!selectedEl) return;
 
+  // Capture the dragged element in a closure-local. `selectedEl` is module-
+  // scope and can be nulled mid-drag (Esc exits resizer mode, click-outside
+  // paths run deselectElement, etc.). The drag handlers below — onMove,
+  // onUp, restoreInlineSnapshot — all need to operate on the element we
+  // grabbed at drag-start, not on whatever `selectedEl` happens to be when
+  // the next mouse event fires. Without this, mid-drag deselect crashes
+  // `.style` access on null and leaves the element stuck in its inline
+  // drag styles.
+  const el = selectedEl;
+
   // Strategy dispatch — choose drag math based on the element's computed
   // position. In-flow elements get the force-relative + compensate-offset
   // dance; absolute/fixed elements keep their position type and use raw
   // CB-relative offsets. See getPositionStrategy + the section header
   // comment above for the full rationale.
-  const strategy = getPositionStrategy(selectedEl);
+  const strategy = getPositionStrategy(el);
   if (strategy.error) return;
   const posType = strategy.kind;                 // 'relative' | 'absolute' | 'fixed'
   const isOutOfFlow = posType === 'absolute' || posType === 'fixed';
@@ -2308,8 +2318,8 @@ function startPositionDrag(e) {
   const inlineSnapshot = {};
   for (const p of POS_PROPS) {
     inlineSnapshot[p] = {
-      value:    selectedEl.style.getPropertyValue(p),
-      priority: selectedEl.style.getPropertyPriority(p),
+      value:    el.style.getPropertyValue(p),
+      priority: el.style.getPropertyPriority(p),
     };
   }
 
@@ -2330,14 +2340,14 @@ function startPositionDrag(e) {
     // top/left positioning on commit, so right/bottom must be cleared to
     // 'auto' to defeat any authored right/bottom rule pulling in the
     // opposite direction.
-    const cs = getComputedStyle(selectedEl);
+    const cs = getComputedStyle(el);
     const csLeft = parseFloat(cs.left);
     const csTop  = parseFloat(cs.top);
     if (posType === 'absolute') {
-      startLeft = isFinite(csLeft) ? csLeft : selectedEl.offsetLeft;
-      startTop  = isFinite(csTop)  ? csTop  : selectedEl.offsetTop;
+      startLeft = isFinite(csLeft) ? csLeft : el.offsetLeft;
+      startTop  = isFinite(csTop)  ? csTop  : el.offsetTop;
     } else {
-      const rect = selectedEl.getBoundingClientRect();
+      const rect = el.getBoundingClientRect();
       startLeft = isFinite(csLeft) ? csLeft : rect.left;
       startTop  = isFinite(csTop)  ? csTop  : rect.top;
     }
@@ -2345,31 +2355,31 @@ function startPositionDrag(e) {
     // top+bottom) to non-auto, the element's width (or height) is the
     // resolved difference and would collapse when we drop the opposing
     // anchor. Pin the current rect dimension inline + remember to persist.
-    const rect = selectedEl.getBoundingClientRect();
+    const rect = el.getBoundingClientRect();
     const widthAnchored  = (cs.left   !== 'auto' && cs.right  !== 'auto');
     const heightAnchored = (cs.top    !== 'auto' && cs.bottom !== 'auto');
     pinnedDims = (widthAnchored || heightAnchored) ? {} : null;
     if (widthAnchored)  pinnedDims.width  = rect.width;
     if (heightAnchored) pinnedDims.height = rect.height;
-    if (widthAnchored)  selectedEl.style.setProperty('width',  rect.width  + 'px', 'important');
-    if (heightAnchored) selectedEl.style.setProperty('height', rect.height + 'px', 'important');
-    selectedEl.style.setProperty('position', posType,           'important');
-    selectedEl.style.setProperty('right',    'auto',            'important');
-    selectedEl.style.setProperty('bottom',   'auto',            'important');
-    selectedEl.style.setProperty('left',     startLeft + 'px',  'important');
-    selectedEl.style.setProperty('top',      startTop  + 'px',  'important');
+    if (widthAnchored)  el.style.setProperty('width',  rect.width  + 'px', 'important');
+    if (heightAnchored) el.style.setProperty('height', rect.height + 'px', 'important');
+    el.style.setProperty('position', posType,           'important');
+    el.style.setProperty('right',    'auto',            'important');
+    el.style.setProperty('bottom',   'auto',            'important');
+    el.style.setProperty('left',     startLeft + 'px',  'important');
+    el.style.setProperty('top',      startTop  + 'px',  'important');
   } else {
     // In-flow: force position: relative + clear all offsets so we can
     // measure the element's natural in-flow position. Load-bearing for
     // sticky AND for any selector that already has a persisted position
     // rule — `auto` alone wouldn't beat the rule's `Xpx !important`.
-    const grabbedRect = selectedEl.getBoundingClientRect();
-    selectedEl.style.setProperty('position', 'relative', 'important');
-    selectedEl.style.setProperty('top',      'auto',     'important');
-    selectedEl.style.setProperty('left',     'auto',     'important');
-    selectedEl.style.setProperty('right',    'auto',     'important');
-    selectedEl.style.setProperty('bottom',   'auto',     'important');
-    const naturalRect = selectedEl.getBoundingClientRect();
+    const grabbedRect = el.getBoundingClientRect();
+    el.style.setProperty('position', 'relative', 'important');
+    el.style.setProperty('top',      'auto',     'important');
+    el.style.setProperty('left',     'auto',     'important');
+    el.style.setProperty('right',    'auto',     'important');
+    el.style.setProperty('bottom',   'auto',     'important');
+    const naturalRect = el.getBoundingClientRect();
     // Compensating offset so the element stays at the grabbed position
     // visually. For static / relative-no-offset: 0,0. For relative-with-
     // offset (including a previously-persisted position rule): re-
@@ -2377,8 +2387,8 @@ function startPositionDrag(e) {
     // to in-flow + offset.
     startLeft = grabbedRect.left - naturalRect.left;
     startTop  = grabbedRect.top  - naturalRect.top;
-    selectedEl.style.setProperty('left', startLeft + 'px', 'important');
-    selectedEl.style.setProperty('top',  startTop  + 'px', 'important');
+    el.style.setProperty('left', startLeft + 'px', 'important');
+    el.style.setProperty('top',  startTop  + 'px', 'important');
   }
 
   // Fullscreen capture overlay so the mouse can travel anywhere without
@@ -2395,12 +2405,13 @@ function startPositionDrag(e) {
   document.documentElement.appendChild(dragOverlay);
 
   function restoreInlineSnapshot() {
+    if (!el.isConnected) return;
     for (const p of POS_PROPS) {
       const snap = inlineSnapshot[p];
       if (snap.value) {
-        selectedEl.style.setProperty(p, snap.value, snap.priority);
+        el.style.setProperty(p, snap.value, snap.priority);
       } else {
-        selectedEl.style.removeProperty(p);
+        el.style.removeProperty(p);
       }
     }
   }
@@ -2429,13 +2440,14 @@ function startPositionDrag(e) {
     requestAnimationFrame(() => {
       rafPending = false;
       if (dragAxis !== 'position') return;   // drag ended before this rAF
+      if (!el.isConnected) return;           // element gone mid-drag — bail
       // !important required to beat the persisted rule once one exists
       // (after first commit). Non-!important writes lose silently and the
       // element appears glued to its persisted position while the cursor
       // moves — that's the "second drag is laggy" failure mode.
-      selectedEl.style.setProperty('left', (startLeft + pendingDx) + 'px', 'important');
-      selectedEl.style.setProperty('top',  (startTop  + pendingDy) + 'px', 'important');
-      const rect = selectedEl.getBoundingClientRect();
+      el.style.setProperty('left', (startLeft + pendingDx) + 'px', 'important');
+      el.style.setProperty('top',  (startTop  + pendingDy) + 'px', 'important');
+      const rect = el.getBoundingClientRect();
       const sy = window.pageYOffset || document.documentElement.scrollTop;
       const sx = window.pageXOffset || document.documentElement.scrollLeft;
       if (selectionBox) positionBox(selectionBox, rect, sx, sy);
@@ -2458,7 +2470,7 @@ function startPositionDrag(e) {
         Math.abs(rect.top  - lastOcclusionCheckRect.top)  > 5;
       if (movedFar) {
         lastOcclusionCheckRect = { left: rect.left, top: rect.top };
-        const match = findOcclusion(selectedEl);
+        const match = findOcclusion(el);
         if (liftChipChanged(match, currentLiftMatch)) {
           applyLiftChipState(match);
           currentLiftMatch = match;
@@ -2498,7 +2510,7 @@ function startPositionDrag(e) {
     // visible flash back to natural position. Pass posType so absolute /
     // fixed elements don't get demoted to relative on commit, and
     // pinnedDims so anchor-stretch elements keep their dimensions.
-    persistPosition(selectedEl, finalLeft, finalTop, posType, pinnedDims);
+    persistPosition(el, finalLeft, finalTop, posType, pinnedDims);
     restoreInlineSnapshot();
 
     dragAxis = null;
