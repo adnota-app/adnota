@@ -42,8 +42,11 @@ Object.assign(adBadge.style, {
 });
 overlayBadgeRow.appendChild(adBadge);
 
-// Dimension chip — mirrors the resizer's blue chip in red so the two tools
-// share a consistent W×H readout style.
+// Dimension chip — mirrors the resizer's blue dimension pill in red so the
+// two tools share a consistent W×H readout style. Thin translucent border
+// (vs the chunky 2px white used by functional grab affordances) — the
+// dimension is purely informational, so it reads as a readout rather than
+// shouting for clicks.
 const dimensionBadge = document.createElement('div');
 dimensionBadge.id = 'adnota-dimension-badge';
 dimensionBadge.setAttribute('data-adnota-ui', '1');
@@ -53,7 +56,7 @@ Object.assign(dimensionBadge.style, {
   font: '600 11px/1 ui-monospace, "SF Mono", Menlo, Consolas, monospace',
   padding: '3px 8px 2px',
   borderRadius: '4px',
-  border: '2px solid #fff',
+  border: '1px solid rgba(255, 255, 255, 0.18)',
   boxShadow: '0 1px 4px rgba(0, 0, 0, 0.3)',
   whiteSpace: 'nowrap',
 });
