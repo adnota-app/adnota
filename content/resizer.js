@@ -976,10 +976,12 @@ function selectElement(el) {
   chipRowPrimary.appendChild(selectionParentChip);
   chipRowPrimary.appendChild(selectionActionChip);
   chipRowPrimary.appendChild(selectionInfiniteChip);
-  // scrollbar before clip: when a toggle activates, the cluster grows
-  // leftward (right edge pinned), so keeping the just-toggled chip anchored
-  // under the cursor means its sibling must appear to its LEFT. The active
-  // override's chip is kept rightmost of the pair — see updateSelectionChip.
+  // Static order: scrollbar before clip. The cluster grows leftward (right
+  // edge pinned), so this order keeps clip→unclip stable under the cursor
+  // (scrollbar appears to its left, clip stays put — the common entry path,
+  // from a fresh shrink that's now spilling content). The mirror direction
+  // (scrollbar→no-scrollbar) does wobble, but stable order wins over chasing
+  // both — see the earlier dynamic-reorder attempt that swapped chip sides.
   chipRowPrimary.appendChild(selectionOverflowScrollChip);
   chipRowPrimary.appendChild(selectionOverflowClipChip);
   chipRowPrimary.appendChild(selectionTextSizeDownChip);
@@ -1203,20 +1205,6 @@ function updateSelectionChip() {
         selectionOverflowScrollChip.style.display = '';
       } else {
         selectionOverflowScrollChip.style.display = 'none';
-      }
-
-      // Anchor the just-toggled chip under the cursor: the cluster grows
-      // leftward (right edge pinned), so when a toggle reveals its sibling,
-      // the chip the user clicked stays put only if the sibling appears to
-      // its LEFT. Keep the active override's chip rightmost of the pair —
-      // this makes clip→unclip and scrollbar→no-scrollbar both feel stable.
-      const overflowRow = selectionOverflowClipChip.parentNode;
-      if (overflowRow) {
-        if (overflowState === 'hidden') {
-          overflowRow.insertBefore(selectionOverflowScrollChip, selectionOverflowClipChip);
-        } else if (overflowState === 'auto') {
-          overflowRow.insertBefore(selectionOverflowClipChip, selectionOverflowScrollChip);
-        }
       }
     }
   }
