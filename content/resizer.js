@@ -2041,38 +2041,26 @@ async function resetElement(el) {
     window.AdnotaReorderRules.delete(rid);
   }
 
-  // Clear inline style leftovers
-  el.style.removeProperty('width');
-  el.style.removeProperty('min-width');
-  el.style.removeProperty('max-width');
-  el.style.removeProperty('height');
-  el.style.removeProperty('min-height');
-  el.style.removeProperty('max-height');
-  el.style.removeProperty('margin-left');
-  el.style.removeProperty('margin-top');
-  el.style.removeProperty('overflow');
-  el.style.removeProperty('flex-basis');
-  el.style.removeProperty('flex-shrink');
-  el.style.removeProperty('flex-grow');
-  // REFLOW props — clear so ↺ undoes Swap/Stack/Send-to-end too.
-  el.style.removeProperty('flex-direction');
-  el.style.removeProperty('order');
-  // POSITION props — clear so ↺ undoes drag-to-move + arrow-nudge as well.
-  // (No z-index property to clear — position rules don't write z-index.)
-  el.style.removeProperty('top');
-  el.style.removeProperty('left');
-  el.style.removeProperty('right');
-  el.style.removeProperty('bottom');
-  el.style.removeProperty('position');
-  // NOT cleared here: font-size / line-height / background-color / color.
-  // Text-size and recolor persist as `<style>`-tag rules (wiped by the
-  // storage filter below) — no Adnota path ever writes those properties to
-  // an element's inline style, so a blanket inline removeProperty cleans up
-  // nothing of ours and instead destroys the page's own authored inline
-  // styling (Ghost's `kg-signup-card` renders its background color inline,
-  // for one). See the `restoreInline` snapshot comment above for why blanket
-  // removeProperty is the wrong tool.
-  void el.offsetHeight; // force reflow
+  // No inline-style cleanup here, by design. The resizer's persisted effects
+  // live entirely in the `<style id="adnota-style-overrides">` tag; every
+  // commit/cancel/nudge path already reverts its own inline writes via
+  // restoreInline / restoreInlineSnapshot / the nudge cleanup. So at reset
+  // time the inline `style` attribute is the page's own — anything that
+  // looks like a resize prop on it (width/height/margin-left/top/position/
+  // top-left-right-bottom/flex-*/overflow) is page-authored, not ours.
+  //
+  // A blanket inline removeProperty here can't distinguish provenance — it
+  // would destroy page-authored inline styling whose property *happens* to
+  // overlap something the resizer also writes (the canonical case: the page
+  // sets `margin: 0 auto`, restoreInline correctly restores it, and we'd
+  // then strip `margin-left:auto` and shift the element on reset). See the
+  // `restoreInline` snapshot comment for the longhand-from-shorthand rationale.
+  //
+  // The only path this leaves uncovered is a drag that throws before its
+  // restore runs — leaking a resizer inline value. That's a bug to fix at
+  // its source (a try/finally on the commit critical sections) rather than
+  // paper over destructively here.
+  void el.offsetHeight; // force reflow against the now-empty style tag
 
   // Remove from storage — both CSS-keyed (selector match) and reorder-keyed
   // (sourceAnchor.cssSelector match, since reorder rows have no top-level
