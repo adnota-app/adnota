@@ -256,7 +256,10 @@ let selectionTextSizeDownChip = null;
 let selectionTextSizeUpChip = null;
 let selectionRecolorBgChip = null;
 let selectionRecolorTextChip = null;
+let selectionOverflowClipChip = null;
+let selectionOverflowScrollChip = null;
 let selectionChipCluster = null;
+let chipRowStatus = null;   // row 2 — red warning/status chips
 
 // Drag-time growth-blocker match. Set by onMove via AdnotaLayout.findGrowthOverflow,
 // latched after pointerup so the chip's click handler can fire post-release.
@@ -610,13 +613,35 @@ function hasPositionOverride(selector) {
 }
 
 // Is there a finite-scroll override currently in the live Map for this
-// selector? Detected by `overflow: hidden` in the cssText — the unique
-// signature of finite-scroll rules in this codebase (drag-resize and unstick
-// don't touch overflow). Used to flip the chip label between `finite scroll`
-// and `infinite scroll`.
+// selector? Keyed on `rule.kind` rather than an `overflow: hidden` cssText
+// grep — the clip chip (kind:'overflow') also writes `overflow: hidden`, so
+// a cssText match would cross-trip the two. Used to flip the chip label
+// between `finite scroll` and `infinite scroll`.
 function hasFiniteScrollOverride(selector) {
   for (const [, rule] of window.AdnotaResizeRules) {
-    if (rule.selector === selector && rule.cssText.includes('overflow: hidden')) return true;
+    if (rule.selector === selector && rule.kind === 'finite-scroll') return true;
+  }
+  return false;
+}
+
+// Is there an overflow (clip / scrollbar) override in the live Map for this
+// selector? Returns the active overflow value ('hidden' | 'auto') or null.
+// Used to drive the clip / scrollbar chip pair's label + active state.
+function getOverflowOverride(selector) {
+  for (const [, rule] of window.AdnotaResizeRules) {
+    if (rule.selector === selector && rule.kind === 'overflow') {
+      return rule.cssText.includes('overflow: auto') ? 'auto' : 'hidden';
+    }
+  }
+  return null;
+}
+
+// Does this selector have a drag-resize override (the no-`kind` default)?
+// The clip / scrollbar chips are gated on this — overflow only means
+// something once the element's box has actually been constrained.
+function hasDragResizeOverride(selector) {
+  for (const [, rule] of window.AdnotaResizeRules) {
+    if (rule.selector === selector && !rule.kind) return true;
   }
   return false;
 }
@@ -871,31 +896,101 @@ function selectElement(el) {
     pickColorAndApply(selectedEl, 'text');
   });
 
+  // Overflow chips: clip / scrollbar. A pair of two-state toggle chips that
+  // decide what happens to content that no longer fits after a resize —
+  // `clip` injects `overflow: hidden`, `scrollbar` injects `overflow: auto`.
+  // Neither active = the page's own overflow, untouched (the resting state —
+  // forcing overflow unconditionally caused trouble historically, so the
+  // default is to leave it alone). Visibility + labels are driven entirely
+  // by updateSelectionChip; each label describes its *next* action, matching
+  // the unstick/finite-scroll idiom. Stored as kind:'overflow' — same-kind
+  // dedup means clip and scrollbar can't coexist, and ↺ clears it like any
+  // other kind.
+  selectionOverflowClipChip = document.createElement('div');
+  selectionOverflowClipChip.className = 'adnota-resizer-action-chip';
+  selectionOverflowClipChip.setAttribute('data-adnota-ui', '1');
+  selectionOverflowClipChip.style.display = 'none';
+  selectionOverflowClipChip.addEventListener('click', async (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!selectedEl) return;
+    if (getOverflowOverride(generateCSSSelector(selectedEl)) === 'hidden') {
+      await removeResizeRule(selectedEl, 'overflow');   // unclip → page's own overflow
+    } else {
+      await applyOverflowRule(selectedEl, 'hidden');    // clip
+    }
+    updateSelectionChip();
+  });
+
+  selectionOverflowScrollChip = document.createElement('div');
+  selectionOverflowScrollChip.className = 'adnota-resizer-action-chip';
+  selectionOverflowScrollChip.setAttribute('data-adnota-ui', '1');
+  selectionOverflowScrollChip.style.display = 'none';
+  selectionOverflowScrollChip.addEventListener('click', async (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!selectedEl) return;
+    if (getOverflowOverride(generateCSSSelector(selectedEl)) === 'auto') {
+      await removeResizeRule(selectedEl, 'overflow');   // remove scrollbar → page's own overflow
+    } else {
+      await applyOverflowRule(selectedEl, 'auto');      // scrollbar
+    }
+    updateSelectionChip();
+  });
+
   selectionChipCluster = document.createElement('div');
   selectionChipCluster.setAttribute('data-adnota-ui', '1');
   Object.assign(selectionChipCluster.style, {
     position: 'absolute',
-    top: `${chipClusterTopOffset(rect)}px`,
+    top: `${chipClusterTopOffset(rect, true)}px`,
     // The dismiss button (20px) straddles the corner — its left edge
     // sits 10px inside the selection box. 14px clears the button by 4px,
     // matching the hover cluster's right:4px breathing room.
     right: '14px',
+    // Two stacked rows: tools on top, red status chips below. Column flex
+    // with flex-end alignment keeps both rows right-pinned under the corner.
     display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'flex-end',
     gap: '4px',
-    alignItems: 'center',
     zIndex: '2147483647',
   });
-  // Order: parent → unstick → finite scroll → text-size → recolor → clip → dimension.
-  selectionChipCluster.appendChild(selectionParentChip);
-  selectionChipCluster.appendChild(selectionActionChip);
-  selectionChipCluster.appendChild(selectionInfiniteChip);
-  selectionChipCluster.appendChild(selectionTextSizeDownChip);
-  selectionChipCluster.appendChild(selectionTextSizeUpChip);
-  selectionChipCluster.appendChild(selectionRecolorBgChip);
-  selectionChipCluster.appendChild(selectionRecolorTextChip);
-  selectionChipCluster.appendChild(selectionClipChip);
-  selectionChipCluster.appendChild(selectionLiftChip);
-  selectionChipCluster.appendChild(selectionDimBadge);
+
+  // Row 1 — amber action chips + the blue dimension readout. The dimension
+  // badge stays on row 1 (not pushed down with the status chips) so its
+  // screen position matches the hover-state pill — deliberate hover↔selection
+  // continuity. It's the lone blue chip and earns the exception.
+  const chipRowPrimary = document.createElement('div');
+  chipRowPrimary.setAttribute('data-adnota-ui', '1');
+  Object.assign(chipRowPrimary.style, { display: 'flex', gap: '4px', alignItems: 'center' });
+
+  // Row 2 — red warning/status chips. Starts hidden and only takes up space
+  // when it has a visible child (see syncStatusRowVisibility) so it's never
+  // a permanent empty band under row 1.
+  chipRowStatus = document.createElement('div');
+  chipRowStatus.setAttribute('data-adnota-ui', '1');
+  Object.assign(chipRowStatus.style, { display: 'none', gap: '4px', alignItems: 'center' });
+
+  // Row 1 order: parent → unstick → finite scroll → clip/scrollbar → text-size
+  // → recolor → lift → dimension. Row 2: the red clip/size-cap warning chip.
+  chipRowPrimary.appendChild(selectionParentChip);
+  chipRowPrimary.appendChild(selectionActionChip);
+  chipRowPrimary.appendChild(selectionInfiniteChip);
+  // scrollbar before clip: when a toggle activates, the cluster grows
+  // leftward (right edge pinned), so keeping the just-toggled chip anchored
+  // under the cursor means its sibling must appear to its LEFT. The active
+  // override's chip is kept rightmost of the pair — see updateSelectionChip.
+  chipRowPrimary.appendChild(selectionOverflowScrollChip);
+  chipRowPrimary.appendChild(selectionOverflowClipChip);
+  chipRowPrimary.appendChild(selectionTextSizeDownChip);
+  chipRowPrimary.appendChild(selectionTextSizeUpChip);
+  chipRowPrimary.appendChild(selectionRecolorBgChip);
+  chipRowPrimary.appendChild(selectionRecolorTextChip);
+  chipRowPrimary.appendChild(selectionLiftChip);
+  chipRowPrimary.appendChild(selectionDimBadge);
+  chipRowStatus.appendChild(selectionClipChip);
+  selectionChipCluster.appendChild(chipRowPrimary);
+  selectionChipCluster.appendChild(chipRowStatus);
   selectionBox.appendChild(selectionChipCluster);
 
   updateSelectionChip();
@@ -1056,6 +1151,79 @@ function updateSelectionChip() {
     selectionRecolorBgChip.style.display   = show;
     selectionRecolorTextChip.style.display = show;
   }
+
+  // Overflow chips (clip / scrollbar) — gated on an existing drag-resize
+  // override: overflow only means something once the element's box has
+  // actually been constrained. Suppressed while finite-scroll owns overflow
+  // on this element (it already injects overflow:hidden — the two would
+  // fight). Contextual: `clip` surfaces when content is spilling out of the
+  // box (or is the active override), `scrollbar` when content is being cut
+  // off (or is the active override). Each is a two-state toggle — the label
+  // describes the *next* action, so the active override reads as its inverse
+  // (`unclip` / `no scrollbar`) and a second click returns to the page's own
+  // overflow. getComputedStyle already reflects our injected rule, so
+  // overflowX/Y accounts for an active clip/scrollbar override.
+  if (selectionOverflowClipChip && selectionOverflowScrollChip) {
+    const overflowState = getOverflowOverride(selector);   // 'hidden' | 'auto' | null
+    if (!hasDragResizeOverride(selector) || hasFiniteScrollOverride(selector)) {
+      selectionOverflowClipChip.style.display   = 'none';
+      selectionOverflowScrollChip.style.display = 'none';
+    } else {
+      const overflowsY = selectedEl.scrollHeight > selectedEl.clientHeight + 1;
+      const overflowsX = selectedEl.scrollWidth  > selectedEl.clientWidth  + 1;
+      const hasOverflowContent = overflowsY || overflowsX;
+      const ovY = cs.overflowY, ovX = cs.overflowX;
+      const spilling   = hasOverflowContent && (ovY === 'visible' || ovX === 'visible');
+      const clipped    = hasOverflowContent && (ovY === 'hidden' || ovY === 'clip' || ovX === 'hidden' || ovX === 'clip');
+      const scrollable = hasOverflowContent && (ovY === 'auto' || ovY === 'scroll' || ovX === 'auto' || ovX === 'scroll');
+
+      // clip chip: active override → `unclip`; otherwise offer `clip` when
+      // content is spilling (contain it) or already scrollable (switch to it).
+      if (overflowState === 'hidden') {
+        selectionOverflowClipChip.textContent = 'unclip';
+        selectionOverflowClipChip.setAttribute('data-adnota-tooltip', "Stop clipping — restore the page's own overflow");
+        selectionOverflowClipChip.style.display = '';
+      } else if (spilling || scrollable) {
+        selectionOverflowClipChip.textContent = 'clip';
+        selectionOverflowClipChip.setAttribute('data-adnota-tooltip', 'Cut off content that no longer fits the resized box');
+        selectionOverflowClipChip.style.display = '';
+      } else {
+        selectionOverflowClipChip.style.display = 'none';
+      }
+
+      // scrollbar chip: active override → `no scrollbar`; otherwise offer
+      // `scrollbar` when content is being cut off (make it reachable).
+      if (overflowState === 'auto') {
+        selectionOverflowScrollChip.textContent = 'no scrollbar';
+        selectionOverflowScrollChip.setAttribute('data-adnota-tooltip', "Remove the scrollbar — restore the page's own overflow");
+        selectionOverflowScrollChip.style.display = '';
+      } else if (clipped) {
+        selectionOverflowScrollChip.textContent = 'scrollbar';
+        selectionOverflowScrollChip.setAttribute('data-adnota-tooltip', 'Add a scrollbar so the cut-off content stays reachable');
+        selectionOverflowScrollChip.style.display = '';
+      } else {
+        selectionOverflowScrollChip.style.display = 'none';
+      }
+
+      // Anchor the just-toggled chip under the cursor: the cluster grows
+      // leftward (right edge pinned), so when a toggle reveals its sibling,
+      // the chip the user clicked stays put only if the sibling appears to
+      // its LEFT. Keep the active override's chip rightmost of the pair —
+      // this makes clip→unclip and scrollbar→no-scrollbar both feel stable.
+      const overflowRow = selectionOverflowClipChip.parentNode;
+      if (overflowRow) {
+        if (overflowState === 'hidden') {
+          overflowRow.insertBefore(selectionOverflowScrollChip, selectionOverflowClipChip);
+        } else if (overflowState === 'auto') {
+          overflowRow.insertBefore(selectionOverflowClipChip, selectionOverflowScrollChip);
+        }
+      }
+    }
+  }
+
+  // Keep the status row collapsed unless a row-2 chip is showing (future-
+  // proofs against any row-2 chip whose state is driven from here).
+  syncStatusRowVisibility();
 }
 
 function deselectElement() {
@@ -1104,6 +1272,9 @@ function deselectElement() {
   selectionTextSizeUpChip = null;
   selectionRecolorBgChip = null;
   selectionRecolorTextChip = null;
+  selectionOverflowClipChip = null;
+  selectionOverflowScrollChip = null;
+  chipRowStatus = null;
   currentClipMatch = null;
   currentLiftMatch = null;
   lastOcclusionCheckRect = null;
@@ -1145,11 +1316,24 @@ function clampToViewport(idealTop, idealLeft, handleW, handleH, sx, sy) {
 // scrolled into a tall element), slide the chip down so it stays in view —
 // capped so it doesn't push past the element's bottom. Returns the desired
 // `top` offset within the cluster's parent (overlay / selection box).
-function chipClusterTopOffset(rect) {
-  const CHIP_H = 32;  // approximate cluster height; safety cap, not exact
+function chipClusterTopOffset(rect, twoRow) {
+  // The selection cluster can carry a second row (red status chips), so it
+  // reserves more vertical room than the single-row hover cluster. Both are
+  // safety caps, not exact — over-reserving just keeps the cluster a little
+  // higher on a short element, which is harmless.
+  const CHIP_H = twoRow ? 60 : 32;
   const ideal = Math.max(4, 4 - rect.top);
   const cap   = Math.max(4, rect.height - CHIP_H);
   return Math.min(ideal, cap);
+}
+
+// The status row (row 2) only occupies space when it has a visible child —
+// keeps it from being a permanent empty band under row 1. Called whenever a
+// row-2 chip's visibility changes.
+function syncStatusRowVisibility() {
+  if (!chipRowStatus) return;
+  const anyVisible = [...chipRowStatus.children].some(c => c.style.display !== 'none');
+  chipRowStatus.style.display = anyVisible ? 'flex' : 'none';
 }
 
 function positionHandleLeft(h, rect, sx, sy) {
@@ -1814,7 +1998,7 @@ function refreshHandles() {
   // Pin chip cluster to the visible top edge — keeps it in view when the
   // selection extends above the viewport.
   if (selectionChipCluster) {
-    selectionChipCluster.style.top = `${chipClusterTopOffset(rect)}px`;
+    selectionChipCluster.style.top = `${chipClusterTopOffset(rect, true)}px`;
   }
   // Re-evaluate chip state in case an undo/restick happened while selection
   // is still active (e.g., user hits Ctrl+Z mid-selection).
@@ -1880,16 +2064,14 @@ async function resetElement(el) {
   el.style.removeProperty('right');
   el.style.removeProperty('bottom');
   el.style.removeProperty('position');
-  // TEXT-SIZE props — defensive cleanup; the persisted rule itself is wiped
-  // by the storage filter below. Only matters if a future drag-time preview
-  // ever leaks inline font-size/line-height onto the element.
-  el.style.removeProperty('font-size');
-  el.style.removeProperty('line-height');
-  // RECOLOR props — same defensive pattern. Persisted recolor-bg/recolor-text
-  // rules go through the storage filter; these inline removes catch anything
-  // that might have leaked.
-  el.style.removeProperty('background-color');
-  el.style.removeProperty('color');
+  // NOT cleared here: font-size / line-height / background-color / color.
+  // Text-size and recolor persist as `<style>`-tag rules (wiped by the
+  // storage filter below) — no Adnota path ever writes those properties to
+  // an element's inline style, so a blanket inline removeProperty cleans up
+  // nothing of ours and instead destroys the page's own authored inline
+  // styling (Ghost's `kg-signup-card` renders its background color inline,
+  // for one). See the `restoreInline` snapshot comment above for why blanket
+  // removeProperty is the wrong tool.
   void el.offsetHeight; // force reflow
 
   // Remove from storage — both CSS-keyed (selector match) and reorder-keyed
@@ -1937,6 +2119,7 @@ function applyClipChipState(match) {
   if (!selectionClipChip) return;
   if (!match) {
     selectionClipChip.style.display = 'none';
+    syncStatusRowVisibility();
     return;
   }
   if (match.kind === 'clip-ancestor') {
@@ -1952,6 +2135,7 @@ function applyClipChipState(match) {
     selectionClipChip.setAttribute('data-warn-only', '1');
   }
   selectionClipChip.style.display = '';
+  syncStatusRowVisibility();
 }
 
 
@@ -2458,7 +2642,7 @@ function startPositionDrag(e) {
       if (handleCorner) positionHandleCorner(handleCorner, rect, sx, sy);
       if (dismissBtn)   positionDismiss(dismissBtn, rect, sx, sy);
       if (selectionChipCluster) {
-        selectionChipCluster.style.top = `${chipClusterTopOffset(rect)}px`;
+        selectionChipCluster.style.top = `${chipClusterTopOffset(rect, true)}px`;
       }
 
       // Lift-chip occlusion check, motion-gated. Skipping the elementsFromPoint
@@ -3204,6 +3388,16 @@ async function removeResizeRule(el, kind) {
 // Drag-resize commit: thin wrapper over commitResizeRule with no `kind`.
 async function persistResize(el, cssText) {
   await commitResizeRule(el, cssText);
+}
+
+// ─── Overflow chip: apply the clip / scrollbar override ─────────────────────
+// `value` is 'hidden' (clip — cut off the spillover) or 'auto' (scrollbar —
+// keep it reachable). Stored with kind:'overflow'; commitResizeRule's
+// same-kind dedup means the two values can't coexist — picking one replaces
+// the other in place. removeResizeRule(el, 'overflow') is the inverse (back
+// to the page's own overflow), and ↺ reset clears it like every other kind.
+async function applyOverflowRule(el, value) {
+  await commitResizeRule(el, `overflow: ${value} !important`, 'overflow');
 }
 
 // ─── REFLOW v1.5: DOM-reorder for block-flow pages ──────────────────────────
