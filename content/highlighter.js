@@ -245,14 +245,38 @@ function svgCursor(svg, hx, hy, fallback = 'crosshair') {
 // etc.) — a "White" pointer on a white wikipedia page made our crosshair and
 // resize handles invisible. System-cursor fallbacks stay as the last token in
 // each url(...) so older browsers/headless envs still get something.
-const CURSORS = {
-  crosshair: svgCursor(
+// Bicolor crosshair (white halo + dark core) — the default, untinted variant.
+function _crosshair(coreColor) {
+  return svgCursor(
     `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 18 18">
        <path d="M9 1 L9 17 M1 9 L17 9"
              stroke="white" stroke-width="3" stroke-linecap="round"/>
        <path d="M9 1 L9 17 M1 9 L17 9"
-             stroke="black" stroke-width="1.2" stroke-linecap="round"/>
-     </svg>`, 9, 9, 'crosshair'),
+             stroke="${coreColor}" stroke-width="1.2" stroke-linecap="round"/>
+     </svg>`, 9, 9, 'crosshair');
+}
+
+// Tritone tinted crosshair: white halo (failsafe against any background) +
+// tool-color band (mode signal) + black core (max contrast, and a fallback
+// when the band blends into a same-hue background). Slightly beefier than
+// the plain crosshair — the color band needs room to read.
+function _tintedCrosshair(bandColor) {
+  return svgCursor(
+    `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 18 18">
+       <path d="M9 1 L9 17 M1 9 L17 9"
+             stroke="white" stroke-width="4" stroke-linecap="round"/>
+       <path d="M9 1 L9 17 M1 9 L17 9"
+             stroke="${bandColor}" stroke-width="2.6" stroke-linecap="round"/>
+       <path d="M9 1 L9 17 M1 9 L17 9"
+             stroke="black" stroke-width="1" stroke-linecap="round"/>
+     </svg>`, 9, 9, 'crosshair');
+}
+
+const CURSORS = {
+  crosshair:         _crosshair('black'),
+  crosshairEraser:   _tintedCrosshair('#ef4444'),
+  crosshairResizer:  _tintedCrosshair('#3b82f6'),
+  crosshairDraw:     _tintedCrosshair('#c084fc'),
   // I-beam for highlight + text. Plain native cursor gives the crispest
   // selection feedback — a custom SVG on a slant confused the hotspot.
   text: 'text',
@@ -374,15 +398,16 @@ window.AdnotaState.subscribe(state => {
     // Sticky owns its cursor so the icon can recolor when the user picks a
     // swatch in the HUD — see window.AdnotaSticky.applyCursor in sticky.js.
     case 'sticky':    window.AdnotaSticky?.applyCursor(); break;
-    // Resizer — crosshair keeps mode intent clear; resize handles set their
-    // own ew-resize/ns-resize/nwse-resize cursors inline, overriding this.
-    case 'resizer':
-    case 'eraser':
+    // Per-tool tinted crosshair. White halo stays as the contrast failsafe;
+    // the tool-color core is the mode signal. Resize handles set their own
+    // ew-resize/ns-resize/nwse-resize cursors inline, overriding this.
+    case 'eraser':    setCursorLock(CURSORS.crosshairEraser);  break;
+    case 'resizer':   setCursorLock(CURSORS.crosshairResizer); break;
     case 'pen':
     case 'arrow':
     case 'rect':
     case 'ellipse':
-      setCursorLock(CURSORS.crosshair); break;
+      setCursorLock(CURSORS.crosshairDraw); break;
     default: setCursorLock(null); break;
   }
   // Drive the `grab` cursor on marker hover + any other select-mode-only CSS.
@@ -851,6 +876,18 @@ async function createHighlightFromRange(range, color, tag = '') {
       unregisterLiveHighlight(capturedId);
       if (window.AdnotaStorage) {
         await window.AdnotaStorage.deleteItem(location.hostname, '_id', capturedId);
+      }
+      // Defensive: same safeguard deleteHighlight already uses. The CSS
+      // Highlight registry's delete() is object-identity based, so if the
+      // restorer's periodic pass had re-applied this highlight (it builds a
+      // fresh Range each pass via applyStoredHighlight + registry.add) we
+      // captured only one of the two registered Ranges and the other is
+      // stranded — visible paint persists after the undo. Storage is already
+      // authoritative here, so rebuilding from it clears anything stranded
+      // and reflects reality. Skipped for fallback because wrapper.remove()
+      // is definitive — no equivalent stranding mode for fallback overlays.
+      if (!capturedFallback && window.AdnotaUI?._rebuildLiveHighlights) {
+        await window.AdnotaUI._rebuildLiveHighlights();
       }
     }
   });

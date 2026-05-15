@@ -251,16 +251,30 @@ let selectionActionChip = null;
 let selectionInfiniteChip = null;
 let selectionParentChip = null;
 let selectionClipChip = null;
+let selectionLiftChip = null;
 let selectionTextSizeDownChip = null;
 let selectionTextSizeUpChip = null;
 let selectionRecolorBgChip = null;
 let selectionRecolorTextChip = null;
+let selectionOverflowClipChip = null;
+let selectionOverflowScrollChip = null;
 let selectionChipCluster = null;
+let chipRowStatus = null;   // row 2 — red warning/status chips
 
 // Drag-time growth-blocker match. Set by onMove via AdnotaLayout.findGrowthOverflow,
 // latched after pointerup so the chip's click handler can fire post-release.
 // Cleared on selection change, mode exit, and at the top of each new startDrag.
 let currentClipMatch = null;
+
+// Position-drag occlusion match (higher-z neighbor that overlaps the dragged
+// rect). Lifecycle mirrors currentClipMatch: set by position-drag onMove,
+// latched on successful drop so the "Bring to front" chip's click handler can
+// fire post-release, cleared on selection change / mode exit / tiny-drag cancel.
+let currentLiftMatch = null;
+// Last rect we ran findOcclusion against, used as a motion gate inside the
+// position-drag rAF so we skip the elementsFromPoint sweep on frames where the
+// rect barely moved.
+let lastOcclusionCheckRect = null;
 
 // ─── Drag state ──────────────────────────────────────────────────────────────
 let dragAxis = null;       // 'x' | 'x-left' | 'y' | 'y-top' | 'xy'
@@ -599,13 +613,35 @@ function hasPositionOverride(selector) {
 }
 
 // Is there a finite-scroll override currently in the live Map for this
-// selector? Detected by `overflow: hidden` in the cssText — the unique
-// signature of finite-scroll rules in this codebase (drag-resize and unstick
-// don't touch overflow). Used to flip the chip label between `finite scroll`
-// and `infinite scroll`.
+// selector? Keyed on `rule.kind` rather than an `overflow: hidden` cssText
+// grep — the clip chip (kind:'overflow') also writes `overflow: hidden`, so
+// a cssText match would cross-trip the two. Used to flip the chip label
+// between `finite scroll` and `infinite scroll`.
 function hasFiniteScrollOverride(selector) {
   for (const [, rule] of window.AdnotaResizeRules) {
-    if (rule.selector === selector && rule.cssText.includes('overflow: hidden')) return true;
+    if (rule.selector === selector && rule.kind === 'finite-scroll') return true;
+  }
+  return false;
+}
+
+// Is there an overflow (clip / scrollbar) override in the live Map for this
+// selector? Returns the active overflow value ('hidden' | 'auto') or null.
+// Used to drive the clip / scrollbar chip pair's label + active state.
+function getOverflowOverride(selector) {
+  for (const [, rule] of window.AdnotaResizeRules) {
+    if (rule.selector === selector && rule.kind === 'overflow') {
+      return rule.cssText.includes('overflow: auto') ? 'auto' : 'hidden';
+    }
+  }
+  return null;
+}
+
+// Does this selector have a drag-resize override (the no-`kind` default)?
+// The clip / scrollbar chips are gated on this — overflow only means
+// something once the element's box has actually been constrained.
+function hasDragResizeOverride(selector) {
+  for (const [, rule] of window.AdnotaResizeRules) {
+    if (rule.selector === selector && !rule.kind) return true;
   }
   return false;
 }
@@ -780,6 +816,22 @@ function selectElement(el) {
     // 'size-cap' is warn-only in v2 — no click action.
   });
 
+  // Lift chip — surfaces during position drag when an overlapping non-Adnota
+  // neighbor has a higher z-index than the dragged element. Latches after drop
+  // so the click can fire post-release (same dance as the clip chip). Click
+  // re-detects against fresh state (latched currentLiftMatch is only good for
+  // "should chip exist") and commits a kind:'z-lift' rule above the occluder.
+  selectionLiftChip = document.createElement('div');
+  selectionLiftChip.className = 'adnota-resizer-action-chip adnota-resizer-lift-chip';
+  selectionLiftChip.setAttribute('data-adnota-ui', '1');
+  selectionLiftChip.style.display = 'none';
+  selectionLiftChip.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!selectedEl) return;
+    performLift(selectedEl);
+  });
+
   // Text-size chips: Aa−/Aa+ scale the element + common text-bearing
   // descendants via the kind:'text-size' rule. See the text-size helpers
   // section for the cascade rationale (headings/code/forms preserved).
@@ -844,30 +896,103 @@ function selectElement(el) {
     pickColorAndApply(selectedEl, 'text');
   });
 
+  // Overflow chips: clip / scrollbar. A pair of two-state toggle chips that
+  // decide what happens to content that no longer fits after a resize —
+  // `clip` injects `overflow: hidden`, `scrollbar` injects `overflow: auto`.
+  // Neither active = the page's own overflow, untouched (the resting state —
+  // forcing overflow unconditionally caused trouble historically, so the
+  // default is to leave it alone). Visibility + labels are driven entirely
+  // by updateSelectionChip; each label describes its *next* action, matching
+  // the unstick/finite-scroll idiom. Stored as kind:'overflow' — same-kind
+  // dedup means clip and scrollbar can't coexist, and ↺ clears it like any
+  // other kind.
+  selectionOverflowClipChip = document.createElement('div');
+  selectionOverflowClipChip.className = 'adnota-resizer-action-chip';
+  selectionOverflowClipChip.setAttribute('data-adnota-ui', '1');
+  selectionOverflowClipChip.style.display = 'none';
+  selectionOverflowClipChip.addEventListener('click', async (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!selectedEl) return;
+    if (getOverflowOverride(generateCSSSelector(selectedEl)) === 'hidden') {
+      await removeResizeRule(selectedEl, 'overflow');   // unclip → page's own overflow
+    } else {
+      await applyOverflowRule(selectedEl, 'hidden');    // clip
+    }
+    updateSelectionChip();
+  });
+
+  selectionOverflowScrollChip = document.createElement('div');
+  selectionOverflowScrollChip.className = 'adnota-resizer-action-chip';
+  selectionOverflowScrollChip.setAttribute('data-adnota-ui', '1');
+  selectionOverflowScrollChip.style.display = 'none';
+  selectionOverflowScrollChip.addEventListener('click', async (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!selectedEl) return;
+    if (getOverflowOverride(generateCSSSelector(selectedEl)) === 'auto') {
+      await removeResizeRule(selectedEl, 'overflow');   // remove scrollbar → page's own overflow
+    } else {
+      await applyOverflowRule(selectedEl, 'auto');      // scrollbar
+    }
+    updateSelectionChip();
+  });
+
   selectionChipCluster = document.createElement('div');
   selectionChipCluster.setAttribute('data-adnota-ui', '1');
   Object.assign(selectionChipCluster.style, {
     position: 'absolute',
-    top: `${chipClusterTopOffset(rect)}px`,
+    top: `${chipClusterTopOffset(rect, true)}px`,
     // The dismiss button (20px) straddles the corner — its left edge
     // sits 10px inside the selection box. 14px clears the button by 4px,
     // matching the hover cluster's right:4px breathing room.
     right: '14px',
+    // Two stacked rows: tools on top, red status chips below. Column flex
+    // with flex-end alignment keeps both rows right-pinned under the corner.
     display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'flex-end',
     gap: '4px',
-    alignItems: 'center',
     zIndex: '2147483647',
   });
-  // Order: parent → unstick → finite scroll → text-size → recolor → clip → dimension.
-  selectionChipCluster.appendChild(selectionParentChip);
-  selectionChipCluster.appendChild(selectionActionChip);
-  selectionChipCluster.appendChild(selectionInfiniteChip);
-  selectionChipCluster.appendChild(selectionTextSizeDownChip);
-  selectionChipCluster.appendChild(selectionTextSizeUpChip);
-  selectionChipCluster.appendChild(selectionRecolorBgChip);
-  selectionChipCluster.appendChild(selectionRecolorTextChip);
-  selectionChipCluster.appendChild(selectionClipChip);
-  selectionChipCluster.appendChild(selectionDimBadge);
+
+  // Row 1 — amber action chips + the blue dimension readout. The dimension
+  // badge stays on row 1 (not pushed down with the status chips) so its
+  // screen position matches the hover-state pill — deliberate hover↔selection
+  // continuity. It's the lone blue chip and earns the exception.
+  const chipRowPrimary = document.createElement('div');
+  chipRowPrimary.setAttribute('data-adnota-ui', '1');
+  Object.assign(chipRowPrimary.style, { display: 'flex', gap: '4px', alignItems: 'center' });
+
+  // Row 2 — red warning/status chips. Starts hidden and only takes up space
+  // when it has a visible child (see syncStatusRowVisibility) so it's never
+  // a permanent empty band under row 1.
+  chipRowStatus = document.createElement('div');
+  chipRowStatus.setAttribute('data-adnota-ui', '1');
+  Object.assign(chipRowStatus.style, { display: 'none', gap: '4px', alignItems: 'center' });
+
+  // Row 1 order: parent → unstick → finite scroll → clip/scrollbar → text-size
+  // → recolor → lift → dimension. Row 2: the red clip/size-cap warning chip.
+  chipRowPrimary.appendChild(selectionParentChip);
+  chipRowPrimary.appendChild(selectionActionChip);
+  chipRowPrimary.appendChild(selectionInfiniteChip);
+  // Static order: scrollbar before clip. The cluster grows leftward (right
+  // edge pinned), so this order keeps clip→unclip stable under the cursor
+  // (scrollbar appears to its left, clip stays put — the common entry path,
+  // from a fresh shrink that's now spilling content). The mirror direction
+  // (scrollbar→no-scrollbar) does wobble, but stable order wins over chasing
+  // both — see the earlier dynamic-reorder attempt that swapped chip sides.
+  chipRowPrimary.appendChild(selectionOverflowScrollChip);
+  chipRowPrimary.appendChild(selectionOverflowClipChip);
+  chipRowPrimary.appendChild(selectionTextSizeDownChip);
+  chipRowPrimary.appendChild(selectionTextSizeUpChip);
+  chipRowPrimary.appendChild(selectionRecolorBgChip);
+  chipRowPrimary.appendChild(selectionRecolorTextChip);
+  chipRowPrimary.appendChild(selectionLiftChip);
+  chipRowPrimary.appendChild(selectionDimBadge);
+  chipRowStatus.appendChild(selectionClipChip);
+  selectionChipCluster.appendChild(chipRowPrimary);
+  selectionChipCluster.appendChild(chipRowStatus);
   selectionBox.appendChild(selectionChipCluster);
 
   updateSelectionChip();
@@ -1028,6 +1153,65 @@ function updateSelectionChip() {
     selectionRecolorBgChip.style.display   = show;
     selectionRecolorTextChip.style.display = show;
   }
+
+  // Overflow chips (clip / scrollbar) — gated on an existing drag-resize
+  // override: overflow only means something once the element's box has
+  // actually been constrained. Suppressed while finite-scroll owns overflow
+  // on this element (it already injects overflow:hidden — the two would
+  // fight). Contextual: `clip` surfaces when content is spilling out of the
+  // box (or is the active override), `scrollbar` when content is being cut
+  // off (or is the active override). Each is a two-state toggle — the label
+  // describes the *next* action, so the active override reads as its inverse
+  // (`unclip` / `no scrollbar`) and a second click returns to the page's own
+  // overflow. getComputedStyle already reflects our injected rule, so
+  // overflowX/Y accounts for an active clip/scrollbar override.
+  if (selectionOverflowClipChip && selectionOverflowScrollChip) {
+    const overflowState = getOverflowOverride(selector);   // 'hidden' | 'auto' | null
+    if (!hasDragResizeOverride(selector) || hasFiniteScrollOverride(selector)) {
+      selectionOverflowClipChip.style.display   = 'none';
+      selectionOverflowScrollChip.style.display = 'none';
+    } else {
+      const overflowsY = selectedEl.scrollHeight > selectedEl.clientHeight + 1;
+      const overflowsX = selectedEl.scrollWidth  > selectedEl.clientWidth  + 1;
+      const hasOverflowContent = overflowsY || overflowsX;
+      const ovY = cs.overflowY, ovX = cs.overflowX;
+      const spilling   = hasOverflowContent && (ovY === 'visible' || ovX === 'visible');
+      const clipped    = hasOverflowContent && (ovY === 'hidden' || ovY === 'clip' || ovX === 'hidden' || ovX === 'clip');
+      const scrollable = hasOverflowContent && (ovY === 'auto' || ovY === 'scroll' || ovX === 'auto' || ovX === 'scroll');
+
+      // clip chip: active override → `unclip`; otherwise offer `clip` when
+      // content is spilling (contain it) or already scrollable (switch to it).
+      if (overflowState === 'hidden') {
+        selectionOverflowClipChip.textContent = 'unclip';
+        selectionOverflowClipChip.setAttribute('data-adnota-tooltip', "Stop clipping — restore the page's own overflow");
+        selectionOverflowClipChip.style.display = '';
+      } else if (spilling || scrollable) {
+        selectionOverflowClipChip.textContent = 'clip';
+        selectionOverflowClipChip.setAttribute('data-adnota-tooltip', 'Cut off content that no longer fits the resized box');
+        selectionOverflowClipChip.style.display = '';
+      } else {
+        selectionOverflowClipChip.style.display = 'none';
+      }
+
+      // scrollbar chip: active override → `no scrollbar`; otherwise offer
+      // `scrollbar` when content is being cut off (make it reachable).
+      if (overflowState === 'auto') {
+        selectionOverflowScrollChip.textContent = 'no scrollbar';
+        selectionOverflowScrollChip.setAttribute('data-adnota-tooltip', "Remove the scrollbar — restore the page's own overflow");
+        selectionOverflowScrollChip.style.display = '';
+      } else if (clipped) {
+        selectionOverflowScrollChip.textContent = 'scrollbar';
+        selectionOverflowScrollChip.setAttribute('data-adnota-tooltip', 'Add a scrollbar so the cut-off content stays reachable');
+        selectionOverflowScrollChip.style.display = '';
+      } else {
+        selectionOverflowScrollChip.style.display = 'none';
+      }
+    }
+  }
+
+  // Keep the status row collapsed unless a row-2 chip is showing (future-
+  // proofs against any row-2 chip whose state is driven from here).
+  syncStatusRowVisibility();
 }
 
 function deselectElement() {
@@ -1071,11 +1255,17 @@ function deselectElement() {
   selectionInfiniteChip = null;
   selectionParentChip = null;
   selectionClipChip = null;
+  selectionLiftChip = null;
   selectionTextSizeDownChip = null;
   selectionTextSizeUpChip = null;
   selectionRecolorBgChip = null;
   selectionRecolorTextChip = null;
+  selectionOverflowClipChip = null;
+  selectionOverflowScrollChip = null;
+  chipRowStatus = null;
   currentClipMatch = null;
+  currentLiftMatch = null;
+  lastOcclusionCheckRect = null;
   if (hadSelection && window.AdnotaState.mode === 'resizer') updateHUD();
   updateReflowButtonStates();
 }
@@ -1114,11 +1304,24 @@ function clampToViewport(idealTop, idealLeft, handleW, handleH, sx, sy) {
 // scrolled into a tall element), slide the chip down so it stays in view —
 // capped so it doesn't push past the element's bottom. Returns the desired
 // `top` offset within the cluster's parent (overlay / selection box).
-function chipClusterTopOffset(rect) {
-  const CHIP_H = 32;  // approximate cluster height; safety cap, not exact
+function chipClusterTopOffset(rect, twoRow) {
+  // The selection cluster can carry a second row (red status chips), so it
+  // reserves more vertical room than the single-row hover cluster. Both are
+  // safety caps, not exact — over-reserving just keeps the cluster a little
+  // higher on a short element, which is harmless.
+  const CHIP_H = twoRow ? 60 : 32;
   const ideal = Math.max(4, 4 - rect.top);
   const cap   = Math.max(4, rect.height - CHIP_H);
   return Math.min(ideal, cap);
+}
+
+// The status row (row 2) only occupies space when it has a visible child —
+// keeps it from being a permanent empty band under row 1. Called whenever a
+// row-2 chip's visibility changes.
+function syncStatusRowVisibility() {
+  if (!chipRowStatus) return;
+  const anyVisible = [...chipRowStatus.children].some(c => c.style.display !== 'none');
+  chipRowStatus.style.display = anyVisible ? 'flex' : 'none';
 }
 
 function positionHandleLeft(h, rect, sx, sy) {
@@ -1783,7 +1986,7 @@ function refreshHandles() {
   // Pin chip cluster to the visible top edge — keeps it in view when the
   // selection extends above the viewport.
   if (selectionChipCluster) {
-    selectionChipCluster.style.top = `${chipClusterTopOffset(rect)}px`;
+    selectionChipCluster.style.top = `${chipClusterTopOffset(rect, true)}px`;
   }
   // Re-evaluate chip state in case an undo/restick happened while selection
   // is still active (e.g., user hits Ctrl+Z mid-selection).
@@ -1826,40 +2029,26 @@ async function resetElement(el) {
     window.AdnotaReorderRules.delete(rid);
   }
 
-  // Clear inline style leftovers
-  el.style.removeProperty('width');
-  el.style.removeProperty('min-width');
-  el.style.removeProperty('max-width');
-  el.style.removeProperty('height');
-  el.style.removeProperty('min-height');
-  el.style.removeProperty('max-height');
-  el.style.removeProperty('margin-left');
-  el.style.removeProperty('margin-top');
-  el.style.removeProperty('overflow');
-  el.style.removeProperty('flex-basis');
-  el.style.removeProperty('flex-shrink');
-  el.style.removeProperty('flex-grow');
-  // REFLOW props — clear so ↺ undoes Swap/Stack/Send-to-end too.
-  el.style.removeProperty('flex-direction');
-  el.style.removeProperty('order');
-  // POSITION props — clear so ↺ undoes drag-to-move + arrow-nudge as well.
-  // (No z-index property to clear — position rules don't write z-index.)
-  el.style.removeProperty('top');
-  el.style.removeProperty('left');
-  el.style.removeProperty('right');
-  el.style.removeProperty('bottom');
-  el.style.removeProperty('position');
-  // TEXT-SIZE props — defensive cleanup; the persisted rule itself is wiped
-  // by the storage filter below. Only matters if a future drag-time preview
-  // ever leaks inline font-size/line-height onto the element.
-  el.style.removeProperty('font-size');
-  el.style.removeProperty('line-height');
-  // RECOLOR props — same defensive pattern. Persisted recolor-bg/recolor-text
-  // rules go through the storage filter; these inline removes catch anything
-  // that might have leaked.
-  el.style.removeProperty('background-color');
-  el.style.removeProperty('color');
-  void el.offsetHeight; // force reflow
+  // No inline-style cleanup here, by design. The resizer's persisted effects
+  // live entirely in the `<style id="adnota-style-overrides">` tag; every
+  // commit/cancel/nudge path already reverts its own inline writes via
+  // restoreInline / restoreInlineSnapshot / the nudge cleanup. So at reset
+  // time the inline `style` attribute is the page's own — anything that
+  // looks like a resize prop on it (width/height/margin-left/top/position/
+  // top-left-right-bottom/flex-*/overflow) is page-authored, not ours.
+  //
+  // A blanket inline removeProperty here can't distinguish provenance — it
+  // would destroy page-authored inline styling whose property *happens* to
+  // overlap something the resizer also writes (the canonical case: the page
+  // sets `margin: 0 auto`, restoreInline correctly restores it, and we'd
+  // then strip `margin-left:auto` and shift the element on reset). See the
+  // `restoreInline` snapshot comment for the longhand-from-shorthand rationale.
+  //
+  // The only path this leaves uncovered is a drag that throws before its
+  // restore runs — leaking a resizer inline value. That's a bug to fix at
+  // its source (a try/finally on the commit critical sections) rather than
+  // paper over destructively here.
+  void el.offsetHeight; // force reflow against the now-empty style tag
 
   // Remove from storage — both CSS-keyed (selector match) and reorder-keyed
   // (sourceAnchor.cssSelector match, since reorder rows have no top-level
@@ -1906,6 +2095,7 @@ function applyClipChipState(match) {
   if (!selectionClipChip) return;
   if (!match) {
     selectionClipChip.style.display = 'none';
+    syncStatusRowVisibility();
     return;
   }
   if (match.kind === 'clip-ancestor') {
@@ -1921,6 +2111,196 @@ function applyClipChipState(match) {
     selectionClipChip.setAttribute('data-warn-only', '1');
   }
   selectionClipChip.style.display = '';
+  syncStatusRowVisibility();
+}
+
+
+// ─── Lift-chip state helpers (Bring to front) ────────────────────────────────
+// Surfaces during a position drag when an overlapping non-Adnota neighbor has
+// a higher effective z-index than the dragged element. Scope is intentionally
+// "elements we're touching" — sampling at the dragged rect's corners + center,
+// gated by an area-overlap threshold so corner tooltips and focus rings don't
+// trip the chip. Stacking-context boundaries can still foreclose the lift; we
+// handle that empirically in performLift (re-check after commit, roll back if
+// the occluder is still on top).
+
+// Cap on candidates inspected per check. Deep portal stacks (Slack, Discord)
+// can return many hits per point; cap keeps the loop bounded.
+const OCCLUSION_MAX_SURVIVORS = 16;
+// Minimum fraction of the dragged rect's area that must be covered by a
+// candidate occluder for it to qualify (vs. a tiny badge or focus ring
+// nicking the corner of the rect).
+const OCCLUSION_MIN_AREA_FRAC = 0.15;
+// Z-index cap. Some sites ship cookie banners at 2147483647 (max int);
+// max + 1 would overflow / lose meaning. If we're already lifting near this
+// ceiling, the element is effectively on the top layer — surface a distinct
+// message instead of an invented bigger number.
+const Z_LIFT_CEILING = 9999;
+
+function _zIndexAsInt(el) {
+  const z = getComputedStyle(el).zIndex;
+  if (z === 'auto' || z === '') return 0;
+  const n = parseInt(z, 10);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function findOcclusion(el) {
+  if (!el) return null;
+  const rect = el.getBoundingClientRect();
+  const rectArea = Math.max(0, rect.width) * Math.max(0, rect.height);
+  if (rectArea <= 0) return null;
+
+  // 9 sample points: 4 corners (inset 1px), 4 edge midpoints, center.
+  // Corner-only sampling falls apart on rounded elements — a card with
+  // border-radius:16px has corner pixels inside the bounding rect but
+  // OUTSIDE the painted area, so elementsFromPoint at those points doesn't
+  // return the card. Edge midpoints and center are safely inside the
+  // painted area for any border-radius up to ~half the smaller dimension.
+  const cx = (rect.left + rect.right) / 2;
+  const cy = (rect.top + rect.bottom) / 2;
+  const points = [
+    [rect.left + 1,  rect.top + 1],
+    [rect.right - 1, rect.top + 1],
+    [rect.left + 1,  rect.bottom - 1],
+    [rect.right - 1, rect.bottom - 1],
+    [cx,             rect.top + 1],
+    [cx,             rect.bottom - 1],
+    [rect.left + 1,  cy],
+    [rect.right - 1, cy],
+    [cx,             cy],
+  ];
+
+  const seen = new Set();
+  let best = null;
+  let bestZ = -Infinity;
+
+  // Occlusion = "painted in front of el," which is exactly what
+  // elementsFromPoint encodes: hits[0] is topmost, el sits somewhere in the
+  // middle, anything BEFORE el's index is rendered above it at that point.
+  // Comparing z-index alone misses the common case where a same-z (auto)
+  // sibling paints over us via DOM order (later siblings stack on top), so
+  // we use array-index order as the truth and only consult z-index to pick
+  // the lift target. Area threshold weeds out tiny corner-clipping noise.
+  for (const [x, y] of points) {
+    if (x < 0 || y < 0 || x > window.innerWidth || y > window.innerHeight) continue;
+    const hits = document.elementsFromPoint(x, y);
+    const ourIdx = hits.indexOf(el);
+    // If el isn't at this point (rounded-corner cutout, transformed beyond
+    // bounds, etc.), the sample is unreliable — skip it. We still have 8
+    // other points covering the rest of the rect.
+    if (ourIdx < 0) continue;
+    for (let i = 0; i < ourIdx; i++) {
+      const hit = hits[i];
+      if (seen.size >= OCCLUSION_MAX_SURVIVORS) break;
+      if (!hit || hit === el) continue;
+      if (el.contains(hit) || hit.contains(el)) continue;
+      if (window.AdnotaUI?.isAdnotaElement(hit)) continue;
+      if (seen.has(hit)) continue;
+      seen.add(hit);
+
+      const hRect = hit.getBoundingClientRect();
+      const iw = Math.max(0, Math.min(hRect.right, rect.right) - Math.max(hRect.left, rect.left));
+      const ih = Math.max(0, Math.min(hRect.bottom, rect.bottom) - Math.max(hRect.top, rect.top));
+      const inter = iw * ih;
+      if (inter / rectArea < OCCLUSION_MIN_AREA_FRAC) continue;
+
+      const hitZ = _zIndexAsInt(hit);
+      if (hitZ > bestZ) { best = hit; bestZ = hitZ; }
+    }
+    if (seen.size >= OCCLUSION_MAX_SURVIVORS) break;
+  }
+
+  return best ? { maxZ: bestZ, top: best } : null;
+}
+
+function liftChipChanged(a, b) {
+  if (a === b) return false;            // both null
+  if (!a || !b) return true;            // one null, one set
+  return a.top !== b.top;               // chip text doesn't depend on maxZ
+}
+
+function applyLiftChipState(match) {
+  if (!selectionLiftChip) return;
+  if (!match) {
+    selectionLiftChip.style.display = 'none';
+    return;
+  }
+  selectionLiftChip.textContent = 'Bring to front';
+  selectionLiftChip.setAttribute(
+    'data-adnota-tooltip',
+    `Move above the overlapping ${match.top.tagName.toLowerCase()}`,
+  );
+  selectionLiftChip.style.display = '';
+}
+
+// Lift-chip click handler. The latched currentLiftMatch is only good for
+// "should the chip exist" — by click time the page may have reflowed,
+// scrolled, or mutated, so re-detect against fresh state before committing.
+//
+// Stacking-context boundaries can foreclose a z-index lift: if the dragged
+// element's parent has a stacking context below the occluder's ancestor
+// context, bumping our z-index does nothing. We don't try to reason about
+// that statically; commit, re-check, roll back + toast on failure. The
+// empirical check is the source of truth.
+async function performLift(el) {
+  if (!el) return;
+
+  const fresh = findOcclusion(el);
+  if (!fresh) {
+    // Page moved out from under us between latch and click. Quietly hide
+    // the chip — no toast (visible state didn't change, no user surprise).
+    applyLiftChipState(null);
+    currentLiftMatch = null;
+    return;
+  }
+
+  if (fresh.maxZ >= Z_LIFT_CEILING) {
+    // Sites that ship banners at max-int (2147483647) leave nowhere to go.
+    // Distinct message from the stacking-context failure so the user knows
+    // it's a ceiling, not a stacking-context defeat.
+    window.AdnotaUI?.showToast(
+      'This element is already on the page’s top layer',
+      { timeout: 4000 }
+    );
+    return;
+  }
+
+  // Target needs to be (a) above the highest in-front occluder, AND (b) at
+  // least 1 — z-index:0 still paints by DOM order against z:auto siblings,
+  // so jumping to 1 is the floor that converts us into a positioned-with-
+  // z-index element. Without this floor, lifting a z:auto card over a z:auto
+  // mock that comes later in DOM order would compute target=1 already, but
+  // a negative-z occluder (rare) would compute a non-positive target.
+  const targetZ = Math.max(fresh.maxZ + 1, 1);
+
+  // Defensive: position-drag commit already wrote position: relative|absolute|
+  // fixed before this click became reachable, so computed position shouldn't
+  // be 'static' here. Guard regardless — z-index does nothing on static
+  // elements, and the cost of an extra `position: relative` line is nil.
+  const needsPosition = getComputedStyle(el).position === 'static';
+  const cssText = needsPosition
+    ? `position: relative !important; z-index: ${targetZ} !important`
+    : `z-index: ${targetZ} !important`;
+  await commitResizeRule(el, cssText, 'z-lift');
+
+  // Empirical re-check after the rebuilt style tag has rendered.
+  requestAnimationFrame(() => {
+    const recheck = findOcclusion(el);
+    if (recheck && recheck.maxZ >= targetZ) {
+      // Stacking-context blocked the lift. Surgically remove just our
+      // z-lift rule and tell the user.
+      removeResizeRule(el, 'z-lift');
+      window.AdnotaUI?.showToast(
+        `Couldn’t bring above ${recheck.top.tagName.toLowerCase()}`,
+        { timeout: 4000 }
+      );
+    } else {
+      // Success — the visible result is the feedback (element pops to
+      // front). Hide chip and clear state; no success toast.
+      applyLiftChipState(null);
+      currentLiftMatch = null;
+    }
+  });
 }
 
 
@@ -2046,12 +2426,22 @@ function startPositionDrag(e) {
   e.stopPropagation();
   if (!selectedEl) return;
 
+  // Capture the dragged element in a closure-local. `selectedEl` is module-
+  // scope and can be nulled mid-drag (Esc exits resizer mode, click-outside
+  // paths run deselectElement, etc.). The drag handlers below — onMove,
+  // onUp, restoreInlineSnapshot — all need to operate on the element we
+  // grabbed at drag-start, not on whatever `selectedEl` happens to be when
+  // the next mouse event fires. Without this, mid-drag deselect crashes
+  // `.style` access on null and leaves the element stuck in its inline
+  // drag styles.
+  const el = selectedEl;
+
   // Strategy dispatch — choose drag math based on the element's computed
   // position. In-flow elements get the force-relative + compensate-offset
   // dance; absolute/fixed elements keep their position type and use raw
   // CB-relative offsets. See getPositionStrategy + the section header
   // comment above for the full rationale.
-  const strategy = getPositionStrategy(selectedEl);
+  const strategy = getPositionStrategy(el);
   if (strategy.error) return;
   const posType = strategy.kind;                 // 'relative' | 'absolute' | 'fixed'
   const isOutOfFlow = posType === 'absolute' || posType === 'fixed';
@@ -2068,6 +2458,13 @@ function startPositionDrag(e) {
     applyClipChipState(null);
     currentClipMatch = null;
   }
+  // Same for any latched lift-chip from a prior position drag — fresh drag
+  // re-detects from scratch (driven by movement, not selection).
+  if (currentLiftMatch) {
+    applyLiftChipState(null);
+    currentLiftMatch = null;
+  }
+  lastOcclusionCheckRect = null;
 
   // Snapshot inline state with priority. After the first commit, a persisted
   // `<style>` rule exists for this selector with top/left/position/right/
@@ -2081,8 +2478,8 @@ function startPositionDrag(e) {
   const inlineSnapshot = {};
   for (const p of POS_PROPS) {
     inlineSnapshot[p] = {
-      value:    selectedEl.style.getPropertyValue(p),
-      priority: selectedEl.style.getPropertyPriority(p),
+      value:    el.style.getPropertyValue(p),
+      priority: el.style.getPropertyPriority(p),
     };
   }
 
@@ -2103,14 +2500,14 @@ function startPositionDrag(e) {
     // top/left positioning on commit, so right/bottom must be cleared to
     // 'auto' to defeat any authored right/bottom rule pulling in the
     // opposite direction.
-    const cs = getComputedStyle(selectedEl);
+    const cs = getComputedStyle(el);
     const csLeft = parseFloat(cs.left);
     const csTop  = parseFloat(cs.top);
     if (posType === 'absolute') {
-      startLeft = isFinite(csLeft) ? csLeft : selectedEl.offsetLeft;
-      startTop  = isFinite(csTop)  ? csTop  : selectedEl.offsetTop;
+      startLeft = isFinite(csLeft) ? csLeft : el.offsetLeft;
+      startTop  = isFinite(csTop)  ? csTop  : el.offsetTop;
     } else {
-      const rect = selectedEl.getBoundingClientRect();
+      const rect = el.getBoundingClientRect();
       startLeft = isFinite(csLeft) ? csLeft : rect.left;
       startTop  = isFinite(csTop)  ? csTop  : rect.top;
     }
@@ -2118,31 +2515,31 @@ function startPositionDrag(e) {
     // top+bottom) to non-auto, the element's width (or height) is the
     // resolved difference and would collapse when we drop the opposing
     // anchor. Pin the current rect dimension inline + remember to persist.
-    const rect = selectedEl.getBoundingClientRect();
+    const rect = el.getBoundingClientRect();
     const widthAnchored  = (cs.left   !== 'auto' && cs.right  !== 'auto');
     const heightAnchored = (cs.top    !== 'auto' && cs.bottom !== 'auto');
     pinnedDims = (widthAnchored || heightAnchored) ? {} : null;
     if (widthAnchored)  pinnedDims.width  = rect.width;
     if (heightAnchored) pinnedDims.height = rect.height;
-    if (widthAnchored)  selectedEl.style.setProperty('width',  rect.width  + 'px', 'important');
-    if (heightAnchored) selectedEl.style.setProperty('height', rect.height + 'px', 'important');
-    selectedEl.style.setProperty('position', posType,           'important');
-    selectedEl.style.setProperty('right',    'auto',            'important');
-    selectedEl.style.setProperty('bottom',   'auto',            'important');
-    selectedEl.style.setProperty('left',     startLeft + 'px',  'important');
-    selectedEl.style.setProperty('top',      startTop  + 'px',  'important');
+    if (widthAnchored)  el.style.setProperty('width',  rect.width  + 'px', 'important');
+    if (heightAnchored) el.style.setProperty('height', rect.height + 'px', 'important');
+    el.style.setProperty('position', posType,           'important');
+    el.style.setProperty('right',    'auto',            'important');
+    el.style.setProperty('bottom',   'auto',            'important');
+    el.style.setProperty('left',     startLeft + 'px',  'important');
+    el.style.setProperty('top',      startTop  + 'px',  'important');
   } else {
     // In-flow: force position: relative + clear all offsets so we can
     // measure the element's natural in-flow position. Load-bearing for
     // sticky AND for any selector that already has a persisted position
     // rule — `auto` alone wouldn't beat the rule's `Xpx !important`.
-    const grabbedRect = selectedEl.getBoundingClientRect();
-    selectedEl.style.setProperty('position', 'relative', 'important');
-    selectedEl.style.setProperty('top',      'auto',     'important');
-    selectedEl.style.setProperty('left',     'auto',     'important');
-    selectedEl.style.setProperty('right',    'auto',     'important');
-    selectedEl.style.setProperty('bottom',   'auto',     'important');
-    const naturalRect = selectedEl.getBoundingClientRect();
+    const grabbedRect = el.getBoundingClientRect();
+    el.style.setProperty('position', 'relative', 'important');
+    el.style.setProperty('top',      'auto',     'important');
+    el.style.setProperty('left',     'auto',     'important');
+    el.style.setProperty('right',    'auto',     'important');
+    el.style.setProperty('bottom',   'auto',     'important');
+    const naturalRect = el.getBoundingClientRect();
     // Compensating offset so the element stays at the grabbed position
     // visually. For static / relative-no-offset: 0,0. For relative-with-
     // offset (including a previously-persisted position rule): re-
@@ -2150,8 +2547,8 @@ function startPositionDrag(e) {
     // to in-flow + offset.
     startLeft = grabbedRect.left - naturalRect.left;
     startTop  = grabbedRect.top  - naturalRect.top;
-    selectedEl.style.setProperty('left', startLeft + 'px', 'important');
-    selectedEl.style.setProperty('top',  startTop  + 'px', 'important');
+    el.style.setProperty('left', startLeft + 'px', 'important');
+    el.style.setProperty('top',  startTop  + 'px', 'important');
   }
 
   // Fullscreen capture overlay so the mouse can travel anywhere without
@@ -2168,12 +2565,13 @@ function startPositionDrag(e) {
   document.documentElement.appendChild(dragOverlay);
 
   function restoreInlineSnapshot() {
+    if (!el.isConnected) return;
     for (const p of POS_PROPS) {
       const snap = inlineSnapshot[p];
       if (snap.value) {
-        selectedEl.style.setProperty(p, snap.value, snap.priority);
+        el.style.setProperty(p, snap.value, snap.priority);
       } else {
-        selectedEl.style.removeProperty(p);
+        el.style.removeProperty(p);
       }
     }
   }
@@ -2202,13 +2600,14 @@ function startPositionDrag(e) {
     requestAnimationFrame(() => {
       rafPending = false;
       if (dragAxis !== 'position') return;   // drag ended before this rAF
+      if (!el.isConnected) return;           // element gone mid-drag — bail
       // !important required to beat the persisted rule once one exists
       // (after first commit). Non-!important writes lose silently and the
       // element appears glued to its persisted position while the cursor
       // moves — that's the "second drag is laggy" failure mode.
-      selectedEl.style.setProperty('left', (startLeft + pendingDx) + 'px', 'important');
-      selectedEl.style.setProperty('top',  (startTop  + pendingDy) + 'px', 'important');
-      const rect = selectedEl.getBoundingClientRect();
+      el.style.setProperty('left', (startLeft + pendingDx) + 'px', 'important');
+      el.style.setProperty('top',  (startTop  + pendingDy) + 'px', 'important');
+      const rect = el.getBoundingClientRect();
       const sy = window.pageYOffset || document.documentElement.scrollTop;
       const sx = window.pageXOffset || document.documentElement.scrollLeft;
       if (selectionBox) positionBox(selectionBox, rect, sx, sy);
@@ -2219,7 +2618,23 @@ function startPositionDrag(e) {
       if (handleCorner) positionHandleCorner(handleCorner, rect, sx, sy);
       if (dismissBtn)   positionDismiss(dismissBtn, rect, sx, sy);
       if (selectionChipCluster) {
-        selectionChipCluster.style.top = `${chipClusterTopOffset(rect)}px`;
+        selectionChipCluster.style.top = `${chipClusterTopOffset(rect, true)}px`;
+      }
+
+      // Lift-chip occlusion check, motion-gated. Skipping the elementsFromPoint
+      // sweep on frames where the rect barely moved keeps the drag cheap on
+      // heavy pages without time-based throttling (which would add visible chip
+      // latency at the start of a drag burst).
+      const movedFar = !lastOcclusionCheckRect ||
+        Math.abs(rect.left - lastOcclusionCheckRect.left) > 5 ||
+        Math.abs(rect.top  - lastOcclusionCheckRect.top)  > 5;
+      if (movedFar) {
+        lastOcclusionCheckRect = { left: rect.left, top: rect.top };
+        const match = findOcclusion(el);
+        if (liftChipChanged(match, currentLiftMatch)) {
+          applyLiftChipState(match);
+          currentLiftMatch = match;
+        }
       }
     });
   }
@@ -2235,6 +2650,14 @@ function startPositionDrag(e) {
     if (Math.abs(dx) < 3 && Math.abs(dy) < 3) {
       restoreInlineSnapshot();
       dragAxis = null;
+      // Tiny-drag cancel — also drop any lift chip that surfaced mid-drag.
+      // Position didn't actually change, so don't leave the "Bring to front"
+      // affordance dangling.
+      if (currentLiftMatch) {
+        applyLiftChipState(null);
+        currentLiftMatch = null;
+      }
+      lastOcclusionCheckRect = null;
       return;
     }
 
@@ -2247,11 +2670,18 @@ function startPositionDrag(e) {
     // visible flash back to natural position. Pass posType so absolute /
     // fixed elements don't get demoted to relative on commit, and
     // pinnedDims so anchor-stretch elements keep their dimensions.
-    persistPosition(selectedEl, finalLeft, finalTop, posType, pinnedDims);
+    persistPosition(el, finalLeft, finalTop, posType, pinnedDims);
     restoreInlineSnapshot();
 
     dragAxis = null;
     refreshHandles();   // full refresh on release: chip/HUD/reflow re-sync
+
+    // currentLiftMatch intentionally NOT cleared here — if it's truthy on the
+    // final frame, the "Bring to front" chip stays latched (visible) so its
+    // click handler can fire post-release. Cleared by selection change, mode
+    // exit, the next position drag, or performLift's success/failure path.
+    // Same dance as currentClipMatch in the resize-drag onUp.
+    lastOcclusionCheckRect = null;
   }
 
   document.addEventListener('mousemove', onMove);
@@ -2709,6 +3139,12 @@ function startDrag(e, axis) {
 // the storage row so the chip handler can find a specific entry to remove
 // (the unstick entry vs a coexisting width/height entry on the same selector).
 //
+// Known kinds: 'position', 'unstick', 'finite-scroll', 'text-size', 'recolor-bg',
+// 'recolor-text', 'reflow:swap-panels', 'reflow:toggle-stack', 'reflow:order-end',
+// 'reflow:dom-reorder', 'z-lift' (Bring-to-front lift on overlapping higher-z
+// neighbors). All kind-bearing commits coexist on the same selector with
+// orthogonal cssText; same-kind replays dedup via the loop below.
+//
 // Resizes default to domain-wide (`path: '*'`). Unlike the eraser — where
 // domain-wide is an explicit user override (Shift+Click) or silent ad-scope
 // promotion — resize targets are almost always structural containers (nav,
@@ -2873,13 +3309,71 @@ async function commitResizeRule(el, cssText, kind) {
     },
   };
   window.AdnotaUndo.push(undoEntry);
+  // Stash a back-pointer from the live rule to its undo entry so callers like
+  // performLift's failure path can rescind specifically THIS commit's undo
+  // instead of popping AdnotaUndo's top (fragile if another commit raced in).
+  const liveRule = window.AdnotaResizeRules.get(id);
+  if (liveRule) liveRule._undoEntry = undoEntry;
   updateReflowButtonStates();
   return id;
+}
+
+// ─── Surgical rule removal (for empirical-fail rollbacks) ────────────────────
+// Mirrors the rule-removal half of commitResizeRule's undo closure but takes a
+// specific (element, kind) pair instead of popping the global undo stack. Used
+// by the lift-chip empirical re-check: if the z-index commit didn't actually
+// uncross a stacking context, we want to remove just OUR rule and leave the
+// rest of the undo history untouched. Same-kind dedup guarantees at most one
+// rule matches.
+async function removeResizeRule(el, kind) {
+  if (!el || !kind) return;
+  const selector = generateCSSSelector(el);
+  let removedId = null;
+  let undoEntry = null;
+  for (const [id, rule] of window.AdnotaResizeRules) {
+    if (rule.selector === selector && rule.kind === kind) {
+      removedId = id;
+      undoEntry = rule._undoEntry || null;
+      window.AdnotaResizeRules.delete(id);
+      break;
+    }
+  }
+  if (!removedId) return;
+  rebuildResizeStyleTag();
+
+  // Force reflow so the dropped rule's effects unwind immediately.
+  if (el.isConnected) void el.offsetHeight;
+
+  if (window.AdnotaStorage) {
+    const domain = location.hostname;
+    const data = await chrome.storage.local.get(domain);
+    if (data[domain]) {
+      data[domain].items = (data[domain].items || []).filter(i => i._id !== removedId);
+      await chrome.storage.local.set({ [domain]: data[domain] });
+    }
+  }
+  if (undoEntry) window.AdnotaUndo.remove(undoEntry);
+
+  window.AdnotaLog?.event('resizer', `${kind}-rollback`, {
+    id: removedId, sel: selector, el: window.AdnotaLog?.el?.(el),
+  });
+  refreshHandles();
+  updateReflowButtonStates();
 }
 
 // Drag-resize commit: thin wrapper over commitResizeRule with no `kind`.
 async function persistResize(el, cssText) {
   await commitResizeRule(el, cssText);
+}
+
+// ─── Overflow chip: apply the clip / scrollbar override ─────────────────────
+// `value` is 'hidden' (clip — cut off the spillover) or 'auto' (scrollbar —
+// keep it reachable). Stored with kind:'overflow'; commitResizeRule's
+// same-kind dedup means the two values can't coexist — picking one replaces
+// the other in place. removeResizeRule(el, 'overflow') is the inverse (back
+// to the page's own overflow), and ↺ reset clears it like every other kind.
+async function applyOverflowRule(el, value) {
+  await commitResizeRule(el, `overflow: ${value} !important`, 'overflow');
 }
 
 // ─── REFLOW v1.5: DOM-reorder for block-flow pages ──────────────────────────

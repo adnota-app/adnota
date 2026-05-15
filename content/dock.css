@@ -279,6 +279,23 @@
   transition: opacity 0.12s ease, background 0.15s, transform 0.15s;
 }
 
+/* ── Host-CSS defense ────────────────────────────────────────────────────
+   The dock isn't in Shadow DOM, so element-level rules from host pages leak
+   in. Trigger: pretextbook.org ships `button { margin: 20px auto }`, which
+   our six tool buttons inherited (we set no margin), pushing the inline-flex
+   line +40px each and warping the silhouette into a tall portrait pill.
+   Lock margin/padding/box-sizing on every visible button/span inside the
+   dock so a bare-element host reset can't reshape the chrome. We
+   deliberately don't !important visual props (color, transition, cursor) —
+   those stay soft so we can tune them without a specificity war. */
+#adnota-dock .adnota-dock-logo,
+#adnota-dock .adnota-dock-back,
+#adnota-dock .adnota-dock-tool {
+  margin: 0 !important;
+  padding: 0 !important;
+  box-sizing: border-box !important;
+}
+
 /* Never print the dock — otherwise a user reaching for Ctrl+P has to
    disable the extension just to get it out of the way. */
 @media print {
