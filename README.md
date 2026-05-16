@@ -3,7 +3,7 @@
 Highlight what's notable, eliminate what's not.
 
 <p align="center">
-  <img src="dock.jpg" alt="The Adnota dock — Eraser, Sticky Note, Draw, and Resizer" />
+  <img src="assets/dock.jpg" alt="The Adnota dock — Eraser, Sticky Note, Draw, and Resizer" />
 </p>
 
 Treat any website like your personal canvas. Erase what you don't need. Annotate what matters. Highlight, redact, and draw — all persistent across sessions, all stored privately on your machine.
