@@ -69,6 +69,7 @@ wait $CSS_PID
 # Copied verbatim. manifest.json paths are relative to manifest, so the dist/
 # tree resolves identically to the source tree once the binaries land.
 cp manifest.json "$DIST/"
+cp LICENSE "$DIST/"
 cp -R icons "$DIST/"
 mkdir -p "$DIST/lib"
 cp -R lib/fonts "$DIST/lib/"
