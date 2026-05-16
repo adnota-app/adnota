@@ -1767,7 +1767,9 @@ async function commitBatch() {
   };
   window.AdnotaUndo.push(compositeUndo);
 
-  window.AdnotaUI.showToast(`Erased ${erasedCount} ${erasedCount === 1 ? 'ad' : 'ads'}`, {
+  // Batch is always domain-wide (cluster of ads, treated as one decision per
+  // the forceDomain pass-through). Suffix mirrors the single-erase toasts.
+  window.AdnotaUI.showToast(`Erased ${erasedCount} ${erasedCount === 1 ? 'ad' : 'ads'} site-wide`, {
     id: 'adnota-eraser-batch-toast',
     onUndo: () => compositeUndo.undo(),
   });
@@ -1967,7 +1969,10 @@ function commitErase(target, opts = {}) {
     }
   };
 
-  return { undoEntry, id, adSignals, savedCssText, storageWrite };
+  return {
+    undoEntry, id, adSignals, savedCssText, storageWrite,
+    scope: useDomain ? 'domain' : 'page',
+  };
 }
 
 // ─── Click: erase with animation ─────────────────────────────────────────────
@@ -2012,7 +2017,9 @@ document.addEventListener('click', async (e) => {
       const innerUndo = result.undoEntry.undo;
       window.AdnotaUndo.push(result.undoEntry);
 
-      window.AdnotaUI.showToast('Element erased', {
+      // forceDomain is always true here (manual mid-review erase joins the
+      // cluster's domain-wide scope), so the toast can hardcode "site-wide".
+      window.AdnotaUI.showToast('Element erased site-wide', {
         id: 'adnota-eraser-toast',
         onUndo: () => innerUndo(),
       });
@@ -2039,7 +2046,7 @@ document.addEventListener('click', async (e) => {
   hoveredElement = null;
 
   // Commit the erase: anchor + rule + animation + storage + undo entry.
-  const { undoEntry, id, adSignals } = commitErase(target, { shiftKey: e.shiftKey });
+  const { undoEntry, id, adSignals, scope } = commitErase(target, { shiftKey: e.shiftKey });
   // Wrap the seed undo so undoing the trigger click also tears down any
   // batch UI surfaced from it. The batch was caused by this erase — if the
   // user reverses that decision, the batch context is stale.
@@ -2051,7 +2058,13 @@ document.addEventListener('click', async (e) => {
   window.AdnotaUndo.push(undoEntry);
 
   // ── Toast ──
-  window.AdnotaUI.showToast('Element erased', {
+  // Scope suffix is honest about what the user just did: page-scope plain
+  // clicks get "on this page"; Shift+Click and silent ad-promotion both
+  // resolve to 'domain' scope and get "site-wide". The silent-promotion
+  // mechanic stays silent (no chip, no special-case messaging) — this is
+  // just the same scope label everything else uses.
+  const scopeSuffix = scope === 'domain' ? 'site-wide' : 'on this page';
+  window.AdnotaUI.showToast(`Element erased ${scopeSuffix}`, {
     id: 'adnota-eraser-toast',
     onUndo: () => undoEntry.undo(),
   });
