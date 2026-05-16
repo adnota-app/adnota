@@ -257,6 +257,60 @@ function getEffectiveAdSignals(target) {
 const SIMILAR_ADS_CAP = 50;
 const ATTR_PREFIX_BROAD_THRESHOLD = 200; // skip prefixes broader than this — structural class, not ad cluster
 
+// Strong strategies — those whose match has a high prior of being a real ad
+// cluster (tag name names the slot / ad-network data-attr / explicit ad
+// keyword class). Used by the batch-entry gate at the post-click call site
+// so weak-strategy-only matches (attr-prefix, creative-similarity) can
+// contribute candidates to a batch but can't open one on their own.
+const STRONG_FIND_STRATEGIES = new Set(['tag-shape', 'ad-attr-presence', 'class-signature']);
+
+// Walk-up retargeting for the wrapper-around-creative pattern.
+// Ad slots routinely render their actual creative into an iframe-bearing
+// inner div that has no classes, no ad-attrs, and a random-looking id with
+// no hyphen stem — leaving every find-similars strategy with nothing to
+// key on (totalCount: 0, strategies: []). The slot WRAPPER one or two hops
+// up carries the network's classes / data-attrs and would drive a clean
+// sweep. _findAdWrapperFor retargets to that wrapper when the seed is
+// ad-fingerprinted (so we know we're in ad territory) but lacks any strong
+// signature of its own. Gated tightly + capped on hop count so a runaway
+// walk can't escape into article content. Returns the seed unchanged when
+// it already has a signature, has no ad signals, or no qualifying ancestor
+// is reachable within the hop cap.
+const MAX_AD_WRAPPER_HOPS = 3;
+function _hasStrongFindSimilarsSignature(el) {
+  if (!el || !el.tagName) return false;
+  // Strategy 1: tag-shape — ad-shaped custom tag name
+  if (_adIdentifierPattern.test(el.tagName)) return true;
+  if (!el.attributes) return false;
+  // Strategy 2: ad-attr-presence — ad-network data-attribute on the element
+  for (const attr of el.attributes) {
+    if (_adNetworkAttrSet.has(attr.name) || _adIdentifierPattern.test(attr.name)) return true;
+  }
+  // Strategy 3: class-signature — at least one ad-keyword class
+  if (el.classList && el.classList.length > 0) {
+    for (const cls of el.classList) {
+      if (_adKeywordPattern.test(cls)) return true;
+    }
+  }
+  return false;
+}
+function _findAdWrapperFor(seed) {
+  if (!seed || _hasStrongFindSimilarsSignature(seed)) return seed;
+  if (getEffectiveAdSignals(seed).length === 0) return seed;
+  let cur = seed.parentElement;
+  let hops = 0;
+  while (cur && hops < MAX_AD_WRAPPER_HOPS) {
+    if (isAdnotaElement(cur)) return seed;
+    if (cur === document.body || cur === document.documentElement) return seed;
+    if (_hasStrongFindSimilarsSignature(cur) && getEffectiveAdSignals(cur).length > 0) {
+      return cur;
+    }
+    cur = cur.parentElement;
+    hops++;
+  }
+  return seed;
+}
+
 // Stem extraction from id-style values like "ad-slot-1234" → "ad-slot-".
 // Returns the stem with trailing hyphen, or null if the value lacks a
 // recognizable variable trailing token. UUID-shaped values (single token of
@@ -275,6 +329,19 @@ function _extractAdStem(value) {
 
 function findSimilarAds(target) {
   if (!target || !target.tagName) return { candidates: [], strategies: [] };
+
+  // Retarget signature-less ad seeds to their wrapping slot — see
+  // _findAdWrapperFor for the why. No-op when the seed already has a
+  // signature or isn't ad-fingerprinted, so existing callers that pass a
+  // classed wrapper take the early return and behave identically to before.
+  const wrapper = _findAdWrapperFor(target);
+  if (wrapper !== target) {
+    window.AdnotaLog?.event('eraser', 'similars-retarget', {
+      from: window.AdnotaLog.el(target),
+      to: window.AdnotaLog.el(wrapper),
+    });
+    target = wrapper;
+  }
 
   const strategies = [];
   const found = new Set();
@@ -2123,7 +2190,16 @@ document.addEventListener('click', async (e) => {
             try { return window.FuzzyAnchor.generateCSSSelector(c); } catch { return '?'; }
           }),
         });
-        if (visible.length > 0 && window.AdnotaState.mode === 'eraser') {
+        // Batch-entry gate. Open the review UI only when:
+        //   - at least 2 visible candidates exist (n=1 means just-erase the
+        //     seed and let the user click the next one — no review needed)
+        //   - a strong strategy fired (tag-shape / ad-attr-presence /
+        //     class-signature). Weak strategies (attr-prefix,
+        //     creative-similarity) can still contribute candidates to a
+        //     batch opened by a strong one, but can't open one alone — that
+        //     was the source of noisy "30 things to review" prompts.
+        const strongFired = strategies.some(s => STRONG_FIND_STRATEGIES.has(s));
+        if (visible.length >= 2 && strongFired && window.AdnotaState.mode === 'eraser') {
           enterBatch(visible, target);
         }
       } catch (err) {
