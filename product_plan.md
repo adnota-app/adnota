@@ -22,7 +22,7 @@ The logic executed on the webpage to handle DOM manipulation and fuzzy matching.
 #### content/eraser.js
 Listens for "Eraser Mode" toggle (via popup or `Alt+E` shortcut).
 - **UX**: When active, adds a hover effect (solid red outline) to hovered DOM elements.
-- **Actions**: On click, removes the element from the DOM and sends the target's "Fuzzy Anchor" to storage. Default deletion scope is exact URL. Holding `Shift + Click` deletes domain-wide.
+- **Actions**: On click, removes the element from the DOM and sends the target's "Fuzzy Anchor" to storage. Default deletion scope is exact URL. Holding `Shift + Click` deletes site-wide.
 - **Undo Stack**: Maintains a session-level undo stack. Pressing `Ctrl+Z` while in Eraser Mode undeletes the last removed element (in-session only, not persisted over page refresh).
 #### content/fuzzyAnchor.js
 Implements the "Layered Confidence System":
@@ -62,7 +62,7 @@ Basic sleek styling for the popup, matching the premium "Adnota" aesthetic.
 ### Manual Verification
 - Install the unpacked extension in Chrome.
 - **Interaction Check**: Activate "Eraser Mode" via `Alt+E`. Hover to see highlighted targets, click to delete. Press `Ctrl+Z` to verify session-level undo.
-- **Advanced Deletion**: `Shift+Click` an element to test domain-wide deletion.
+- **Advanced Deletion**: `Shift+Click` an element to test site-wide deletion.
 - **Persistence Check**: Refresh the page and verify deleted elements (>=70% confidence) vanish.
 - **Threshold Check**: Break an anchor drastically in DevTools to trigger the <70% match condition and ensure the amber confirmation highlight appears. Check popup for "Broken Anchor" state.
 

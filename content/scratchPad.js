@@ -206,7 +206,7 @@
   // Ephemeral (resets on page reload), same model as global Alt+S show/hide.
   const ICON_EYE     = `<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 10s3-6 8-6 8 6 8 6-3 6-8 6-8-6-8-6z"/><circle cx="10" cy="10" r="2.5"/></svg>`;
   const ICON_EYE_OFF = `<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 14.5A8 8 0 0 1 10 16c-5 0-8-6-8-6a14 14 0 0 1 3.5-4"/><path d="M8 4.2A8 8 0 0 1 10 4c5 0 8 6 8 6a14 14 0 0 1-1.5 2.2"/><line x1="2" y1="2" x2="18" y2="18"/></svg>`;
-  // Globe — small leading hint on rows whose record is domain-wide
+  // Globe — small leading hint on rows whose record is site-wide
   // (path === '*'). Tells the user "this rule applies everywhere on the
   // site, not just this URL," which avoids the confusion of seeing edits
   // on a fresh page.
@@ -365,7 +365,7 @@
   }
 
   // ── Per-action count for tool-trash badges ───────────────────────────────
-  // Returns the number of records on the current page (path + domain-wide
+  // Returns the number of records on the current page (path + site-wide
   // mixed via getAnchorsForUrl) whose `action` is in the supplied list.
   // Cheap — one storage read; intended for small badges that refresh on
   // storage onChanged. Caller passes e.g. ['ERASE'] or ['HIGHLIGHT','MARKER'].
@@ -776,14 +776,14 @@
       // '>') in monospace, plus a short id-tail disambiguator (last 6 chars
       // of _id, like a Git short SHA). The full selector lives in the
       // click-to-expand detail. Optional text excerpt suffix follows when
-      // textFingerprint or alt/title is present. Domain-wide records (path
+      // textFingerprint or alt/title is present. Site-wide records (path
       // === '*') get a leading globe icon so the user can tell at a glance
       // which rows are inherited site-wide rules vs page-specific edits.
       addClass(text, 'adnota-scratchpad-row-mono');
       if (snippet.record?.path === '*') {
         const globe = document.createElement('span');
         setClass(globe, 'adnota-scratchpad-row-globe');
-        globe.title = 'Domain-wide — applies across this site';
+        globe.title = 'Site-wide — applies across this site';
         globe.innerHTML = ICON_GLOBE;
         // Globe is informational only — clicks shouldn't bubble up and
         // toggle the row's expanded-detail pane.
