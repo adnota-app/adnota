@@ -518,9 +518,93 @@
 
       let pathEl;
       if (path === '*') {
-        pathEl = document.createElement('span');
-        pathEl.className = pathClasses;
-        pathEl.textContent = '(domain-wide)';
+        // Pick the most recent sourceUrl among the items in this site-wide
+        // bucket. Items saved before the sourceUrl field existed fall back
+        // to a plain "(site-wide)" non-link, same as the original render.
+        let mostRecentSourceUrl = null;
+        let mostRecentTimestamp = -Infinity;
+        for (const item of items) {
+          if (!item.sourceUrl) continue;
+          const ts = item.timestamp || item.createdAt || 0;
+          if (ts > mostRecentTimestamp) {
+            mostRecentTimestamp = ts;
+            mostRecentSourceUrl = item.sourceUrl;
+          }
+        }
+
+        if (mostRecentSourceUrl) {
+          pathEl = document.createElement('a');
+          pathEl.className = pathClasses + ' page-path-sitewide';
+          pathEl.href = mostRecentSourceUrl;
+          pathEl.target = '_blank';
+          pathEl.rel = 'noopener noreferrer';
+          pathEl.title = `Site-wide rule — made at ${mostRecentSourceUrl}`;
+
+          // Globe icon, leading. Same shape and intent as the scratch pad's
+          // site-wide hint (see scratchPad.js ICON_GLOBE) so the meaning is
+          // consistent across surfaces.
+          const globe = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+          globe.setAttribute('class', 'page-path-globe');
+          globe.setAttribute('viewBox', '0 0 20 20');
+          globe.setAttribute('width', '12');
+          globe.setAttribute('height', '12');
+          globe.setAttribute('fill', 'none');
+          globe.setAttribute('stroke', 'currentColor');
+          globe.setAttribute('stroke-width', '1.6');
+          globe.setAttribute('stroke-linecap', 'round');
+          globe.setAttribute('stroke-linejoin', 'round');
+          globe.setAttribute('aria-hidden', 'true');
+          globe.innerHTML = `
+            <circle cx="10" cy="10" r="7"/>
+            <line x1="3" y1="10" x2="17" y2="10"/>
+            <path d="M10 3 C 6 6 6 14 10 17"/>
+            <path d="M10 3 C 14 6 14 14 10 17"/>`;
+          pathEl.appendChild(globe);
+
+          const label = document.createElement('span');
+          label.className = 'page-path-label';
+          // Show the path part of the URL so the row stays scannable, not the
+          // full noisy URL — the link still opens the full URL, the label is
+          // just a hint. Includes search so query-string-driven pages
+          // (Google /search?q=...) remain distinguishable in the list.
+          try {
+            const u = new URL(mostRecentSourceUrl);
+            label.textContent = u.pathname + u.search + u.hash;
+          } catch {
+            label.textContent = mostRecentSourceUrl;
+          }
+          pathEl.appendChild(label);
+
+          // External-link icon (same one used by the per-path rows below).
+          const icon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+          icon.setAttribute('class', 'page-path-icon');
+          icon.setAttribute('width', '11');
+          icon.setAttribute('height', '11');
+          icon.setAttribute('viewBox', '0 0 24 24');
+          icon.setAttribute('fill', 'none');
+          icon.setAttribute('stroke', 'currentColor');
+          icon.setAttribute('stroke-width', '2.2');
+          icon.setAttribute('stroke-linecap', 'round');
+          icon.setAttribute('stroke-linejoin', 'round');
+          icon.setAttribute('aria-hidden', 'true');
+          icon.innerHTML = `
+            <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
+            <polyline points="15 3 21 3 21 9"/>
+            <line x1="10" y1="14" x2="21" y2="3"/>`;
+          pathEl.appendChild(icon);
+
+          // Trailing "site-wide" badge so the user can tell at a glance
+          // the link goes to a representative page, not a path-scoped rule.
+          const tag = document.createElement('span');
+          tag.className = 'page-path-sitewide-tag';
+          tag.textContent = 'site-wide';
+          pathEl.appendChild(tag);
+        } else {
+          // Legacy fallback: items written before sourceUrl existed.
+          pathEl = document.createElement('span');
+          pathEl.className = pathClasses;
+          pathEl.textContent = '(site-wide)';
+        }
       } else {
         pathEl = document.createElement('a');
         pathEl.className = pathClasses;

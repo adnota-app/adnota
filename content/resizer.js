@@ -3339,6 +3339,12 @@ async function commitResizeRule(el, cssText, kind) {
     path,
     version: 1,
     timestamp: Date.now(),
+    // sourceUrl captures the full URL where the rule was created. RESIZE
+    // is always site-wide (path: '*'), so the Sites page has no path to
+    // link to on its own — sourceUrl gives a clickable "made here" anchor
+    // back to the original context. Sites page falls back to the bare
+    // hostname for rules saved before this field existed.
+    sourceUrl: location.href,
   };
   if (kind) entry.kind = kind;
 
@@ -3710,6 +3716,7 @@ async function commitDomReorder(source, container, direction) {
     parentAnchor, sourceAnchor, originalPrevAnchor, toPosition,
     label,
     _id: id, path, version: 1, timestamp: Date.now(),
+    sourceUrl: location.href,  // see commitResizeRule for rationale
   };
 
   // Storage dedup: drop prior reorder rows whose sourceAnchor.cssSelector
