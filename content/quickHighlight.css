@@ -54,8 +54,13 @@
   flex: 1;
   /* min-width: 0 lets the input shrink below its content size so the popup
      width is set by row 1 (V + swatches + dismiss), not by the input. The
-     placeholder stays readable because row 1 reserves enough width. */
-  min-width: 0;
+     placeholder stays readable because row 1 reserves enough width.
+     width: auto !important neutralizes host bare-element rules that pin
+     a width on every input (e.g. Bootstrap 1.x's `input { width: 210px }`
+     on incubator.apache.org), which otherwise feeds into the flex
+     container's intrinsic max-content size and stretches the popup wide. */
+  min-width: 0 !important;
+  width: auto !important;
   background: transparent !important;
   border: none !important;
   border-radius: 0 !important;
@@ -69,6 +74,7 @@
   font-weight: 500 !important;
   line-height: 1.2 !important;
   height: auto !important;
+  box-sizing: border-box !important;
   -webkit-user-select: text;
   user-select: text;
 }
@@ -101,13 +107,17 @@
 }
 
 /* Adnota brand chip — same look as the HUD toolbar logos so users immediately
-   recognize the popup as part of the extension, not the host site. */
+   recognize the popup as part of the extension, not the host site. Clicking
+   opens the Sites history page (same affordance as the dock's A logo).
+   The 2px transparent border matches the swatch's hover-ring border so the
+   logo and swatches share the same 22px outer box and sit visually flush. */
 .adnota-qh-logo {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   width: 18px;
   height: 18px;
+  border: 2px solid transparent;
   border-radius: 50%;
   background: rgba(124, 58, 237, 0.35);
   color: #c084fc;
@@ -115,6 +125,13 @@
   font-size: 10px;
   margin-right: 8px;
   flex-shrink: 0;
+  cursor: pointer;
+  transition: background 0.12s, transform 0.12s;
+}
+
+.adnota-qh-logo:hover {
+  background: rgba(124, 58, 237, 0.55);
+  transform: scale(1.08);
 }
 
 .adnota-qh-swatch {
@@ -135,32 +152,6 @@
   box-shadow: 0 0 0 2px rgba(124, 58, 237, 0.6);
 }
 
-.adnota-qh-swatch[title]:hover::after {
-  content: attr(title);
-  position: absolute;
-  bottom: calc(100% + 6px);
-  left: 50%;
-  transform: translateX(-50%);
-  background: rgba(15, 15, 15, 0.95);
-  color: var(--adnota-hud-text);
-  font-size: 11px;
-  font-weight: 500;
-  padding: 3px 8px;
-  border-radius: 4px;
-  white-space: nowrap;
-  pointer-events: none;
-  border: 1px solid rgba(124, 58, 237, 0.3);
-}
-
-/* Dismiss X — reuses .adnota-select-delete from marker.css, shrunk to fit
-   the popup's smaller chrome (18px swatches/logo). 14px keeps the X in the
-   same proportional relationship to its container as the dock's 16px X has
-   to the dock's 26-28px elements. Scoped to #adnota-quick-highlight to
-   beat .adnota-select-delete's base 20px on specificity. */
-#adnota-quick-highlight .adnota-qh-dismiss {
-  width: 14px;
-  height: 14px;
-  font-size: 8px;
-  top: -6px;
-  right: -6px;
-}
+/* Dismiss X — reuses .adnota-select-delete from marker.css unchanged.
+   Every dismiss X across the extension shares one 20×20 affordance for
+   ergonomics + visual consistency (see [[dismiss_anywhere]] guideline). */

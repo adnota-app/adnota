@@ -81,13 +81,21 @@
     const logo = document.createElement('span');
     logo.className = 'adnota-qh-logo';
     logo.textContent = 'A';
-    logo.setAttribute('title', 'Adnota');
+    logo.setAttribute('data-adnota-tooltip', 'My Edited Sites');
+    logo.addEventListener('click', (e) => {
+      e.stopPropagation();
+      try {
+        chrome.runtime.sendMessage({ action: 'open-sites' }).catch(() => {});
+      } catch (_) {
+        /* extension context invalidated after a reload — no-op */
+      }
+    });
     row.appendChild(logo);
 
     for (const theme of THEMES) {
       const dot = document.createElement('div');
       dot.className = 'adnota-qh-swatch';
-      dot.setAttribute('title', theme.label);
+      dot.setAttribute('data-adnota-tooltip', theme.label);
       dot.style.backgroundColor = theme.color;
       dot.addEventListener('click', (e) => {
         e.stopPropagation();
@@ -99,7 +107,7 @@
     const dismiss = document.createElement('div');
     dismiss.className = 'adnota-select-delete adnota-qh-dismiss';
     dismiss.textContent = '✕';
-    dismiss.setAttribute('title', 'Dismiss');
+    dismiss.setAttribute('data-adnota-tooltip', 'Dismiss');
     dismiss.addEventListener('click', (e) => {
       e.stopPropagation();
       hidePopup();

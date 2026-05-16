@@ -42,8 +42,11 @@ Object.assign(adBadge.style, {
 });
 overlayBadgeRow.appendChild(adBadge);
 
-// Dimension chip — mirrors the resizer's blue chip in red so the two tools
-// share a consistent W×H readout style.
+// Dimension chip — mirrors the resizer's blue dimension pill in red so the
+// two tools share a consistent W×H readout style. Thin translucent border
+// (vs the chunky 2px white used by functional grab affordances) — the
+// dimension is purely informational, so it reads as a readout rather than
+// shouting for clicks.
 const dimensionBadge = document.createElement('div');
 dimensionBadge.id = 'adnota-dimension-badge';
 dimensionBadge.setAttribute('data-adnota-ui', '1');
@@ -53,7 +56,7 @@ Object.assign(dimensionBadge.style, {
   font: '600 11px/1 ui-monospace, "SF Mono", Menlo, Consolas, monospace',
   padding: '3px 8px 2px',
   borderRadius: '4px',
-  border: '2px solid #fff',
+  border: '1px solid rgba(255, 255, 255, 0.18)',
   boxShadow: '0 1px 4px rgba(0, 0, 0, 0.3)',
   whiteSpace: 'nowrap',
 });
@@ -356,6 +359,56 @@ function findSimilarAds(target) {
       if (matches.length > 0 && matches.length <= ATTR_PREFIX_BROAD_THRESHOLD) {
         matches.forEach(c => found.add(c));
         if (!strategies.includes('attr-prefix')) strategies.push('attr-prefix');
+      }
+    } catch { /* malformed selector — skip */ }
+  }
+
+  // Strategy 5: Creative-similarity match.
+  // Ad networks (and house promos) routinely render the SAME creative into
+  // structurally different wrappers — an inline banner slot AND a sticky
+  // sidebar slot sharing one image. The structural strategies above cluster
+  // within a slot family but can't bridge two families that just happen to
+  // share a creative. This strategy uses the creative itself as the link:
+  // the first non-pixel <img src> and the first non-trivial <a href> inside
+  // the seed, queried page-wide, each match bubbled back up to its visual
+  // root so we land on the slot wrapper the user would have clicked.
+  // The per-candidate signal-confirm stage below still gates membership —
+  // a logo reused on the page won't survive unless its bubbled wrapper also
+  // looks like an ad.
+  const creativeSelectors = [];
+  const seedImg = target.tagName === 'IMG'
+    ? target
+    : (target.querySelector && target.querySelector('img[src]'));
+  if (seedImg) {
+    const src = seedImg.getAttribute('src');
+    const imgRect = seedImg.getBoundingClientRect();
+    const isPixel = imgRect.width <= 2 && imgRect.height <= 2;
+    if (src && src.length >= 8 && !isPixel && !src.startsWith('data:')) {
+      const escaped = src.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+      creativeSelectors.push(`img[src="${escaped}"]`);
+    }
+  }
+  const seedAnchor = target.tagName === 'A'
+    ? target
+    : (target.querySelector && target.querySelector('a[href]'));
+  if (seedAnchor) {
+    const href = seedAnchor.getAttribute('href');
+    if (href && href.length >= 4 &&
+        !href.startsWith('#') && !href.startsWith('javascript:')) {
+      const escaped = href.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+      creativeSelectors.push(`a[href="${escaped}"]`);
+    }
+  }
+  if (creativeSelectors.length > 0) {
+    try {
+      const matches = document.querySelectorAll(creativeSelectors.join(', '));
+      if (matches.length > 0 && matches.length <= ATTR_PREFIX_BROAD_THRESHOLD) {
+        for (const m of matches) {
+          if (isAdnotaElement(m)) continue;
+          const root = window.AdnotaUI.bubbleToVisualRoot(m);
+          if (root && root !== target) found.add(root);
+        }
+        strategies.push('creative-similarity');
       }
     } catch { /* malformed selector — skip */ }
   }
@@ -891,9 +944,12 @@ function updateEraserOverlay() {
 // ─── Animation helpers ────────────────────────────────────────────────────────
 
 /**
- * Momentary red-tinted border flash that traces the element's bounding box.
+ * Red-tinted border box traced over the element. Rather than fading in place,
+ * it gives a brief assertive pulse then collapses inward toward the element's
+ * center on the dissolve's timeline — so flash and dissolve read as one
+ * gesture instead of two unrelated effects. Under reduced motion it just fades.
  */
-function spawnFlash(rect) {
+function spawnFlash(rect, duration, reduced) {
   const flash = document.createElement('div');
   flash.setAttribute('data-adnota-ui', '1');
   Object.assign(flash.style, {
@@ -903,35 +959,104 @@ function spawnFlash(rect) {
     width: rect.width + 'px',
     height: rect.height + 'px',
     background: 'rgba(239,68,68,0.09)',
-    border: '10px solid rgba(239,68,68,0.25)',
+    border: '4px solid rgba(239,68,68,0.25)',
     borderRadius: '3px',
     pointerEvents: 'none',
     zIndex: '2147483646',
     boxSizing: 'border-box',
+    transformOrigin: 'center center',
   });
   document.documentElement.appendChild(flash);
 
-  flash.animate([
-    { opacity: 1 },
-    { opacity: 0 }
-  ], { duration: 260, easing: 'ease-out' })
+  const keyframes = reduced
+    ? [{ opacity: 1 }, { opacity: 0 }]
+    : [
+      { opacity: 1, transform: 'scale(1)', borderColor: 'rgba(239,68,68,0.35)' },
+      { opacity: 1, transform: 'scale(1)', borderColor: 'rgba(239,68,68,0.6)', offset: 0.14 },
+      { opacity: 0, transform: 'scale(0.8)', borderColor: 'rgba(239,68,68,0.12)' },
+    ];
+  flash.animate(keyframes, { duration, easing: 'ease-in' })
     .finished.then(() => flash.remove()).catch(() => { });
 }
 
 /**
- * Dissolve animation on the target element itself.
+ * Dissolve animation on the target element itself — a fade that shrinks
+ * monotonically inward (no scale-up tell), with blur + a slight drift away.
  */
-function dissolveTarget(target) {
+function dissolveTarget(target, duration) {
   return target.animate([
     { opacity: '1', transform: 'scale(1)', filter: 'blur(0px)' },
-    { opacity: '.92', transform: 'scale(1.03)', filter: 'blur(0px)', offset: 0.12 },
-    { opacity: '0.4', transform: 'scale(0.97)', filter: 'blur(2.5px)', offset: 0.50 },
-    { opacity: '0', transform: 'scale(0.8) translateY(6px)', filter: 'blur(9px)' }
+    { opacity: '0.5', transform: 'scale(0.95)', filter: 'blur(2px)', offset: 0.55 },
+    { opacity: '0', transform: 'scale(0.82) translateY(8px)', filter: 'blur(8px)' }
   ], {
-    duration: 440,
+    duration,
     easing: 'ease-in',
     fill: 'forwards',
   });
+}
+
+/**
+ * Box-collapse: after the dissolve leaves the element invisible, shrink its
+ * vertical footprint to zero so surrounding content slides up to fill the gap
+ * — instead of the page snapping shut the instant we set display:none. Reads
+ * the live computed box at call time (transforms from the dissolve's
+ * fill:forwards don't affect offsetHeight or computed margins/padding).
+ */
+function collapseTarget(target, duration) {
+  const cs = getComputedStyle(target);
+  const h = target.offsetHeight;
+  return target.animate([
+    {
+      maxHeight: h + 'px',
+      marginTop: cs.marginTop, marginBottom: cs.marginBottom,
+      paddingTop: cs.paddingTop, paddingBottom: cs.paddingBottom,
+      borderTopWidth: cs.borderTopWidth, borderBottomWidth: cs.borderBottomWidth,
+      overflow: 'hidden',
+    },
+    {
+      maxHeight: '0px',
+      marginTop: '0px', marginBottom: '0px',
+      paddingTop: '0px', paddingBottom: '0px',
+      borderTopWidth: '0px', borderBottomWidth: '0px',
+      overflow: 'hidden',
+    },
+  ], { duration, easing: 'cubic-bezier(0.4, 0, 0.2, 1)', fill: 'forwards' });
+}
+
+/**
+ * Full erase choreography: flash + weighty dissolve, then a box-collapse that
+ * lets the page heal the gap where the element was. Honors
+ * prefers-reduced-motion with a near-instant fast path.
+ *
+ * Returns { finished, cancel }:
+ *   finished — resolves once the footprint has fully collapsed; the caller
+ *              applies display:none after this.
+ *   cancel   — kills every in-flight sub-animation (undo path); the caller
+ *              owns resetting the element's inline style afterward.
+ */
+function playEraseAnimation(target, rect) {
+  const reduced = !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+  const dissolveMs = reduced ? 100 : 420;
+  const collapseMs = reduced ? 0 : 220;
+
+  const anims = [];
+  spawnFlash(rect, dissolveMs, reduced);
+  const dissolve = dissolveTarget(target, dissolveMs);
+  anims.push(dissolve);
+
+  const finished = dissolve.finished.then(() => {
+    if (collapseMs === 0) return;
+    const collapse = collapseTarget(target, collapseMs);
+    anims.push(collapse);
+    return collapse.finished;
+  });
+
+  return {
+    finished,
+    cancel() {
+      for (const a of anims) { try { a.cancel(); } catch { } }
+    },
+  };
 }
 
 // ─── Message routing ──────────────────────────────────────────────────────────
@@ -1667,8 +1792,9 @@ async function commitBatch() {
 //
 // Options:
 //   shiftKey         — whether the original gesture held Shift (forces domain scope)
-//   skipAnimation    — bypass dissolve + flash; apply display:none immediately
-//                       (batch path: 7 simultaneous dissolves would be visually chaotic)
+//   skipAnimation    — bypass flash + dissolve + collapse; apply display:none
+//                       and build the style rule immediately (batch path: 7
+//                       simultaneous dissolves would be visually chaotic)
 //   skipStyleRebuild — set the rule on AdnotaEraseRules but defer the style-tag
 //                       rebuild to the caller (batch path: rebuild once after the
 //                       loop instead of N times)
@@ -1729,18 +1855,28 @@ function commitErase(target, opts = {}) {
     id,
   });
   window.AdnotaEraseRules.set(id, ruleSelector);
-  if (!skipStyleRebuild) rebuildEraseStyleTag();
+  // The injected rule is `display:none !important`, which sits above CSS
+  // Animations in the cascade — building it now would hide the element before
+  // its own dissolve could play (the animation never animates `display`, so it
+  // can't win it back). The animated single-click path therefore DEFERS the
+  // rebuild to the post-animation block below; the batch path (skipAnimation)
+  // has no dissolve to protect, so it rebuilds now — or hands the rebuild to
+  // its caller via skipStyleRebuild. Tradeoff: during the ~1s animation a
+  // re-created ad instance isn't yet covered by the rule, but the element is
+  // visibly dissolving anyway, and a second click re-erases.
+  if (skipAnimation && !skipStyleRebuild) rebuildEraseStyleTag();
 
   // ── Animation + post-animation display:none ──
   let activeAnimation = null;
   let consumed = false;
   if (!skipAnimation) {
-    spawnFlash(rect);
-    activeAnimation = dissolveTarget(target);
+    activeAnimation = playEraseAnimation(target, rect);
     activeAnimation.finished.then(() => {
       if (!consumed) {
         target.style.setProperty('display', 'none', 'important');
         window.AdnotaErasedElements.add(target);
+        // Deferred rebuild — safe now that the dissolve + collapse have played.
+        if (!skipStyleRebuild) rebuildEraseStyleTag();
         window.AdnotaUI.attachEraseStyleGuard(target, {
           id, ruleSelector, reason: 'click',
         });
@@ -1802,7 +1938,7 @@ function commitErase(target, opts = {}) {
       consumed = true;
       window.AdnotaLog?.event('eraser', 'undo', { id, sel: cssSelector });
 
-      // Kill the dissolve if it's still mid-flight.
+      // Kill the erase animation (dissolve and/or collapse) if mid-flight.
       if (activeAnimation) {
         try { activeAnimation.cancel(); } catch { }
         activeAnimation = null;

@@ -1819,11 +1819,13 @@ function initCaptureOverlay() {
   captureSvg.id = 'adnota-capture-canvas';
   captureSvg.setAttribute('data-adnota-ui', '1');
   captureSvg.style.display = 'none';
-  // Match the bicolor crosshair the rest of the app uses. The capture canvas
-  // sits on top of the page during draw modes and the cursor lock skips it
-  // (data-adnota-ui), so without this inline rule the cursor falls back to
-  // the OS native crosshair — visibly different from the lock's SVG.
-  captureSvg.style.cursor = window.AdnotaCursor?.cursors?.crosshair ?? 'crosshair';
+  // Match the tinted draw crosshair the rest of the app uses for drawing
+  // modes. The capture canvas sits on top of the page during draw modes and
+  // the cursor lock skips it (data-adnota-ui), so without this inline rule
+  // the cursor falls back to the OS native crosshair — visibly different
+  // from the lock's SVG.
+  captureSvg.style.cursor = window.AdnotaCursor?.cursors?.crosshairDraw
+    ?? window.AdnotaCursor?.cursors?.crosshair ?? 'crosshair';
 
   captureSvg.addEventListener('pointerdown', handlePointerDown);
   captureSvg.addEventListener('pointermove', handlePointerMove);
