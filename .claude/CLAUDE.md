@@ -1,1 +1,1 @@
-Read README.md to get up to speed.
+Read CODE.md and README.md first.
