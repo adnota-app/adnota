@@ -202,46 +202,80 @@ document.addEventListener('DOMContentLoaded', async () => {
       return; // chrome://, file://, restricted pages — bail silently.
     }
 
-    // ── Count items by action type from storage ──
-    const stored     = await chrome.storage.local.get(domain);
-    const allItems   = stored[domain]?.items ?? [];
-    const pageItems  = allItems.filter(i => i.path === '*' || i.path === path);
-
-    let erasures = 0, notes = 0, highlights = 0, strokes = 0, resizes = 0;
-    for (const item of pageItems) {
-      switch (item.action) {
-        case 'NOTE':      notes++;      break;
-        case 'HIGHLIGHT': highlights++; break;
-        case 'MARKER':    strokes++;    break;
-        case 'RESIZE':    resizes++;    break;
-        default:          erasures++;   break; // 'ERASE' or legacy entries
-      }
-    }
-
-    document.getElementById('count-erasures').textContent   = erasures;
-    document.getElementById('count-notes').textContent      = notes;
-    document.getElementById('count-highlights').textContent = highlights;
-    document.getElementById('count-strokes').textContent    = strokes;
-    document.getElementById('count-resizes').textContent    = resizes;
-
-    // ── Per-class clear: each card dispatches a soft-delete to the content
-    //    script, which handles confirm, toast, and 5s undo. The popup just
-    //    sends the request and closes.
-    const nounMap = {
-      ERASE:     { singular: 'erasure',     plural: 'erasures',     count: () => erasures,   actionTypes: ['ERASE'] },
-      NOTE:      { singular: 'sticky note', plural: 'sticky notes', count: () => notes,      actionTypes: ['NOTE'] },
-      HIGHLIGHT: { singular: 'highlight',   plural: 'highlights',   count: () => highlights, actionTypes: ['HIGHLIGHT'] },
-      MARKER:    { singular: 'pen stroke',  plural: 'pen strokes',  count: () => strokes,    actionTypes: ['MARKER'] },
-      RESIZE:    { singular: 'resize',      plural: 'resizes',      count: () => resizes,    actionTypes: ['RESIZE'] },
+    // Mutable counts; refreshStats() writes here, handler closures read.
+    const state = {
+      erasures: 0, notes: 0, highlights: 0, strokes: 0, resizes: 0,
+      pageStrict: 0, siteStrict: 0,
     };
 
-    function sendSoftDelete(payload) {
+    const nounMap = {
+      ERASE:     { singular: 'erasure',     plural: 'erasures',     count: () => state.erasures,   actionTypes: ['ERASE'] },
+      NOTE:      { singular: 'sticky note', plural: 'sticky notes', count: () => state.notes,      actionTypes: ['NOTE'] },
+      HIGHLIGHT: { singular: 'highlight',   plural: 'highlights',   count: () => state.highlights, actionTypes: ['HIGHLIGHT'] },
+      MARKER:    { singular: 'pen stroke',  plural: 'pen strokes',  count: () => state.strokes,    actionTypes: ['MARKER'] },
+      RESIZE:    { singular: 'resize',      plural: 'resizes',      count: () => state.resizes,    actionTypes: ['RESIZE'] },
+    };
+
+    // Footer buttons pass `{ keepOpen: true }` so a confirmed clear leaves the
+    // popup open for the user to act on the other button (page vs site-wide).
+    // refreshStats() runs again on storage.onChanged so counts and labels
+    // never lie — also covers the toast's 5s undo bouncing items back.
+    function sendSoftDelete(payload, { keepOpen = false } = {}) {
       chrome.tabs.sendMessage(tabs[0].id, { action: 'adnota-soft-delete', ...payload }, () => {
         void chrome.runtime.lastError;
-        window.close();
+        if (!keepOpen) window.close();
       });
     }
 
+    async function refreshStats() {
+      const stored    = await chrome.storage.local.get(domain);
+      const allItems  = stored[domain]?.items ?? [];
+      const pageItems = allItems.filter(i => i.path === '*' || i.path === path);
+
+      state.erasures = state.notes = state.highlights = state.strokes = state.resizes = 0;
+      for (const item of pageItems) {
+        switch (item.action) {
+          case 'NOTE':      state.notes++;      break;
+          case 'HIGHLIGHT': state.highlights++; break;
+          case 'MARKER':    state.strokes++;    break;
+          case 'RESIZE':    state.resizes++;    break;
+          default:          state.erasures++;   break; // 'ERASE' or legacy entries
+        }
+      }
+
+      document.getElementById('count-erasures').textContent   = state.erasures;
+      document.getElementById('count-notes').textContent      = state.notes;
+      document.getElementById('count-highlights').textContent = state.highlights;
+      document.getElementById('count-strokes').textContent    = state.strokes;
+      document.getElementById('count-resizes').textContent    = state.resizes;
+
+      // Strict counts for the footer: page-scoped vs site-wide. The stat-cards
+      // above still collapse both into a "what applies here" union (legacy
+      // behavior, callers outside the popup depend on it). The footer buttons
+      // opt into strict scope so a click on "Clear Page Edits" doesn't
+      // silently nuke a user's site-wide resize rules.
+      state.pageStrict = 0;
+      state.siteStrict = 0;
+      for (const item of allItems) {
+        if (item.path === '*') state.siteStrict++;
+        else if (item.path === path) state.pageStrict++;
+      }
+
+      renderFooterLabel(btnClearPage, state.pageStrict, 'Page');
+      renderFooterLabel(btnClearSite, state.siteStrict, 'Site-Wide');
+    }
+
+    // Button label always plural — count in parens disambiguates and a fixed
+    // footer reads cleaner without word-length jitter on each render.
+    function renderFooterLabel(btn, count, scopeLabel) {
+      if (count === 0) { btn.hidden = true; return; }
+      btn.hidden = false;
+      btn.querySelector('.btn-label').textContent = `Clear ${scopeLabel} Edits (${count})`;
+    }
+
+    // ── Per-class clear: dispatches a soft-delete to the content script,
+    //    which handles confirm, toast, and 5s undo. Closes the popup (the
+    //    five stat-card paths don't have a sibling button to chain into).
     document.querySelectorAll('.stat-card[data-clear-action]').forEach(card => {
       const info = nounMap[card.dataset.clearAction];
       if (!info) return;
@@ -266,26 +300,10 @@ document.addEventListener('DOMContentLoaded', async () => {
       });
     });
 
-    // ── Footer clear buttons (strict scope, contextual) ───────────────────
-    // Strict counts: page-scoped vs site-wide. The stat-cards above still
-    // collapse both into a "what applies here" union (legacy behavior, callers
-    // outside the popup depend on it). The footer buttons opt into strict
-    // scope so a click on "Clear Page Edits" doesn't silently nuke a user's
-    // site-wide resize rules.
-    let pageStrict = 0, siteStrict = 0;
-    for (const item of allItems) {
-      if (item.path === '*') siteStrict++;
-      else if (item.path === path) pageStrict++;
-    }
-
-    function setupClearButton(btn, count, scope, scopeLabel) {
-      if (count === 0) { btn.hidden = true; return; }
-      btn.hidden = false;
-      // Button label always plural — count in parens disambiguates and a fixed
-      // footer reads cleaner without word-length jitter on each render. The
-      // confirm dialog stays grammatically pluralized since it's prose.
-      btn.querySelector('.btn-label').textContent = `Clear ${scopeLabel} Edits (${count})`;
+    function wireFooterClear(btn, scope, getCount) {
       btn.addEventListener('click', async () => {
+        const count = getCount();
+        if (count === 0) return;
         const noun = window.AdnotaUI.pluralize(count, 'edit', 'edits');
         const ok = await window.AdnotaUI.confirmDialog({
           message: `Delete ${count} ${noun} from ${scope === 'site' ? 'this site' : 'this page'}?`,
@@ -298,11 +316,19 @@ document.addEventListener('DOMContentLoaded', async () => {
           actionTypes: ['ERASE', 'NOTE', 'HIGHLIGHT', 'MARKER', 'RESIZE'],
           skipConfirm: true,
           scope,
-        });
+        }, { keepOpen: true });
       });
     }
+    wireFooterClear(btnClearPage, 'page', () => state.pageStrict);
+    wireFooterClear(btnClearSite, 'site', () => state.siteStrict);
 
-    setupClearButton(btnClearPage, pageStrict, 'page', 'Page');
-    setupClearButton(btnClearSite, siteStrict, 'site', 'Site-Wide');
+    await refreshStats();
+
+    // Live updates: re-render on any storage write for this domain so a
+    // soft-delete + undo round-trip keeps the popup labels honest even
+    // when the popup itself never closed.
+    chrome.storage.onChanged.addListener((changes, area) => {
+      if (area === 'local' && changes[domain]) refreshStats();
+    });
   });
 });
