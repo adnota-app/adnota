@@ -2993,12 +2993,22 @@ async function persistRecolor(el, which, hex) {
   return commitResizeRule(el, cssText, kind);
 }
 
+// Single-flight guard. EyeDropper has no programmatic cancel API; once
+// open, only a pick or Escape resolves it. If the user clicks a recolor
+// chip while a previous dropper is mid-await, Chrome promotes the new
+// EyeDropper to active and the old one is orphaned — its promise never
+// resolves, and Chrome's magnifier-circle UI for it stays visible until
+// the tab is reloaded.
+let _dropperOpen = false;
+
 async function pickColorAndApply(el, which) {
+  if (_dropperOpen) return;
   if (!isRecolorable(el)) return;
   if (typeof window.EyeDropper !== 'function') {
     window.AdnotaUI?.showToast('Eyedropper requires Chrome 95+');
     return;
   }
+  _dropperOpen = true;
   try {
     const dropper = new window.EyeDropper();
     const result = await dropper.open();
@@ -3008,6 +3018,8 @@ async function pickColorAndApply(el, which) {
     }
   } catch {
     // User cancelled the picker — no-op.
+  } finally {
+    _dropperOpen = false;
   }
 }
 
