@@ -65,7 +65,7 @@ chipCluster.appendChild(dimensionBadge);
 // chrome (drag handle + logo + info + trash + undo) so trash/undo stay reachable
 // even when nothing is hovered or selected.
 // Dock body — mounted into AdnotaDock when resizer mode is active. The dock
-// owns drag handle + V logo + tool row; we own the info span + trash + undo
+// owns drag handle + A logo + tool row; we own the info span + trash + undo
 // + the contextual REFLOW buttons (added after undo with a divider, hidden
 // when nothing applies).
 const resizerBody = document.createElement('div');

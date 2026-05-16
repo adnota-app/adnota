@@ -63,7 +63,7 @@ Object.assign(dimensionBadge.style, {
 overlayBadgeRow.appendChild(dimensionBadge);
 
 // ─── HUD body (mounts into the unified AdnotaDock on activation) ───────────
-// The dock owns the chrome (drag handle, V logo, tool row, position).
+// The dock owns the chrome (drag handle, A logo, tool row, position).
 // The eraser owns its controls — info strip + trash + undo — built once
 // and mounted into the dock body slot when the tool is active.
 const eraserBody = document.createElement('div');
