@@ -267,11 +267,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
 
     // ── Footer clear buttons (strict scope, contextual) ───────────────────
-    // Strict counts: page-scoped vs domain-wide. The stat-cards above still
+    // Strict counts: page-scoped vs site-wide. The stat-cards above still
     // collapse both into a "what applies here" union (legacy behavior, callers
     // outside the popup depend on it). The footer buttons opt into strict
     // scope so a click on "Clear Page Edits" doesn't silently nuke a user's
-    // domain-wide resize rules.
+    // site-wide resize rules.
     let pageStrict = 0, siteStrict = 0;
     for (const item of allItems) {
       if (item.path === '*') siteStrict++;

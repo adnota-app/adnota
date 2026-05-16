@@ -3257,8 +3257,8 @@ function startDrag(e, axis) {
 // neighbors). All kind-bearing commits coexist on the same selector with
 // orthogonal cssText; same-kind replays dedup via the loop below.
 //
-// Resizes default to domain-wide (`path: '*'`). Unlike the eraser — where
-// domain-wide is an explicit user override (Shift+Click) or silent ad-scope
+// Resizes default to site-wide (`path: '*'`). Unlike the eraser — where
+// site-wide is an explicit user override (Shift+Click) or silent ad-scope
 // promotion — resize targets are almost always structural containers (nav,
 // sidebar, header, article wrapper) that recur across a site with the same
 // selector. Scoping to just the current page would force the user to redo

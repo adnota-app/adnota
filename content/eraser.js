@@ -22,7 +22,7 @@ Object.assign(overlayBadgeRow.style, {
 highlightOverlay.appendChild(overlayBadgeRow);
 
 // "likely ad" pill — only shown when getEffectiveAdSignals() returns non-empty
-// (same detection that drives the silent domain-wide promotion on click).
+// (same detection that drives the silent site-wide promotion on click).
 // Sits to the left of the dimension chip; small text pill, no border.
 const adBadge = document.createElement('div');
 adBadge.id = 'adnota-ad-badge';
@@ -1712,7 +1712,7 @@ async function commitBatch() {
         skipAnimation: true,
         skipStyleRebuild: true,
         skipStorageWrite: true,
-        // Force domain-wide for every batch item. The batch only surfaces
+        // Force site-wide for every batch item. The batch only surfaces
         // when findSimilarAds confirms an ad cluster, so every commit here
         // is part of that cluster and should match the seed's scope —
         // don't let per-candidate signal variance create mixed scopes.
@@ -1767,7 +1767,7 @@ async function commitBatch() {
   };
   window.AdnotaUndo.push(compositeUndo);
 
-  // Batch is always domain-wide (cluster of ads, treated as one decision per
+  // Batch is always site-wide (cluster of ads, treated as one decision per
   // the forceDomain pass-through). Suffix mirrors the single-erase toasts.
   window.AdnotaUI.showToast(`Erased ${erasedCount} ${erasedCount === 1 ? 'ad' : 'ads'} site-wide`, {
     id: 'adnota-eraser-batch-toast',
@@ -1809,7 +1809,7 @@ function commitErase(target, opts = {}) {
     skipStyleRebuild = false,
     skipStorageWrite = false,
     // forceDomain: batch-commit and manual-mid-review erases pass this so
-    // every item in the cluster gets the same domain-wide treatment as the
+    // every item in the cluster gets the same site-wide treatment as the
     // seed click. Without it, per-candidate getEffectiveAdSignals can vary
     // between scan-time and commit-time (page mutation, viewport changes),
     // producing mixed page/domain scopes within what should be one cluster.
@@ -1823,7 +1823,7 @@ function commitErase(target, opts = {}) {
   const anchor = window.FuzzyAnchor.generate(target);
   const cssSelector = window.FuzzyAnchor.generateCSSSelector(target);
   // Shift is the user's explicit "entire domain" override — unchanged behavior.
-  // If the target looks like an ad we silently promote the scope to domain-wide
+  // If the target looks like an ad we silently promote the scope to site-wide
   // too, since nobody wants to erase the same ad on every article. No chip, no
   // messaging; it just works. Non-ad targets still scope to the current page.
   const adSignals = getEffectiveAdSignals(target);
@@ -2018,7 +2018,7 @@ document.addEventListener('click', async (e) => {
       hoveredElement = null;
 
       // forceDomain: manual mid-review erases are part of the cluster the
-      // user is reviewing. Treat them with the same domain-wide scope as
+      // user is reviewing. Treat them with the same site-wide scope as
       // the bulk commit so the user doesn't see mixed page/domain scopes
       // across what's logically one decision.
       const result = commitErase(entry.el, { shiftKey: e.shiftKey, forceDomain: true });
@@ -2026,7 +2026,7 @@ document.addEventListener('click', async (e) => {
       window.AdnotaUndo.push(result.undoEntry);
 
       // forceDomain is always true here (manual mid-review erase joins the
-      // cluster's domain-wide scope), so the toast can hardcode "site-wide".
+      // cluster's site-wide scope), so the toast can hardcode "site-wide".
       window.AdnotaUI.showToast('Element erased site-wide', {
         id: 'adnota-eraser-toast',
         onUndo: () => innerUndo(),

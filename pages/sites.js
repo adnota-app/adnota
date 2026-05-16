@@ -494,7 +494,7 @@
     drawerLabel.textContent = 'Pages';
     drawerInner.appendChild(drawerLabel);
 
-    // Sort paths: '*' domain-wide last, then alphabetical. When a tag filter
+    // Sort paths: '*' site-wide last, then alphabetical. When a tag filter
     // is active, drop paths that have no matching tagged items so the drawer
     // stays focused on what the user asked for.
     const sortedPaths = [...pathMap.keys()]
