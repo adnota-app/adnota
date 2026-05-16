@@ -552,33 +552,54 @@ function isPropsSuperset(superset, subset) {
 // them — inheritance loses to a child's own declaration. We add them to the
 // selector list so the override hits each one directly.
 //
-// Block prose + the common inline text-formatting elements. Without the
-// inline group, real-world prose (Google search snippets, Wikipedia article
-// body — anywhere emphasis is wrapped in <em>/<strong>/<span>) is invisible
-// to the cascade and the override silently misses.
+// Two lists because the safety calculus differs:
 //
-// Deliberately excluded (see also the text-size helpers section below):
+// - `font-size` affects layout (line-box height, wrap points). Scaling a
+//   structural <div> that happened to contain text could blow up badge
+//   layouts, footer link rows, icon labels — anywhere the design intent
+//   was "deliberately small text in a div." Stay conservative.
+// - `color` doesn't affect layout. A div with no own color rule already
+//   inherits, so adding it to the cascade is a no-op. A div with its own
+//   color rule is deliberately not inheriting — and "recolor this card"
+//   means "yes, recolor everything inside it." The over-color case is
+//   loud (visible immediately) and recoverable (↺ reset), not silent.
+//
+// Common to both lists, deliberately excluded:
 // - <a>: links must stay visually distinguishable
-// - <button>, <input>, <select>, <textarea>: scaling/recoloring breaks form
-//   affordances
+// - <button>, <input>, <select>, <textarea>: scaling/recoloring breaks
+//   form affordances
 // - <h1>–<h6>: heading hierarchy is part of the page's design intent
 // - <code>, <kbd>, <samp>, <var>, <pre>: monospace relationship matters
-// - <sub>, <sup>, <small>: their typography is already relative-smaller by
-//   design; scaling them with the parent breaks the visual relationship
-// - arbitrary <div>: recoloring random structural elements that happen to
-//   contain text would catch far more than the user meant to select
-const PROSE_CASCADE_TAGS = [
+// - <sub>, <sup>, <small>: their typography is already relative-smaller
+//   by design; scaling/recoloring them breaks the visual relationship
+const TEXT_SIZE_CASCADE_TAGS = [
+  // Block prose
   'p', 'li', 'dd', 'dt', 'blockquote', 'caption', 'figcaption',
+  // Inline text formatting — without these, snippets like Google's
+  // <em>-wrapped query terms stay un-scaled inside the parent.
   'span', 'em', 'strong', 'b', 'i', 'mark', 'ins', 'del',
   'cite', 'q', 'dfn', 'time', 'abbr',
 ];
 
+const RECOLOR_TEXT_CASCADE_TAGS = [
+  ...TEXT_SIZE_CASCADE_TAGS,
+  // Structural containers that real-world apps use for body text (Google
+  // search snippets in <div class="VwiC3b">, Tailwind/React utility-CSS
+  // apps, headless component libraries). Including them here means a
+  // "recolor this card" actually recolors the body prose inside, not
+  // just the inline emphasis. Safe to add for color (no layout effect).
+  'div', 'section', 'article', 'aside',
+  'header', 'footer', 'nav', 'main',
+  'figure', 'details', 'summary',
+];
+
 function ruleSelectorFor(rule) {
-  if (rule.kind === 'text-size' || rule.kind === 'recolor-text') {
-    const s = rule.selector;
-    return [s, ...PROSE_CASCADE_TAGS.map(tag => `${s} ${tag}`)].join(',');
-  }
-  return rule.selector;
+  let cascade = null;
+  if (rule.kind === 'text-size') cascade = TEXT_SIZE_CASCADE_TAGS;
+  else if (rule.kind === 'recolor-text') cascade = RECOLOR_TEXT_CASCADE_TAGS;
+  if (!cascade) return rule.selector;
+  const s = rule.selector;
+  return [s, ...cascade.map(tag => `${s} ${tag}`)].join(',');
 }
 
 function rebuildResizeStyleTag() {
