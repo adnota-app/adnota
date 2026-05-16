@@ -546,20 +546,37 @@ function isPropsSuperset(superset, subset) {
   return true;
 }
 
-// Kind-aware selector expansion. Most rules render as `${selector} { ... }`
-// verbatim, but `kind: 'text-size'` expands to also hit common prose-bearing
-// descendants so the cssText overrides authored child font-sizes (the canonical
-// "13px body text unreadable" failure mode). Headings, code, form controls,
-// and arbitrary divs are deliberately NOT in the cascade — see the text-size
-// helpers section for the rationale.
+// Kind-aware selector expansion for `text-size` and `recolor-text`. Authored
+// CSS commonly sets `font-size` / `color` directly on these elements, so
+// cascading from a parent selector alone (even with !important) doesn't reach
+// them — inheritance loses to a child's own declaration. We add them to the
+// selector list so the override hits each one directly.
+//
+// Block prose + the common inline text-formatting elements. Without the
+// inline group, real-world prose (Google search snippets, Wikipedia article
+// body — anywhere emphasis is wrapped in <em>/<strong>/<span>) is invisible
+// to the cascade and the override silently misses.
+//
+// Deliberately excluded (see also the text-size helpers section below):
+// - <a>: links must stay visually distinguishable
+// - <button>, <input>, <select>, <textarea>: scaling/recoloring breaks form
+//   affordances
+// - <h1>–<h6>: heading hierarchy is part of the page's design intent
+// - <code>, <kbd>, <samp>, <var>, <pre>: monospace relationship matters
+// - <sub>, <sup>, <small>: their typography is already relative-smaller by
+//   design; scaling them with the parent breaks the visual relationship
+// - arbitrary <div>: recoloring random structural elements that happen to
+//   contain text would catch far more than the user meant to select
+const PROSE_CASCADE_TAGS = [
+  'p', 'li', 'dd', 'dt', 'blockquote', 'caption', 'figcaption',
+  'span', 'em', 'strong', 'b', 'i', 'mark', 'ins', 'del',
+  'cite', 'q', 'dfn', 'time', 'abbr',
+];
+
 function ruleSelectorFor(rule) {
   if (rule.kind === 'text-size' || rule.kind === 'recolor-text') {
-    // recolor-text shares the prose-cascade with text-size: authored CSS sets
-    // `color` on <p>/<li>/etc. directly, so cascading `color` from a parent
-    // selector alone won't reach them. <a> is deliberately excluded — links
-    // need to stay visually distinguishable.
     const s = rule.selector;
-    return `${s},${s} p,${s} li,${s} dd,${s} dt,${s} blockquote,${s} caption,${s} figcaption`;
+    return [s, ...PROSE_CASCADE_TAGS.map(tag => `${s} ${tag}`)].join(',');
   }
   return rule.selector;
 }
