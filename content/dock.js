@@ -190,7 +190,7 @@
     };
   }
 
-  // Same stale-context guard as the V-logo and tool-click handlers: after a
+  // Same stale-context guard as the A-logo and tool-click handlers: after a
   // Adnota reload, chrome.storage.local.set throws SYNCHRONOUSLY ("Extension
   // context invalidated"), so .catch() alone won't help — it only handles
   // async rejection.
@@ -325,7 +325,7 @@
     }
     // Fire the tool's toggle through the background relay so the content
     // script's runtime message listener handles it (same path keyboard
-    // shortcuts take). Same stale-context guard as the V-logo handler —
+    // shortcuts take). Same stale-context guard as the A-logo handler —
     // sendMessage throws synchronously when the extension has been
     // reloaded since this tab was opened.
     try {

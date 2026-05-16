@@ -5,9 +5,10 @@
 ## What it does
 
 1. **Verifies version sync.** Reads `manifest.json` and the tag name (e.g. `v0.9.0`). The numeric parts must match — otherwise the Chrome Web Store will reject the upload, so we catch it here.
-2. **Builds a zip** using an **explicit include-list**: `manifest.json`, `background.js`, `LICENSE`, and the four content directories (`content/`, `icons/`, `lib/`, `pages/`, `popup/`). Stray dev files (notes, TODO, tools/, screenshots) never ship because they're not in the list.
-3. **Creates a GitHub Release** with the zip attached and release notes auto-generated from commit messages since the previous tag.
-4. **Pre-release detection.** Any tag containing a `-` (semver pre-release: `v0.9.0-rc.1`, `v1.0.0-beta`) is flagged as a pre-release so it doesn't replace "Latest" on the repo page.
+2. **Runs `npm ci && npm run build`** to produce a minified copy of the extension under `dist/`. `tools/build.sh` controls exactly what lands there (per-file minified JS + CSS, plus manifest, icons, fonts, HTML, LICENSE), so stray dev files (notes, TODO, screenshots) never ship — they're never in `dist/` in the first place.
+3. **Builds a zip** of `dist/` contents at the zip root (Chrome Web Store requires manifest.json at the top level, not nested in a directory).
+4. **Creates a GitHub Release** with the zip attached and release notes auto-generated from commit messages since the previous tag.
+5. **Pre-release detection.** Any tag containing a `-` (semver pre-release: `v0.9.0-rc.1`, `v1.0.0-beta`) is flagged as a pre-release so it doesn't replace "Latest" on the repo page.
 
 ## Cutting a release
 
@@ -68,15 +69,16 @@ Keep `manifest.json`'s `"version"` field in lockstep with the tag's numeric base
 
 ## What's NOT in the zip
 
-The include-list is explicit, so anything not named there is excluded. Currently that means the repo's:
+`tools/build.sh` is the single source of truth for what ships. Anything it doesn't explicitly copy or minify into `dist/` is excluded. Currently that means:
 
 - `notes.md`, `TODO`, `product_plan.md`, `selection.txt`, `PAINT notes.md`
-- `tools/` (dev scripts like `build-icons.sh`)
+- `tools/` (build scripts themselves don't ship)
 - `README.md` (the top-level project readme)
 - `image.png`, `bla` (stray files)
 - `.git`, `.github`, `.claude`, `.DS_Store`, `.gitignore`
+- `package.json`, `package-lock.json`, `node_modules/`
 
-If you add new top-level directories that should ship (e.g. a future `_locales/`), update the `zip -r` line in `release.yml` to include them.
+If you add new top-level directories that should ship (e.g. a future `_locales/`), update `tools/build.sh` to copy or minify them into `dist/`.
 
 ## Future: auto-upload to Chrome Web Store
 

@@ -1,0 +1,16 @@
+{
+  "name": "adnota",
+  "version": "0.9.0",
+  "private": true,
+  "description": "Build tooling for the Adnota Chrome Extension. Source lives at the repo root and is loadable as unpacked for dev; `npm run build` emits a minified copy under dist/ for Web Store packaging.",
+  "scripts": {
+    "build": "bash tools/build.sh",
+    "build:watch": "bash tools/build.sh --watch",
+    "lint": "eslint .",
+    "version": "node tools/sync-manifest-version.js && git add manifest.json"
+  },
+  "devDependencies": {
+    "esbuild": "^0.24.0",
+    "eslint": "^10.4.0"
+  }
+}

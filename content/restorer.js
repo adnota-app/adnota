@@ -17,6 +17,18 @@ let lastProcessedUrl = null;
 // races with the first run's render writes. Cheap to prevent.
 let restorationInFlight = false;
 
+// Clean-URL gate: most pages on the web have zero Adnota items for their
+// URL, but the MutationObserver below fires on every DOM mutation — and a
+// flush would otherwise hit chrome.storage.local.get(hostname) on every
+// burst just to read back an empty filter result. Tracks the last URL we
+// checked and whether it had items; subsequent mutation flushes on the same
+// URL with the empty latch bail at performRestoration entry. Re-evaluated
+// whenever the URL changes (SPA nav lands us on a path that may have items
+// even when previous paths didn't) and re-armed by storage.onChanged when
+// the hostname blob gains items (e.g., another tab saved on the same host).
+let urlHasItems = true;
+let urlHasItemsCheckedFor = null;
+
 // Tear down every rendered annotation owned by the previous URL. Called on
 // SPA URL change before re-running restoration for the new URL. Each engine
 // owns its own DOM (#adnota-marker-overlay, .adnota-sticky-container,
@@ -109,6 +121,19 @@ function showBrokenAnchorsToast(count) {
 
 async function performRestoration(trigger) {
   if (!window.AdnotaStorage || !window.FuzzyAnchor) return;
+  // Clean-URL short-circuit. Skip before the in-flight check so a gated
+  // bail doesn't spuriously log a reentrant-drop; skip before the storage
+  // read because that's the actual cost we're avoiding (every mutation
+  // burst on every clean page would otherwise round-trip chrome.storage).
+  // Bypassed on URL change: SPA nav from /bar (empty) to /foo (has items)
+  // must re-evaluate against the new URL — without this guard, the latch
+  // from /bar would suppress restoration on /foo. lastProcessedUrl is
+  // deliberately NOT updated here so the eventual run is still classified
+  // as initial vs SPA-nav correctly.
+  if (!urlHasItems && urlHasItemsCheckedFor === location.href) {
+    window.AdnotaLog?.event('restorer', 'clean-page-skip', { url: location.href, trigger });
+    return;
+  }
   if (restorationInFlight) {
     window.AdnotaLog?.event('restorer', 'reentrant-drop', { url: location.href, trigger });
     return;
@@ -158,9 +183,22 @@ async function _performRestoration(trigger) {
 
   const anchors = await window.AdnotaStorage.getAnchorsForUrl(location.href);
   if (!anchors || anchors.length === 0) {
+    // Latch the clean-URL gate so subsequent mutation flushes on this URL
+    // short-circuit at performRestoration entry instead of paying for this
+    // storage read. Keyed to location.href so a later SPA nav to a path
+    // that DOES have items re-evaluates instead of staying gated.
+    urlHasItems = false;
+    urlHasItemsCheckedFor = location.href;
     document.documentElement.classList.remove('adnota-route-changing');
     return;
   }
+  // URL has items — re-arm the gate in case a previous pass on this URL or
+  // a sibling URL latched it false. Subsequent mutation flushes on the same
+  // URL still hit storage (the dispatch loop's processedItems dedup keeps
+  // them cheap), but the gate must allow them through to pick up newly
+  // saved items.
+  urlHasItems = true;
+  urlHasItemsCheckedFor = location.href;
 
   const sizeBefore = processedItems.size;
   let erasuresCount = 0;
@@ -603,6 +641,21 @@ if (window.navigation) {
     }
   });
 }
+
+// Re-arm the clean-URL gate whenever the hostname blob changes. Covers
+// cross-tab sync (another tab saved on this same host) and the local-tab
+// case where a tool just wrote the page's first item — both flip the gate
+// optimistically so the next mutation flush proceeds and the dispatch loop
+// can decide whether the change is actually relevant to this URL. A flush
+// that finds the new item belongs to a different path will simply re-latch
+// false at the empty-anchors branch above; the redundant read is the cost
+// of cross-tab freshness, paid only on actual writes for this host.
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area !== 'local') return;
+  if (!(location.hostname in changes)) return;
+  urlHasItems = true;
+  urlHasItemsCheckedFor = null;
+});
 
 // Protect against dynamic SPAs fetching data late.
 // Trailing 1s debounce so we wait for a mutation burst to settle, but with a

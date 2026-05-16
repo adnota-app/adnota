@@ -56,7 +56,7 @@ function makeToolBtn(name, title, mode) {
 
 // ── Create Toolbar UI ───────────────────────────────────────────────────────
 // Dock body — mounts into AdnotaDock when a drawing-family mode is active.
-// The dock owns drag handle + V logo + tool row; we own tools + swatches +
+// The dock owns drag handle + A logo + tool row; we own tools + swatches +
 // stroke widths + fill toggle + trash + undo.
 const highlightToolbar = document.createElement('div');
 highlightToolbar.style.display = 'inline-flex';
@@ -139,12 +139,18 @@ const eyeSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
 eyeSvg.setAttribute('viewBox', '0 0 20 20');
 eyeSvg.innerHTML = toolIcons.eyedropper;
 eyedropperSwatch.appendChild(eyeSvg);
+// Single-flight guard. See resizer.js's pickColorAndApply for the full
+// rationale — short version: re-entry leaves Chrome's magnifier UI from
+// the orphaned EyeDropper stuck on screen until tab reload.
+let _dropperOpen = false;
 eyedropperSwatch.onclick = async (e) => {
   e.stopPropagation();
+  if (_dropperOpen) return;
   if (typeof window.EyeDropper !== 'function') {
     window.AdnotaUI.showToast('Eyedropper requires Chrome 95+');
     return;
   }
+  _dropperOpen = true;
   try {
     const dropper = new window.EyeDropper();
     const result = await dropper.open();
@@ -153,6 +159,8 @@ eyedropperSwatch.onclick = async (e) => {
     }
   } catch (err) {
     // User cancelled picker — no-op.
+  } finally {
+    _dropperOpen = false;
   }
 };
 highlightToolbar.appendChild(eyedropperSwatch);
