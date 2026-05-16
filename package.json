@@ -6,7 +6,8 @@
   "scripts": {
     "build": "bash tools/build.sh",
     "build:watch": "bash tools/build.sh --watch",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "version": "node tools/sync-manifest-version.js && git add manifest.json"
   },
   "devDependencies": {
     "esbuild": "^0.24.0",
