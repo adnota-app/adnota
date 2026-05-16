@@ -2188,24 +2188,40 @@ function findOcclusion(el) {
   const rectArea = Math.max(0, rect.width) * Math.max(0, rect.height);
   if (rectArea <= 0) return null;
 
-  // 9 sample points: 4 corners (inset 1px), 4 edge midpoints, center.
+  // Clip the sampling rect to the viewport. Tall elements (sidebar widgets
+  // dragged into the main column, infinite-scroll feeds) extend far past
+  // the viewport; sampling the full rect concentrates valid points at the
+  // visible top/bottom edges and misses occluders in the visible middle
+  // band. Off-screen points can't be sampled anyway (elementsFromPoint
+  // returns [] outside the viewport), and the visible portion is the only
+  // thing competing for paint priority that the user can see right now.
+  const vis = {
+    left:   Math.max(rect.left,   0),
+    top:    Math.max(rect.top,    0),
+    right:  Math.min(rect.right,  window.innerWidth),
+    bottom: Math.min(rect.bottom, window.innerHeight),
+  };
+  if (vis.right <= vis.left || vis.bottom <= vis.top) return null;
+
+  // 9 sample points within the VISIBLE rect: 4 corners (inset 1px), 4 edge
+  // midpoints, center.
   // Corner-only sampling falls apart on rounded elements — a card with
   // border-radius:16px has corner pixels inside the bounding rect but
   // OUTSIDE the painted area, so elementsFromPoint at those points doesn't
   // return the card. Edge midpoints and center are safely inside the
   // painted area for any border-radius up to ~half the smaller dimension.
-  const cx = (rect.left + rect.right) / 2;
-  const cy = (rect.top + rect.bottom) / 2;
+  const cx = (vis.left + vis.right)  / 2;
+  const cy = (vis.top  + vis.bottom) / 2;
   const points = [
-    [rect.left + 1,  rect.top + 1],
-    [rect.right - 1, rect.top + 1],
-    [rect.left + 1,  rect.bottom - 1],
-    [rect.right - 1, rect.bottom - 1],
-    [cx,             rect.top + 1],
-    [cx,             rect.bottom - 1],
-    [rect.left + 1,  cy],
-    [rect.right - 1, cy],
-    [cx,             cy],
+    [vis.left + 1,  vis.top + 1],
+    [vis.right - 1, vis.top + 1],
+    [vis.left + 1,  vis.bottom - 1],
+    [vis.right - 1, vis.bottom - 1],
+    [cx,            vis.top + 1],
+    [cx,            vis.bottom - 1],
+    [vis.left + 1,  cy],
+    [vis.right - 1, cy],
+    [cx,            cy],
   ];
 
   const seen = new Set();
@@ -2220,7 +2236,8 @@ function findOcclusion(el) {
   // we use array-index order as the truth and only consult z-index to pick
   // the lift target. Area threshold weeds out tiny corner-clipping noise.
   for (const [x, y] of points) {
-    if (x < 0 || y < 0 || x > window.innerWidth || y > window.innerHeight) continue;
+    // All points are within vis, which is itself within the viewport, so
+    // the off-screen guard the old code needed here is no longer required.
     const hits = document.elementsFromPoint(x, y);
     const ourIdx = hits.indexOf(el);
     // If el isn't at this point (rounded-corner cutout, transformed beyond
