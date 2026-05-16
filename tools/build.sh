@@ -28,7 +28,19 @@ fi
 # under `set -e` doesn't orphan the other, and so Ctrl-C during --watch
 # tears down both watchers cleanly. `jobs -p` returns just our children,
 # not the shell itself — avoids the self-SIGTERM `kill 0` would cause.
-trap 'kill $(jobs -p) 2>/dev/null' EXIT
+#
+# Three defensive bits make the trap CI-safe:
+#   1. Snapshot $? first and `exit $rc` at the end so the trap can't clobber
+#      the script's real exit status.
+#   2. `[ -n "$pids" ] &&` — at normal end, `kill` with no PID is a usage
+#      error that exits 1; without the guard, that exit code propagated up
+#      and CI failed every successful build.
+#   3. `|| true` — even with a non-empty `jobs -p`, bash often retains the
+#      PID of a job that already completed (its child reaped but not yet
+#      pruned from the job table), so `kill <stale-pid>` returns ESRCH.
+#      Under `set -e` (which DOES apply to commands in trap handlers),
+#      that propagates and aborts the trap before `exit $rc` runs.
+trap 'rc=$?; pids=$(jobs -p); [ -n "$pids" ] && kill $pids 2>/dev/null || true; exit $rc' EXIT
 
 rm -rf "$DIST"
 mkdir -p "$DIST"
