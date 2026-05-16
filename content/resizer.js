@@ -2981,8 +2981,18 @@ function fireTextSizeTipOnce() {
 function isRecolorable(el) {
   if (!el || !el.isConnected) return false;
   if (el === document.body || el === document.documentElement) return false;
-  const ctx = el._adnotaLayoutContext || getLayoutContext(el);
-  if (ctx?.kind === 'table-component') return false;
+  // Only truly non-paintable cases excluded. Recolor was previously gated
+  // on getLayoutContext's 'table-component' kind, but that predicate
+  // exists for the *resize* affordance — it filters elements whose
+  // width/height are ignored by their layout context (inline, table-row,
+  // table-cell, display:contents, etc). Recolor uses background-color
+  // and color, which paint fine on inline elements (<span>, <em>, <svg>
+  // — the Google-logo case that prompted this) and on table-* elements.
+  // The only cases where painting truly can't happen are display:none
+  // (no rendering at all) and display:contents (no box of its own —
+  // children render but the element itself doesn't).
+  const display = getComputedStyle(el).display;
+  if (display === 'none' || display === 'contents') return false;
   return true;
 }
 
