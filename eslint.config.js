@@ -93,12 +93,14 @@ module.exports = [
 
       // ── Warnings, not errors — flagged but don't block CI ───────────
       'no-unused-vars': ['warn', {
-        argsIgnorePattern: '^_',        // (_event) => ... ignored
+        args: 'none',                   // function args not checked at all —
+                                        // event handlers often share signature
+                                        // (handlePenMove(e) / handlePenUp(e))
+                                        // and renaming the unused side to _e
+                                        // is asymmetry-for-the-linter's-sake.
         varsIgnorePattern: '^_',        // const _unused intentionally
         caughtErrors: 'none',           // unused err/e in catch blocks ignored
-                                        // entirely — they're so common in this
-                                        // codebase as `try { ... } catch (err) {}`
-                                        // that flagging them is pure noise.
+                                        // (same reasoning as args).
       }],
       'no-empty': ['warn', { allowEmptyCatch: true }], // empty try/catch is intentional in this codebase
     },
