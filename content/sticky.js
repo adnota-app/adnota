@@ -109,7 +109,7 @@ window.AdnotaSticky = { applyCursor: applyStickyCursor };
 // ---------------------------------------------------------------------------
 
 // Dock body \u2014 mounts into AdnotaDock when sticky mode is active. The dock
-// owns the drag handle + V logo + tool row; we own swatches + trash + undo.
+// owns the drag handle + A logo + tool row; we own swatches + trash + undo.
 const stickyBody = document.createElement('div');
 stickyBody.style.display = 'inline-flex';
 stickyBody.style.alignItems = 'center';
