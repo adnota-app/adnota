@@ -916,6 +916,31 @@ a.page-path:hover .page-path-icon {
 
 .page-path-root { color: var(--text-3); font-weight: 400; }
 
+/* Site-wide (path: '*') row: same hyperlink treatment as path-scoped
+   rows, plus a leading globe icon and a trailing "site-wide" tag so the
+   row reads as "this link is a representative source, not the actual
+   scope." Globe color mirrors the scratch pad's site-wide hint
+   (var(--adnota-accent) — purple, brand-consistent). */
+.page-path-globe {
+  flex-shrink: 0;
+  color: var(--adnota-accent, #7c3aed);
+  opacity: 0.9;
+}
+
+.page-path-sitewide-tag {
+  flex-shrink: 0;
+  margin-left: 6px;
+  padding: 1px 6px 2px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--adnota-accent, #7c3aed);
+  background: rgba(124, 58, 237, 0.08);
+  border: 1px solid rgba(124, 58, 237, 0.18);
+  border-radius: 999px;
+  text-transform: lowercase;
+}
+
 .page-pills {
   display: flex;
   gap: 4px;

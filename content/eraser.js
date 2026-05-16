@@ -1923,7 +1923,15 @@ function commitErase(target, opts = {}) {
   // batch path sets skipStorageWrite to coalesce N saveItem calls into one
   // bulk saveItems — N parallel saveItems would race (each reads the same
   // before-state, writes overwrite each other, only the last lands).
-  const storagePayload = { action: 'ERASE', anchor, selector: cssSelector, _id: id };
+  // sourceUrl captures the full URL where the erase happened. Used by the
+  // Sites page to make site-wide (path === '*') rows clickable — the
+  // pathname alone is often meaningless for query-string-driven pages
+  // (Google searches, video URLs, dynamic dashboards). Optional; pre-
+  // existing rules without it just degrade to the old non-link rendering.
+  const storagePayload = {
+    action: 'ERASE', anchor, selector: cssSelector, _id: id,
+    sourceUrl: location.href,
+  };
   let storageWrite = null;
   if (window.AdnotaStorage) {
     if (skipStorageWrite) {
