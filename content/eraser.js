@@ -22,7 +22,7 @@ Object.assign(overlayBadgeRow.style, {
 highlightOverlay.appendChild(overlayBadgeRow);
 
 // "likely ad" pill — only shown when getEffectiveAdSignals() returns non-empty
-// (same detection that drives the silent domain-wide promotion on click).
+// (same detection that drives the silent site-wide promotion on click).
 // Sits to the left of the dimension chip; small text pill, no border.
 const adBadge = document.createElement('div');
 adBadge.id = 'adnota-ad-badge';
@@ -63,7 +63,7 @@ Object.assign(dimensionBadge.style, {
 overlayBadgeRow.appendChild(dimensionBadge);
 
 // ─── HUD body (mounts into the unified AdnotaDock on activation) ───────────
-// The dock owns the chrome (drag handle, V logo, tool row, position).
+// The dock owns the chrome (drag handle, A logo, tool row, position).
 // The eraser owns its controls — info strip + trash + undo — built once
 // and mounted into the dock body slot when the tool is active.
 const eraserBody = document.createElement('div');
@@ -257,6 +257,60 @@ function getEffectiveAdSignals(target) {
 const SIMILAR_ADS_CAP = 50;
 const ATTR_PREFIX_BROAD_THRESHOLD = 200; // skip prefixes broader than this — structural class, not ad cluster
 
+// Strong strategies — those whose match has a high prior of being a real ad
+// cluster (tag name names the slot / ad-network data-attr / explicit ad
+// keyword class). Used by the batch-entry gate at the post-click call site
+// so weak-strategy-only matches (attr-prefix, creative-similarity) can
+// contribute candidates to a batch but can't open one on their own.
+const STRONG_FIND_STRATEGIES = new Set(['tag-shape', 'ad-attr-presence', 'class-signature']);
+
+// Walk-up retargeting for the wrapper-around-creative pattern.
+// Ad slots routinely render their actual creative into an iframe-bearing
+// inner div that has no classes, no ad-attrs, and a random-looking id with
+// no hyphen stem — leaving every find-similars strategy with nothing to
+// key on (totalCount: 0, strategies: []). The slot WRAPPER one or two hops
+// up carries the network's classes / data-attrs and would drive a clean
+// sweep. _findAdWrapperFor retargets to that wrapper when the seed is
+// ad-fingerprinted (so we know we're in ad territory) but lacks any strong
+// signature of its own. Gated tightly + capped on hop count so a runaway
+// walk can't escape into article content. Returns the seed unchanged when
+// it already has a signature, has no ad signals, or no qualifying ancestor
+// is reachable within the hop cap.
+const MAX_AD_WRAPPER_HOPS = 3;
+function _hasStrongFindSimilarsSignature(el) {
+  if (!el || !el.tagName) return false;
+  // Strategy 1: tag-shape — ad-shaped custom tag name
+  if (_adIdentifierPattern.test(el.tagName)) return true;
+  if (!el.attributes) return false;
+  // Strategy 2: ad-attr-presence — ad-network data-attribute on the element
+  for (const attr of el.attributes) {
+    if (_adNetworkAttrSet.has(attr.name) || _adIdentifierPattern.test(attr.name)) return true;
+  }
+  // Strategy 3: class-signature — at least one ad-keyword class
+  if (el.classList && el.classList.length > 0) {
+    for (const cls of el.classList) {
+      if (_adKeywordPattern.test(cls)) return true;
+    }
+  }
+  return false;
+}
+function _findAdWrapperFor(seed) {
+  if (!seed || _hasStrongFindSimilarsSignature(seed)) return seed;
+  if (getEffectiveAdSignals(seed).length === 0) return seed;
+  let cur = seed.parentElement;
+  let hops = 0;
+  while (cur && hops < MAX_AD_WRAPPER_HOPS) {
+    if (isAdnotaElement(cur)) return seed;
+    if (cur === document.body || cur === document.documentElement) return seed;
+    if (_hasStrongFindSimilarsSignature(cur) && getEffectiveAdSignals(cur).length > 0) {
+      return cur;
+    }
+    cur = cur.parentElement;
+    hops++;
+  }
+  return seed;
+}
+
 // Stem extraction from id-style values like "ad-slot-1234" → "ad-slot-".
 // Returns the stem with trailing hyphen, or null if the value lacks a
 // recognizable variable trailing token. UUID-shaped values (single token of
@@ -275,6 +329,19 @@ function _extractAdStem(value) {
 
 function findSimilarAds(target) {
   if (!target || !target.tagName) return { candidates: [], strategies: [] };
+
+  // Retarget signature-less ad seeds to their wrapping slot — see
+  // _findAdWrapperFor for the why. No-op when the seed already has a
+  // signature or isn't ad-fingerprinted, so existing callers that pass a
+  // classed wrapper take the early return and behave identically to before.
+  const wrapper = _findAdWrapperFor(target);
+  if (wrapper !== target) {
+    window.AdnotaLog?.event('eraser', 'similars-retarget', {
+      from: window.AdnotaLog.el(target),
+      to: window.AdnotaLog.el(wrapper),
+    });
+    target = wrapper;
+  }
 
   const strategies = [];
   const found = new Set();
@@ -1712,7 +1779,7 @@ async function commitBatch() {
         skipAnimation: true,
         skipStyleRebuild: true,
         skipStorageWrite: true,
-        // Force domain-wide for every batch item. The batch only surfaces
+        // Force site-wide for every batch item. The batch only surfaces
         // when findSimilarAds confirms an ad cluster, so every commit here
         // is part of that cluster and should match the seed's scope —
         // don't let per-candidate signal variance create mixed scopes.
@@ -1767,7 +1834,9 @@ async function commitBatch() {
   };
   window.AdnotaUndo.push(compositeUndo);
 
-  window.AdnotaUI.showToast(`Erased ${erasedCount} ${erasedCount === 1 ? 'ad' : 'ads'}`, {
+  // Batch is always site-wide (cluster of ads, treated as one decision per
+  // the forceDomain pass-through). Suffix mirrors the single-erase toasts.
+  window.AdnotaUI.showToast(`Erased ${erasedCount} ${erasedCount === 1 ? 'ad' : 'ads'} site-wide`, {
     id: 'adnota-eraser-batch-toast',
     onUndo: () => compositeUndo.undo(),
   });
@@ -1807,7 +1876,7 @@ function commitErase(target, opts = {}) {
     skipStyleRebuild = false,
     skipStorageWrite = false,
     // forceDomain: batch-commit and manual-mid-review erases pass this so
-    // every item in the cluster gets the same domain-wide treatment as the
+    // every item in the cluster gets the same site-wide treatment as the
     // seed click. Without it, per-candidate getEffectiveAdSignals can vary
     // between scan-time and commit-time (page mutation, viewport changes),
     // producing mixed page/domain scopes within what should be one cluster.
@@ -1821,7 +1890,7 @@ function commitErase(target, opts = {}) {
   const anchor = window.FuzzyAnchor.generate(target);
   const cssSelector = window.FuzzyAnchor.generateCSSSelector(target);
   // Shift is the user's explicit "entire domain" override — unchanged behavior.
-  // If the target looks like an ad we silently promote the scope to domain-wide
+  // If the target looks like an ad we silently promote the scope to site-wide
   // too, since nobody wants to erase the same ad on every article. No chip, no
   // messaging; it just works. Non-ad targets still scope to the current page.
   const adSignals = getEffectiveAdSignals(target);
@@ -1921,7 +1990,15 @@ function commitErase(target, opts = {}) {
   // batch path sets skipStorageWrite to coalesce N saveItem calls into one
   // bulk saveItems — N parallel saveItems would race (each reads the same
   // before-state, writes overwrite each other, only the last lands).
-  const storagePayload = { action: 'ERASE', anchor, selector: cssSelector, _id: id };
+  // sourceUrl captures the full URL where the erase happened. Used by the
+  // Sites page to make site-wide (path === '*') rows clickable — the
+  // pathname alone is often meaningless for query-string-driven pages
+  // (Google searches, video URLs, dynamic dashboards). Optional; pre-
+  // existing rules without it just degrade to the old non-link rendering.
+  const storagePayload = {
+    action: 'ERASE', anchor, selector: cssSelector, _id: id,
+    sourceUrl: location.href,
+  };
   let storageWrite = null;
   if (window.AdnotaStorage) {
     if (skipStorageWrite) {
@@ -1967,7 +2044,10 @@ function commitErase(target, opts = {}) {
     }
   };
 
-  return { undoEntry, id, adSignals, savedCssText, storageWrite };
+  return {
+    undoEntry, id, adSignals, savedCssText, storageWrite,
+    scope: useDomain ? 'domain' : 'page',
+  };
 }
 
 // ─── Click: erase with animation ─────────────────────────────────────────────
@@ -2005,14 +2085,16 @@ document.addEventListener('click', async (e) => {
       hoveredElement = null;
 
       // forceDomain: manual mid-review erases are part of the cluster the
-      // user is reviewing. Treat them with the same domain-wide scope as
+      // user is reviewing. Treat them with the same site-wide scope as
       // the bulk commit so the user doesn't see mixed page/domain scopes
       // across what's logically one decision.
       const result = commitErase(entry.el, { shiftKey: e.shiftKey, forceDomain: true });
       const innerUndo = result.undoEntry.undo;
       window.AdnotaUndo.push(result.undoEntry);
 
-      window.AdnotaUI.showToast('Element erased', {
+      // forceDomain is always true here (manual mid-review erase joins the
+      // cluster's site-wide scope), so the toast can hardcode "site-wide".
+      window.AdnotaUI.showToast('Element erased site-wide', {
         id: 'adnota-eraser-toast',
         onUndo: () => innerUndo(),
       });
@@ -2039,7 +2121,7 @@ document.addEventListener('click', async (e) => {
   hoveredElement = null;
 
   // Commit the erase: anchor + rule + animation + storage + undo entry.
-  const { undoEntry, id, adSignals } = commitErase(target, { shiftKey: e.shiftKey });
+  const { undoEntry, id, adSignals, scope } = commitErase(target, { shiftKey: e.shiftKey });
   // Wrap the seed undo so undoing the trigger click also tears down any
   // batch UI surfaced from it. The batch was caused by this erase — if the
   // user reverses that decision, the batch context is stale.
@@ -2051,7 +2133,13 @@ document.addEventListener('click', async (e) => {
   window.AdnotaUndo.push(undoEntry);
 
   // ── Toast ──
-  window.AdnotaUI.showToast('Element erased', {
+  // Scope suffix is honest about what the user just did: page-scope plain
+  // clicks get "on this page"; Shift+Click and silent ad-promotion both
+  // resolve to 'domain' scope and get "site-wide". The silent-promotion
+  // mechanic stays silent (no chip, no special-case messaging) — this is
+  // just the same scope label everything else uses.
+  const scopeSuffix = scope === 'domain' ? 'site-wide' : 'on this page';
+  window.AdnotaUI.showToast(`Element erased ${scopeSuffix}`, {
     id: 'adnota-eraser-toast',
     onUndo: () => undoEntry.undo(),
   });
@@ -2102,7 +2190,16 @@ document.addEventListener('click', async (e) => {
             try { return window.FuzzyAnchor.generateCSSSelector(c); } catch { return '?'; }
           }),
         });
-        if (visible.length > 0 && window.AdnotaState.mode === 'eraser') {
+        // Batch-entry gate. Open the review UI only when:
+        //   - at least 2 visible candidates exist (n=1 means just-erase the
+        //     seed and let the user click the next one — no review needed)
+        //   - a strong strategy fired (tag-shape / ad-attr-presence /
+        //     class-signature). Weak strategies (attr-prefix,
+        //     creative-similarity) can still contribute candidates to a
+        //     batch opened by a strong one, but can't open one alone — that
+        //     was the source of noisy "30 things to review" prompts.
+        const strongFired = strategies.some(s => STRONG_FIND_STRATEGIES.has(s));
+        if (visible.length >= 2 && strongFired && window.AdnotaState.mode === 'eraser') {
           enterBatch(visible, target);
         }
       } catch (err) {

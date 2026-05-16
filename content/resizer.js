@@ -65,7 +65,7 @@ chipCluster.appendChild(dimensionBadge);
 // chrome (drag handle + logo + info + trash + undo) so trash/undo stay reachable
 // even when nothing is hovered or selected.
 // Dock body — mounted into AdnotaDock when resizer mode is active. The dock
-// owns drag handle + V logo + tool row; we own the info span + trash + undo
+// owns drag handle + A logo + tool row; we own the info span + trash + undo
 // + the contextual REFLOW buttons (added after undo with a divider, hidden
 // when nothing applies).
 const resizerBody = document.createElement('div');
@@ -546,22 +546,60 @@ function isPropsSuperset(superset, subset) {
   return true;
 }
 
-// Kind-aware selector expansion. Most rules render as `${selector} { ... }`
-// verbatim, but `kind: 'text-size'` expands to also hit common prose-bearing
-// descendants so the cssText overrides authored child font-sizes (the canonical
-// "13px body text unreadable" failure mode). Headings, code, form controls,
-// and arbitrary divs are deliberately NOT in the cascade — see the text-size
-// helpers section for the rationale.
+// Kind-aware selector expansion for `text-size` and `recolor-text`. Authored
+// CSS commonly sets `font-size` / `color` directly on these elements, so
+// cascading from a parent selector alone (even with !important) doesn't reach
+// them — inheritance loses to a child's own declaration. We add them to the
+// selector list so the override hits each one directly.
+//
+// Two lists because the safety calculus differs:
+//
+// - `font-size` affects layout (line-box height, wrap points). Scaling a
+//   structural <div> that happened to contain text could blow up badge
+//   layouts, footer link rows, icon labels — anywhere the design intent
+//   was "deliberately small text in a div." Stay conservative.
+// - `color` doesn't affect layout. A div with no own color rule already
+//   inherits, so adding it to the cascade is a no-op. A div with its own
+//   color rule is deliberately not inheriting — and "recolor this card"
+//   means "yes, recolor everything inside it." The over-color case is
+//   loud (visible immediately) and recoverable (↺ reset), not silent.
+//
+// Common to both lists, deliberately excluded:
+// - <a>: links must stay visually distinguishable
+// - <button>, <input>, <select>, <textarea>: scaling/recoloring breaks
+//   form affordances
+// - <h1>–<h6>: heading hierarchy is part of the page's design intent
+// - <code>, <kbd>, <samp>, <var>, <pre>: monospace relationship matters
+// - <sub>, <sup>, <small>: their typography is already relative-smaller
+//   by design; scaling/recoloring them breaks the visual relationship
+const TEXT_SIZE_CASCADE_TAGS = [
+  // Block prose
+  'p', 'li', 'dd', 'dt', 'blockquote', 'caption', 'figcaption',
+  // Inline text formatting — without these, snippets like Google's
+  // <em>-wrapped query terms stay un-scaled inside the parent.
+  'span', 'em', 'strong', 'b', 'i', 'mark', 'ins', 'del',
+  'cite', 'q', 'dfn', 'time', 'abbr',
+];
+
+const RECOLOR_TEXT_CASCADE_TAGS = [
+  ...TEXT_SIZE_CASCADE_TAGS,
+  // Structural containers that real-world apps use for body text (Google
+  // search snippets in <div class="VwiC3b">, Tailwind/React utility-CSS
+  // apps, headless component libraries). Including them here means a
+  // "recolor this card" actually recolors the body prose inside, not
+  // just the inline emphasis. Safe to add for color (no layout effect).
+  'div', 'section', 'article', 'aside',
+  'header', 'footer', 'nav', 'main',
+  'figure', 'details', 'summary',
+];
+
 function ruleSelectorFor(rule) {
-  if (rule.kind === 'text-size' || rule.kind === 'recolor-text') {
-    // recolor-text shares the prose-cascade with text-size: authored CSS sets
-    // `color` on <p>/<li>/etc. directly, so cascading `color` from a parent
-    // selector alone won't reach them. <a> is deliberately excluded — links
-    // need to stay visually distinguishable.
-    const s = rule.selector;
-    return `${s},${s} p,${s} li,${s} dd,${s} dt,${s} blockquote,${s} caption,${s} figcaption`;
-  }
-  return rule.selector;
+  let cascade = null;
+  if (rule.kind === 'text-size') cascade = TEXT_SIZE_CASCADE_TAGS;
+  else if (rule.kind === 'recolor-text') cascade = RECOLOR_TEXT_CASCADE_TAGS;
+  if (!cascade) return rule.selector;
+  const s = rule.selector;
+  return [s, ...cascade.map(tag => `${s} ${tag}`)].join(',');
 }
 
 function rebuildResizeStyleTag() {
@@ -2000,7 +2038,6 @@ async function resetElement(el) {
   const selector = generateCSSSelector(el);
   window.AdnotaLog?.event('resizer', 'reset', { sel: selector, el: window.AdnotaLog.el(el) });
   const domain = location.hostname;
-  const path = location.pathname;
 
   // Drop every rule for this selector from the live map, then rebuild.
   for (const [id, rule] of window.AdnotaResizeRules) {
@@ -2058,7 +2095,7 @@ async function resetElement(el) {
     if (data[domain]) {
       data[domain].items = data[domain].items.filter(i => {
         if (i.action !== 'RESIZE') return true;
-        if (!(i.path === path || i.path === '*')) return true;
+        if (!window.AdnotaStorage.matchesUrl(i, location.href)) return true;
         if (i.selector === selector) return false;
         if (i.kind === 'reflow:dom-reorder' && i.sourceAnchor?.cssSelector === selector) return false;
         return true;
@@ -2125,12 +2162,35 @@ function applyClipChipState(match) {
 // the occluder is still on top).
 
 // Cap on candidates inspected per check. Deep portal stacks (Slack, Discord)
-// can return many hits per point; cap keeps the loop bounded.
-const OCCLUSION_MAX_SURVIVORS = 16;
-// Minimum fraction of the dragged rect's area that must be covered by a
-// candidate occluder for it to qualify (vs. a tiny badge or focus ring
-// nicking the corner of the rect).
-const OCCLUSION_MIN_AREA_FRAC = 0.15;
+// can return many hits per point; cap keeps the loop bounded. Bumped from
+// the old value when sample density increased — denser sampling sees more
+// distinct candidates, so a tight cap would start dropping legitimate
+// occluders on busy pages.
+const OCCLUSION_MAX_SURVIVORS = 64;
+// Sample grid spacing in CSS pixels. With the old 9-fixed-points layout,
+// occluders ~30-150px (the canonical "small UI element" range — pills,
+// favicons, badges, action buttons) often fell between samples and went
+// undetected. 40px spacing guarantees any occluder ≥ 40×40 lands on at
+// least one sample, and most 20-40px occluders land on one too because
+// the grid offset doesn't align with their position.
+const OCCLUSION_SAMPLE_SPACING_PX = 40;
+// Hard cap on samples per axis (so the worst case for a viewport-filling
+// selection is 24×24 = 576 elementsFromPoint calls — well under a frame
+// budget given the motion gate at the call site).
+const OCCLUSION_MAX_DIM_SAMPLES = 24;
+// Minimum absolute pixel area an occluder must cover within the dragged
+// element to qualify. Was previously a percentage of the dragged element's
+// area, but that scaled the wrong way — a 3,000 px² occluder (e.g., Google's
+// "View all" pill) was rejected on a tall sidebar tile (~0.4% of full area)
+// even though it was visibly covering content the user wanted to lift above.
+// An absolute pixel floor matches the actual question: "is this occluder
+// big enough that lifting it would produce a visible change?" Below ~100 px²
+// (10×10) the lift's visual effect is sub-pixel and the chip would feel
+// broken if it surfaced; above that, the user has clear visible feedback
+// either way. Filters focus rings, 1px borders, and shadow bleed; admits
+// pills, badges, favicons, and small UI controls — exactly the things the
+// "make any webpage yours" intent says users should be able to cover.
+const OCCLUSION_MIN_AREA_PX = 100;
 // Z-index cap. Some sites ship cookie banners at 2147483647 (max int);
 // max + 1 would overflow / lose meaning. If we're already lifting near this
 // ceiling, the element is effectively on the top layer — surface a distinct
@@ -2147,28 +2207,56 @@ function _zIndexAsInt(el) {
 function findOcclusion(el) {
   if (!el) return null;
   const rect = el.getBoundingClientRect();
-  const rectArea = Math.max(0, rect.width) * Math.max(0, rect.height);
-  if (rectArea <= 0) return null;
+  if (rect.width <= 0 || rect.height <= 0) return null;
 
-  // 9 sample points: 4 corners (inset 1px), 4 edge midpoints, center.
-  // Corner-only sampling falls apart on rounded elements — a card with
+  // Clip the sampling rect to the viewport. Tall elements (sidebar widgets
+  // dragged into the main column, infinite-scroll feeds) extend far past
+  // the viewport; sampling the full rect concentrates valid points at the
+  // visible top/bottom edges and misses occluders in the visible middle
+  // band. Off-screen points can't be sampled anyway (elementsFromPoint
+  // returns [] outside the viewport), and the visible portion is the only
+  // thing competing for paint priority that the user can see right now.
+  const vis = {
+    left:   Math.max(rect.left,   0),
+    top:    Math.max(rect.top,    0),
+    right:  Math.min(rect.right,  window.innerWidth),
+    bottom: Math.min(rect.bottom, window.innerHeight),
+  };
+  if (vis.right <= vis.left || vis.bottom <= vis.top) return null;
+
+  // Skip elements where the entire visible portion can't even contain a
+  // minimum-area occluder — no possible hit could pass the threshold below.
+  const visW = vis.right - vis.left;
+  const visH = vis.bottom - vis.top;
+  if (visW * visH < OCCLUSION_MIN_AREA_PX) return null;
+
+  // Grid of sample points spaced OCCLUSION_SAMPLE_SPACING_PX apart across
+  // the visible rect, clamped to OCCLUSION_MAX_DIM_SAMPLES per axis. With
+  // the old 9-fixed-points layout, occluders like Google's "View all" pill
+  // or a Disney+ favicon fell between samples and went undetected — the
+  // grid here guarantees coverage at small-UI scale.
+  //
+  // Corner-only sampling would fall apart on rounded elements — a card with
   // border-radius:16px has corner pixels inside the bounding rect but
   // OUTSIDE the painted area, so elementsFromPoint at those points doesn't
-  // return the card. Edge midpoints and center are safely inside the
-  // painted area for any border-radius up to ~half the smaller dimension.
-  const cx = (rect.left + rect.right) / 2;
-  const cy = (rect.top + rect.bottom) / 2;
-  const points = [
-    [rect.left + 1,  rect.top + 1],
-    [rect.right - 1, rect.top + 1],
-    [rect.left + 1,  rect.bottom - 1],
-    [rect.right - 1, rect.bottom - 1],
-    [cx,             rect.top + 1],
-    [cx,             rect.bottom - 1],
-    [rect.left + 1,  cy],
-    [rect.right - 1, cy],
-    [cx,             cy],
-  ];
+  // return the card. The interior grid sits safely inside the painted area
+  // for any border-radius up to ~half the smaller dimension.
+  const cols = Math.min(OCCLUSION_MAX_DIM_SAMPLES,
+                        Math.max(3, Math.ceil(visW / OCCLUSION_SAMPLE_SPACING_PX)));
+  const rows = Math.min(OCCLUSION_MAX_DIM_SAMPLES,
+                        Math.max(3, Math.ceil(visH / OCCLUSION_SAMPLE_SPACING_PX)));
+  // Inset by 1px (or less for tiny rects) so we sample the painted area,
+  // not the bounding-rect corners that may be outside a rounded shape.
+  const insetX = Math.min(1, visW / 4);
+  const insetY = Math.min(1, visH / 4);
+  const stepX = cols > 1 ? (visW - 2 * insetX) / (cols - 1) : 0;
+  const stepY = rows > 1 ? (visH - 2 * insetY) / (rows - 1) : 0;
+  const points = [];
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      points.push([vis.left + insetX + c * stepX, vis.top + insetY + r * stepY]);
+    }
+  }
 
   const seen = new Set();
   let best = null;
@@ -2182,7 +2270,8 @@ function findOcclusion(el) {
   // we use array-index order as the truth and only consult z-index to pick
   // the lift target. Area threshold weeds out tiny corner-clipping noise.
   for (const [x, y] of points) {
-    if (x < 0 || y < 0 || x > window.innerWidth || y > window.innerHeight) continue;
+    // All points are within vis, which is itself within the viewport, so
+    // the off-screen guard the old code needed here is no longer required.
     const hits = document.elementsFromPoint(x, y);
     const ourIdx = hits.indexOf(el);
     // If el isn't at this point (rounded-corner cutout, transformed beyond
@@ -2202,7 +2291,7 @@ function findOcclusion(el) {
       const iw = Math.max(0, Math.min(hRect.right, rect.right) - Math.max(hRect.left, rect.left));
       const ih = Math.max(0, Math.min(hRect.bottom, rect.bottom) - Math.max(hRect.top, rect.top));
       const inter = iw * ih;
-      if (inter / rectArea < OCCLUSION_MIN_AREA_FRAC) continue;
+      if (inter < OCCLUSION_MIN_AREA_PX) continue;
 
       const hitZ = _zIndexAsInt(hit);
       if (hitZ > bestZ) { best = hit; bestZ = hitZ; }
@@ -2891,8 +2980,18 @@ function fireTextSizeTipOnce() {
 function isRecolorable(el) {
   if (!el || !el.isConnected) return false;
   if (el === document.body || el === document.documentElement) return false;
-  const ctx = el._adnotaLayoutContext || getLayoutContext(el);
-  if (ctx?.kind === 'table-component') return false;
+  // Only truly non-paintable cases excluded. Recolor was previously gated
+  // on getLayoutContext's 'table-component' kind, but that predicate
+  // exists for the *resize* affordance — it filters elements whose
+  // width/height are ignored by their layout context (inline, table-row,
+  // table-cell, display:contents, etc). Recolor uses background-color
+  // and color, which paint fine on inline elements (<span>, <em>, <svg>
+  // — the Google-logo case that prompted this) and on table-* elements.
+  // The only cases where painting truly can't happen are display:none
+  // (no rendering at all) and display:contents (no box of its own —
+  // children render but the element itself doesn't).
+  const display = getComputedStyle(el).display;
+  if (display === 'none' || display === 'contents') return false;
   return true;
 }
 
@@ -2903,12 +3002,22 @@ async function persistRecolor(el, which, hex) {
   return commitResizeRule(el, cssText, kind);
 }
 
+// Single-flight guard. EyeDropper has no programmatic cancel API; once
+// open, only a pick or Escape resolves it. If the user clicks a recolor
+// chip while a previous dropper is mid-await, Chrome promotes the new
+// EyeDropper to active and the old one is orphaned — its promise never
+// resolves, and Chrome's magnifier-circle UI for it stays visible until
+// the tab is reloaded.
+let _dropperOpen = false;
+
 async function pickColorAndApply(el, which) {
+  if (_dropperOpen) return;
   if (!isRecolorable(el)) return;
   if (typeof window.EyeDropper !== 'function') {
     window.AdnotaUI?.showToast('Eyedropper requires Chrome 95+');
     return;
   }
+  _dropperOpen = true;
   try {
     const dropper = new window.EyeDropper();
     const result = await dropper.open();
@@ -2918,6 +3027,8 @@ async function pickColorAndApply(el, which) {
     }
   } catch {
     // User cancelled the picker — no-op.
+  } finally {
+    _dropperOpen = false;
   }
 }
 
@@ -3145,14 +3256,20 @@ function startDrag(e, axis) {
 // neighbors). All kind-bearing commits coexist on the same selector with
 // orthogonal cssText; same-kind replays dedup via the loop below.
 //
-// Resizes default to domain-wide (`path: '*'`). Unlike the eraser — where
-// domain-wide is an explicit user override (Shift+Click) or silent ad-scope
+// Resizes default to site-wide (`path: '*'`). Unlike the eraser — where
+// site-wide is an explicit user override (Shift+Click) or silent ad-scope
 // promotion — resize targets are almost always structural containers (nav,
 // sidebar, header, article wrapper) that recur across a site with the same
 // selector. Scoping to just the current page would force the user to redo
 // the same change on every sibling page. If the selector falls back to a
 // structural `nth-child` path and matches something unintended on another
 // page, the rule silently no-ops (worst case: reset from that page).
+//
+// Exception: domains in lib/urlScopeRegistry.js (e.g. google.com — where
+// web and image search share `/search` but render under different layouts)
+// save with a scope key like `scope:google-web` instead of `'*'`, so a
+// rule made on web search doesn't bleed into image search.
+// AdnotaStorage.pathForSave centralizes the resolution.
 async function commitResizeRule(el, cssText, kind) {
   const selector = generateCSSSelector(el);
   const id = Date.now() + '-' + Math.random().toString(36).slice(2, 8);
@@ -3217,7 +3334,7 @@ async function commitResizeRule(el, cssText, kind) {
   rebuildResizeStyleTag();
 
   const domain = location.hostname;
-  const path = '*';
+  const path = window.AdnotaStorage?.pathForSave(location.href) ?? '*';
 
   const entry = {
     action: 'RESIZE',
@@ -3227,6 +3344,14 @@ async function commitResizeRule(el, cssText, kind) {
     path,
     version: 1,
     timestamp: Date.now(),
+    // sourceUrl captures the full URL where the rule was created. RESIZE
+    // is typically site-wide (path: '*') — or a curated scope key like
+    // `scope:google-web` for domains in urlScopeRegistry — so the Sites
+    // page has no exact path to link to on its own; sourceUrl gives a
+    // clickable "made here" anchor back to the original context. Sites
+    // page falls back to the bare hostname for rules saved before this
+    // field existed.
+    sourceUrl: location.href,
   };
   if (kind) entry.kind = kind;
 
@@ -3592,12 +3717,13 @@ async function commitDomReorder(source, container, direction) {
   });
 
   const domain = location.hostname;
-  const path = '*';
+  const path = window.AdnotaStorage?.pathForSave(location.href) ?? '*';
   const entry = {
     action: 'RESIZE', kind: 'reflow:dom-reorder',
     parentAnchor, sourceAnchor, originalPrevAnchor, toPosition,
     label,
     _id: id, path, version: 1, timestamp: Date.now(),
+    sourceUrl: location.href,  // see commitResizeRule for rationale
   };
 
   // Storage dedup: drop prior reorder rows whose sourceAnchor.cssSelector

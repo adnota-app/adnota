@@ -64,6 +64,7 @@
       ],
       "js": [
         "lib/log.js",
+        "lib/urlScopeRegistry.js",
         "lib/storage.js",
         "lib/annotationState.js",
         "lib/adnotaUI.js",

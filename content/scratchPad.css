@@ -468,10 +468,10 @@
   font-size: 12.5px;
 }
 
-/* Globe icon — leading hint on domain-wide ERASE/RESIZE rows. Sized to
+/* Globe icon — leading hint on site-wide ERASE/RESIZE rows. Sized to
    match the monospace x-height; nudged down a hair so it sits on the
    text baseline rather than floating above it. Native title attribute
-   handles the "Domain-wide..." tooltip without needing a custom system. */
+   handles the "Site-wide..." tooltip without needing a custom system. */
 #adnota-scratchpad [data-role~="adnota-scratchpad-row-globe"] {
   display: inline-flex;
   align-items: center;

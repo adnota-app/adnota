@@ -59,7 +59,7 @@
   opacity: 1;
 }
 
-/* ── Home slot: V logo (idle) OR back arrow (active) ───────────────────── */
+/* ── Home slot: A logo (idle) OR back arrow (active) ───────────────────── */
 #adnota-dock .adnota-dock-home {
   display: inline-flex;
   align-items: center;

@@ -18,6 +18,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
       # Guard against tag/manifest skew — the Chrome Web Store rejects
       # mismatched versions on upload, so catch it here instead.
       - name: Verify manifest version matches tag
@@ -31,22 +36,26 @@ jobs:
           fi
           echo "Packaging Adnota $TAG_VERSION (manifest $MANIFEST_VERSION)"
 
-      # Explicit include-list so stray dev files (notes.md, TODO, tools/,
-      # screenshots) never end up in a shipped zip — safer than maintaining
-      # an exclude list as the repo grows.
+      # Install esbuild and minify the extension into dist/. tools/build.sh
+      # controls exactly which files land in dist/ (per-file minified JS +
+      # CSS, plus manifest, icons, fonts, HTML, LICENSE), so the zip step
+      # below no longer needs an explicit include-list to keep dev files
+      # out — they're never in dist/ in the first place.
+      - name: Install build deps
+        run: npm ci
+
+      - name: Build minified bundle
+        run: npm run build
+
+      # Zip dist/ contents at the zip root so manifest.json sits at the
+      # top level (Chrome Web Store requires this — a wrapping directory
+      # makes the upload fail). `cd dist && zip -r ../$ZIP_NAME .` does
+      # exactly that; the * glob would skip dotfiles, but build.sh doesn't
+      # produce any, so plain `.` is fine and simpler.
       - name: Build zip
         run: |
           ZIP_NAME="adnota-${GITHUB_REF_NAME}.zip"
-          zip -r "$ZIP_NAME" \
-            manifest.json \
-            background.js \
-            LICENSE \
-            content \
-            icons \
-            lib \
-            pages \
-            popup \
-            -x "*.DS_Store" -x "*/.*"
+          (cd dist && zip -r "../$ZIP_NAME" . -x "*.DS_Store")
           echo "ZIP_NAME=$ZIP_NAME" >> "$GITHUB_ENV"
           ls -lh "$ZIP_NAME"
 

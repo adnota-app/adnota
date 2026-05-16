@@ -1,0 +1,32 @@
+name: Build
+
+# Runs on every PR and on every push to main. The bar is intentionally low:
+# the build must succeed (esbuild rejects a syntactically broken file) and
+# lint must pass without errors (warnings are informational only — they're
+# the dead-code-class signals you can address opportunistically). If
+# something more rigorous is wanted later, add test runners here.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install deps
+        run: npm ci
+
+      - name: Lint (errors fail; warnings allowed)
+        run: npm run lint
+
+      - name: Build minified bundle
+        run: npm run build
