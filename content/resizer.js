@@ -2163,12 +2163,35 @@ function applyClipChipState(match) {
 // the occluder is still on top).
 
 // Cap on candidates inspected per check. Deep portal stacks (Slack, Discord)
-// can return many hits per point; cap keeps the loop bounded.
-const OCCLUSION_MAX_SURVIVORS = 16;
-// Minimum fraction of the dragged rect's area that must be covered by a
-// candidate occluder for it to qualify (vs. a tiny badge or focus ring
-// nicking the corner of the rect).
-const OCCLUSION_MIN_AREA_FRAC = 0.15;
+// can return many hits per point; cap keeps the loop bounded. Bumped from
+// the old value when sample density increased — denser sampling sees more
+// distinct candidates, so a tight cap would start dropping legitimate
+// occluders on busy pages.
+const OCCLUSION_MAX_SURVIVORS = 64;
+// Sample grid spacing in CSS pixels. With the old 9-fixed-points layout,
+// occluders ~30-150px (the canonical "small UI element" range — pills,
+// favicons, badges, action buttons) often fell between samples and went
+// undetected. 40px spacing guarantees any occluder ≥ 40×40 lands on at
+// least one sample, and most 20-40px occluders land on one too because
+// the grid offset doesn't align with their position.
+const OCCLUSION_SAMPLE_SPACING_PX = 40;
+// Hard cap on samples per axis (so the worst case for a viewport-filling
+// selection is 24×24 = 576 elementsFromPoint calls — well under a frame
+// budget given the motion gate at the call site).
+const OCCLUSION_MAX_DIM_SAMPLES = 24;
+// Minimum absolute pixel area an occluder must cover within the dragged
+// element to qualify. Was previously a percentage of the dragged element's
+// area, but that scaled the wrong way — a 3,000 px² occluder (e.g., Google's
+// "View all" pill) was rejected on a tall sidebar tile (~0.4% of full area)
+// even though it was visibly covering content the user wanted to lift above.
+// An absolute pixel floor matches the actual question: "is this occluder
+// big enough that lifting it would produce a visible change?" Below ~100 px²
+// (10×10) the lift's visual effect is sub-pixel and the chip would feel
+// broken if it surfaced; above that, the user has clear visible feedback
+// either way. Filters focus rings, 1px borders, and shadow bleed; admits
+// pills, badges, favicons, and small UI controls — exactly the things the
+// "make any webpage yours" intent says users should be able to cover.
+const OCCLUSION_MIN_AREA_PX = 100;
 // Z-index cap. Some sites ship cookie banners at 2147483647 (max int);
 // max + 1 would overflow / lose meaning. If we're already lifting near this
 // ceiling, the element is effectively on the top layer — surface a distinct
@@ -2185,8 +2208,7 @@ function _zIndexAsInt(el) {
 function findOcclusion(el) {
   if (!el) return null;
   const rect = el.getBoundingClientRect();
-  const rectArea = Math.max(0, rect.width) * Math.max(0, rect.height);
-  if (rectArea <= 0) return null;
+  if (rect.width <= 0 || rect.height <= 0) return null;
 
   // Clip the sampling rect to the viewport. Tall elements (sidebar widgets
   // dragged into the main column, infinite-scroll feeds) extend far past
@@ -2203,26 +2225,39 @@ function findOcclusion(el) {
   };
   if (vis.right <= vis.left || vis.bottom <= vis.top) return null;
 
-  // 9 sample points within the VISIBLE rect: 4 corners (inset 1px), 4 edge
-  // midpoints, center.
-  // Corner-only sampling falls apart on rounded elements — a card with
+  // Skip elements where the entire visible portion can't even contain a
+  // minimum-area occluder — no possible hit could pass the threshold below.
+  const visW = vis.right - vis.left;
+  const visH = vis.bottom - vis.top;
+  if (visW * visH < OCCLUSION_MIN_AREA_PX) return null;
+
+  // Grid of sample points spaced OCCLUSION_SAMPLE_SPACING_PX apart across
+  // the visible rect, clamped to OCCLUSION_MAX_DIM_SAMPLES per axis. With
+  // the old 9-fixed-points layout, occluders like Google's "View all" pill
+  // or a Disney+ favicon fell between samples and went undetected — the
+  // grid here guarantees coverage at small-UI scale.
+  //
+  // Corner-only sampling would fall apart on rounded elements — a card with
   // border-radius:16px has corner pixels inside the bounding rect but
   // OUTSIDE the painted area, so elementsFromPoint at those points doesn't
-  // return the card. Edge midpoints and center are safely inside the
-  // painted area for any border-radius up to ~half the smaller dimension.
-  const cx = (vis.left + vis.right)  / 2;
-  const cy = (vis.top  + vis.bottom) / 2;
-  const points = [
-    [vis.left + 1,  vis.top + 1],
-    [vis.right - 1, vis.top + 1],
-    [vis.left + 1,  vis.bottom - 1],
-    [vis.right - 1, vis.bottom - 1],
-    [cx,            vis.top + 1],
-    [cx,            vis.bottom - 1],
-    [vis.left + 1,  cy],
-    [vis.right - 1, cy],
-    [cx,            cy],
-  ];
+  // return the card. The interior grid sits safely inside the painted area
+  // for any border-radius up to ~half the smaller dimension.
+  const cols = Math.min(OCCLUSION_MAX_DIM_SAMPLES,
+                        Math.max(3, Math.ceil(visW / OCCLUSION_SAMPLE_SPACING_PX)));
+  const rows = Math.min(OCCLUSION_MAX_DIM_SAMPLES,
+                        Math.max(3, Math.ceil(visH / OCCLUSION_SAMPLE_SPACING_PX)));
+  // Inset by 1px (or less for tiny rects) so we sample the painted area,
+  // not the bounding-rect corners that may be outside a rounded shape.
+  const insetX = Math.min(1, visW / 4);
+  const insetY = Math.min(1, visH / 4);
+  const stepX = cols > 1 ? (visW - 2 * insetX) / (cols - 1) : 0;
+  const stepY = rows > 1 ? (visH - 2 * insetY) / (rows - 1) : 0;
+  const points = [];
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      points.push([vis.left + insetX + c * stepX, vis.top + insetY + r * stepY]);
+    }
+  }
 
   const seen = new Set();
   let best = null;
@@ -2257,7 +2292,7 @@ function findOcclusion(el) {
       const iw = Math.max(0, Math.min(hRect.right, rect.right) - Math.max(hRect.left, rect.left));
       const ih = Math.max(0, Math.min(hRect.bottom, rect.bottom) - Math.max(hRect.top, rect.top));
       const inter = iw * ih;
-      if (inter / rectArea < OCCLUSION_MIN_AREA_FRAC) continue;
+      if (inter < OCCLUSION_MIN_AREA_PX) continue;
 
       const hitZ = _zIndexAsInt(hit);
       if (hitZ > bestZ) { best = hit; bestZ = hitZ; }
