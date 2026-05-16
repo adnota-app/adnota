@@ -2038,7 +2038,6 @@ async function resetElement(el) {
   const selector = generateCSSSelector(el);
   window.AdnotaLog?.event('resizer', 'reset', { sel: selector, el: window.AdnotaLog.el(el) });
   const domain = location.hostname;
-  const path = location.pathname;
 
   // Drop every rule for this selector from the live map, then rebuild.
   for (const [id, rule] of window.AdnotaResizeRules) {
@@ -2096,7 +2095,7 @@ async function resetElement(el) {
     if (data[domain]) {
       data[domain].items = data[domain].items.filter(i => {
         if (i.action !== 'RESIZE') return true;
-        if (!(i.path === path || i.path === '*')) return true;
+        if (!window.AdnotaStorage.matchesUrl(i, location.href)) return true;
         if (i.selector === selector) return false;
         if (i.kind === 'reflow:dom-reorder' && i.sourceAnchor?.cssSelector === selector) return false;
         return true;
@@ -3265,6 +3264,12 @@ function startDrag(e, axis) {
 // the same change on every sibling page. If the selector falls back to a
 // structural `nth-child` path and matches something unintended on another
 // page, the rule silently no-ops (worst case: reset from that page).
+//
+// Exception: domains in lib/urlScopeRegistry.js (e.g. google.com — where
+// web and image search share `/search` but render under different layouts)
+// save with a scope key like `scope:google-web` instead of `'*'`, so a
+// rule made on web search doesn't bleed into image search.
+// AdnotaStorage.pathForSave centralizes the resolution.
 async function commitResizeRule(el, cssText, kind) {
   const selector = generateCSSSelector(el);
   const id = Date.now() + '-' + Math.random().toString(36).slice(2, 8);
@@ -3329,7 +3334,7 @@ async function commitResizeRule(el, cssText, kind) {
   rebuildResizeStyleTag();
 
   const domain = location.hostname;
-  const path = '*';
+  const path = window.AdnotaStorage?.pathForSave(location.href) ?? '*';
 
   const entry = {
     action: 'RESIZE',
@@ -3340,10 +3345,12 @@ async function commitResizeRule(el, cssText, kind) {
     version: 1,
     timestamp: Date.now(),
     // sourceUrl captures the full URL where the rule was created. RESIZE
-    // is always site-wide (path: '*'), so the Sites page has no path to
-    // link to on its own — sourceUrl gives a clickable "made here" anchor
-    // back to the original context. Sites page falls back to the bare
-    // hostname for rules saved before this field existed.
+    // is typically site-wide (path: '*') — or a curated scope key like
+    // `scope:google-web` for domains in urlScopeRegistry — so the Sites
+    // page has no exact path to link to on its own; sourceUrl gives a
+    // clickable "made here" anchor back to the original context. Sites
+    // page falls back to the bare hostname for rules saved before this
+    // field existed.
     sourceUrl: location.href,
   };
   if (kind) entry.kind = kind;
@@ -3710,7 +3717,7 @@ async function commitDomReorder(source, container, direction) {
   });
 
   const domain = location.hostname;
-  const path = '*';
+  const path = window.AdnotaStorage?.pathForSave(location.href) ?? '*';
   const entry = {
     action: 'RESIZE', kind: 'reflow:dom-reorder',
     parentAnchor, sourceAnchor, originalPrevAnchor, toPosition,

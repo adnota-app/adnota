@@ -230,7 +230,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     async function refreshStats() {
       const stored    = await chrome.storage.local.get(domain);
       const allItems  = stored[domain]?.items ?? [];
-      const pageItems = allItems.filter(i => i.path === '*' || i.path === path);
+      const pageItems = allItems.filter(i => window.AdnotaStorage.matchesUrl(i, tabs[0].url));
 
       state.erasures = state.notes = state.highlights = state.strokes = state.resizes = 0;
       for (const item of pageItems) {
