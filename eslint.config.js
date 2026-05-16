@@ -27,6 +27,12 @@ const adnotaGlobals = {
 
 module.exports = [
   {
+    // Flat config defaults only ignore node_modules/; without this entry,
+    // `npm run lint` after `npm run build` crawls dist/ and lints the
+    // minified output (useless noise + likely errors).
+    ignores: ['dist/**'],
+  },
+  {
     files: ['content/**/*.js', 'lib/**/*.js', 'popup/**/*.js', 'pages/**/*.js', 'background.js'],
     languageOptions: {
       ecmaVersion: 2022,
@@ -103,17 +109,6 @@ module.exports = [
                                         // (same reasoning as args).
       }],
       'no-empty': ['warn', { allowEmptyCatch: true }], // empty try/catch is intentional in this codebase
-    },
-  },
-  {
-    // Pages run in their own context; they don't need the cross-script
-    // handshake globals (which would only fire as undef). Same browser
-    // surface though.
-    files: ['pages/**/*.js', 'popup/**/*.js'],
-    languageOptions: {
-      globals: {
-        ...adnotaGlobals, // some pages do reference AdnotaUI etc.
-      },
     },
   },
 ];
