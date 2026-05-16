@@ -1,45 +1,3 @@
-- fix stroke paths: Marker paths are the biggest risk. Even with RDP, complex strokes can produce 50+ points × 2 floats × 2 coords. That's ~800 bytes per stroke uncompressed. Store at reduced precision (2 decimal places max).
-
-1. Is 70% Confidence Good Enough?
-No. Not really — but it's the right starting point for a graceful system.
-
-70% sounds like a passing grade. In practice, it means you're auto-applying restorations where nearly 1 in 3 signals disagrees. For an eraser specifically, that's a dangerous tolerance — a false positive means you silently delete something the user didn't intend to delete on this reload.
-
-The real problem is that the threshold is binary and uniform across wildly different site behaviors:
-
-A static documentation site (MDN, Stripe docs) → virtually zero churn. 70% is overkill.
-A news homepage (NYT, Reddit) → DOM restructures on every deploy. 70% is reckless.
-A React SPA that dynamically renders based on server state → anchors may be irreproducible.
-Site refactoring is brutal. A major redesign can blow out every anchor simultaneously:
-
-IDs get renamed or dropped
-XPaths change as layout structure changes
-Text content gets reworded, internationalized, or A/B tested
-Visual geometry shifts with responsive redesigns
-A site like Reddit or Twitter does rolling deployments daily. Your confidence scores could degrade to 30% across the board overnight, and nothing tells the user.
-
-The deeper issue: confidence is a signal about which anchor field survived, not about whether the right element was found. A 90% match that resolves to the wrong element (because a sibling element inherited the same ID after a CMS change) is worse than a 65% match that correctly finds the target. The score is a proxy, not a guarantee.
-
-2. Options for Dealing with Churn
-Here are practical strategies, ranked by implementation effort:
-
-A. Domain-Aware Staleness Tracking (low effort, high value) Record the last successful restoration timestamp per domain. If a domain hasn't had a successful restoration in 30 days, badge it as "stale" in the Sites history page. At minimum, you know the data is aging.
-
-B. Re-identification on User Visit (medium effort) When confidence drops below threshold, instead of silently skipping, store a needsReview: true flag. On next visit, surface a subtle floating indicator: "1 edit on this page couldn't be found — tap to review." Let the user either dismiss it (abandon the edit) or re-pin it by clicking the element they meant.
-
-C. The "Snapshot Hash" Strategy (medium effort) At save time, also record a hash of the parent DOM subtree neighborhood (not just the element). On restore, if the anchor resolves but the hash doesn't match, flag it as potentially drifted rather than confident. This adds a secondary sanity check independent of the layered confidence score.
-
-D. Passive Drift Detection (harder) Keep a lightweight record of which anchors restored successfully on the previous visit. On the next visit, compare. If previously-healthy anchors are now failing, the page likely changed. Surface a domain-level warning: "This site may have been redesigned."
-
-E. User-Pinnable Re-anchoring UI (hardest, most trustworthy) The broken anchor review workflow you described in the original product plan but cut: amber highlight + tooltip confirmation. This is the right long-term answer. When anchors fail, show the best candidate in amber and ask the user to confirm or re-select. It respects user intent and builds trust.
-
-The toast notification you added (better than before, as you note) is the right short-term move. The amber re-pinning workflow is where you eventually want to land.
-
-3. Is a Separate Floating UI for Anomalies Worth It?
-Yes — but scope it tightly.
-
-A full "Edit Review" panel would be over-engineering for an MVP. But a persistent floating chip (not a toast — toasts disappear) for broken-anchor sessions has real value:
-
 ┌─────────────────────────────────┐
 │  V  2 edits couldn't be applied │  [Review]  ✕
 └─────────────────────────────────┘
@@ -61,109 +19,16 @@ That description doesn't need to be long. "DIV · Trending repositories" is 26 b
 
 
 
-NEW IDEA:
-what if we made a NEW extension that turned the elements of a website into a 2d platformer!!! That could be crazy!! and really unique!!!
-
-
-
-
-6. DOM Restructuring — Drag to Reorder Elements
-Is it possible? Yes. Is it crazy? A little. Is it worth it? Potentially, for a specific use case.
-
-What's Technically Possible
-Rearranging DOM elements is straightforward in principle:
-
-js
-// Simplified: move element to new parent or new position in same parent
-targetParent.insertBefore(draggedElement, referenceElement);
-The problems are in the details:
-
-1. CSS layout breaks. Most modern page layouts use Flexbox or Grid. Moving an element outside its flex/grid context destroys its styling. Moved elements often collapse to zero height, overflow their container, or lose their visual identity entirely.
-
-2. JavaScript event listeners/state. React, Vue, and Angular components aren't just DOM nodes — they're instances with state. Moving the DOM node does NOT move the component state. This results in broken UI, blank components, or hydration errors.
-
-3. Restoration is exponentially harder. Storing "erase this element" is already difficult. Storing "move this element from position A to position B and restore that on next load" is dramatically harder — you need to anchor both the element and its target insertion point, and both can drift independently.
-
-4. display: flex/grid containers. Moving a sidebar from right to left often isn't a DOM position change at all — it's a CSS order property change, or a flex-direction reverse, or a grid column reassignment. The element may already be in the right DOM position, just visually placed by CSS.
-
-The Easier Path: CSS Manipulation Instead of DOM Mutation
-For many common restructuring desires ("I want the right sidebar on the left"), CSS is the right tool, not DOM reordering:
-
-css
-/* Flip a two-column layout */
-.page-container { flex-direction: row-reverse !important; }
-/* Change a sticky sidebar's side */
-.sidebar { order: -1 !important; }
-/* Move something to a fixed position */
-.sidebar { position: fixed !important; left: 0 !important; top: 80px !important; }
-This is far more resilient than DOM reordering:
-
-It survives React re-renders (the CSS rule persists, the DOM mutation doesn't)
-It persists via a <style> tag injection with a predictable id
-It's easier to store (a CSS rule string is 50 bytes)
-It's easier to undo
-A "CSS Reorder" tool that lets users visually inspect what CSS property controls the layout position of a selected element and edit it would be more powerful and more reliable than raw DOM drag-and-drop.
-
-Where Raw DOM Reordering Does Work
-Static HTML pages with no framework (documentation pages, GitHub rendered markdown, Wikipedia) are the sweet spot. If the page is server-rendered HTML with no SPA reactivity, a DOM insertBefore will work and stay working until the user reloads. The restoration problem is still real, but at least the initial manipulation doesn't crash.
-
-The Verdict
-Don't build DOM drag-and-drop as a general tool. It will be brittle on the sites users most want to rearrange (Reddit, Twitter, news sites — all React/Vue/Next.js).
-
-Do consider a "CSS Nudge" tool — a more constrained, more reliable version of the same idea. Let users select an element, see a set of preset layout transforms (Swap sides, Float left, Float right, Flatten to full-width, Pin to top), and apply them as persisted CSS injections. That's a genuinely novel and useful feature that no other extension does well.
-
-The sidebar-swapping use case you described ("I want my news feed on the left") is almost always a one-line CSS change. Build a tool that finds and applies that one line reliably.
-
-
-
-
-
-
-
-
-
 
 
 this site has bugs with sticky note styles:
 https://superuser.com/questions/608296/how-to-disable-iframes-in-browsers
 PINTEREST DOESN'T WORK AT ALL!!!
 
-DONE: 
-~~Add mouse scroll to ERASE elements!~~
-~~if you click to do a post it note and the eye ball is off, turn it on!~~
-~~fix show/hide global persistance~~
-~~Apply add deletes to exact page OR domain OR just path etc.~~
-~~did the delete dialogue stop showing up inside popup.js?~~
-- wire up whenever a user highlights something, make a little popup near their cursor that allows them to choose which highlighter color, a quick shortcut (rather than having to load the tool, the point is to make highlighting as easy and as natural as possible without getting in the way too much)
-~~Make clicking on the V logo from a HUD take you to the HOME PAGE??~~
-if you're in draw rectangle mode, you can't drag a sticky note (even if you hover over the header, it doesn't work).
-- Add total storage size to HOME page (flag when user is getting over 80% of local storage limit?)
-Add ability to delete all storage for entire domain from HOME page (you can already delete per page during navigation using the trash icon, etc, but no way to clear an entire site, not sure you'd ever want too, but...)
-- make solid circles and squares with a fill (for covering up stuff you can't erase! e.g., can't erase that ad, COVER IT UP!!!)
-- If in ERASE mode, and you hover over radial menu, TURN OFF THE SELECTION BORDER!
-- Update SELECTION tool to be able to move objects around the page (e.g. select text box and move it somewhere else).
-- get rid of eraser cursor! (it's ugly... just have a pointer? can we have a white pointer?)
-- fix the resize tool, does it need a HUD? (it's the oldest tool at this point...) Should it have same element fill as eraser tool? It also doesn't set "ACTIVE" when you use the tool in popup.js.
-- FIX HUD MENU DRAG BAR ICONS... (they're way too small!)
-- thin=16px, medium=24px, thick=36px - this works well for lines, but might be too big for text size?
-- some styles from sites are still bleeding into sticky notes.
-- redo tooltips again on the HUDs....
-- RESIZE can't click on iframe in adnota.app
- - const BETTER_TARGET_MAX_AREA_RATIO = 2.0;
- - const BETTER_TARGET_MAX_HOP_RATIO = 1.5;
- + const BETTER_TARGET_MAX_AREA_RATIO = 1.4;
- + const BETTER_TARGET_MAX_HOP_RATIO = 1.25;
-- Why don't paint images stick well to the screen? On page reload the are the last and often take a LONG time to load or they just fail.
 
-get rid of highlighter from PAINT hud. change PAINT to DRAW and consider having an alt+e for ERASE, alt+r for RESIZE, alt+s for STICKY, and alt+d for DRAW. Thoughts?
-Should these shortcuts even be alt? Or just the keys e, r, s, d? 
+
 
 TODO:
-- Add bug popup button in bottom right corner of HOME with a message saying send me a screenshot or note if you find a bug and has my email etc...
-
-fix tags so that you can hit tab or enter to autocomplete.
-
-Fix undo on sticky notes and immediate delete etc. it's painful.
 
   The whitelist also misses several common semantic blocks: aside, header,
  footer, nav, figure, blockquote, dialog, details, form. When the click lands
@@ -171,35 +36,16 @@ Fix undo on sticky notes and immediate delete etc. it's painful.
  through to document.body — which is the worst possible anchor for stability
  (its rect drifts as content reflows; percentage offsets become meaningless).
 
- Fix: Promote sticky's findAnchorTarget (or a small superset) into
- lib/adnotaUI.js as AdnotaUI.findStableBlockAnchor(el). Marker and highlighter
- call it. Marker stops falling back to body.
-
 create a SHARE feature, using IFRAMES? Would this be possible? (probably not without a server? Not sure.)
-in ERASE, shift+click to scroll?
-
-
-feature: have a "show all work from this page" shortcut, which either SHOWS all your quotes in one place in text so you can copy/paste OR it just puts them all on your clipboard?? EXTRACT FROM PAGE feature, a popup that let's you edit anything you wrote or selected and then copy it to your clipboard.
-
-make all huds consistent look and feel!
 
 wire up right click for sticky notes (also, if you right click and a sticky note is selected, should it give options like: delete, change color, etc? Or is that just gimmicky?)
 What if you could right click ANY adnota item?? (e.g. for deletion, would that be the most natural way to select/delete something you don't want anymore??)
-
-Fix mouse cursors when using tools (make it obvious you are in TOOL mode!!! e.g. you put down a text field or two and then try and click on a link and you just place another text field!!!)
 
 4. Per-site quirks file. A tiny sites/{hostname}.js lookup that tweaks the
 scroll-container heuristic, anchor threshold, or pre-erase rules for known-bad
 sites (chatgpt.com, claude.ai, x.com) costs little and fixes a lot. You
 already have site-specific behavior implicit in the codebase — making it      
 explicit is cheaper than chasing universal correctness.
-
-TOOLS NEED TO HAVE CUSTOM CURSORS
-
-Consider making tags like in GMAIL. Each color of sticky note/highlighter/etc could be a tag defined by the user. Then they could filter all their saved highlights, notes, etc. by tag. Maybe you don't even need text tags at all, maybe color would be sufficient. If people understood they could filter their sites by color, then they'd get the idea that each color represented whatever they wanted? 
-
-I already have sticky notes for writing text, should I focus on replacing the text tool with a TAGGING system instead? (e.g. you could tag and categorize highlights, sticky's, element selections etc to organize data across the web for a specific theme and then be able to search by all data in that category on the HOME page to quickly see all that data from multiple location in one single location!) Is that a good idea? Does that exist already anywhere?
-
 
 Settings menu:
 Should we add a gear icon to popup.js (near the show/hide eye) or have it be on the home page?
@@ -230,108 +76,3 @@ claude design has cool take on this:
 (if you just START TYPING, wherever your mouse is, it puts down a sticky note that captures what you typed at your cursor, pretty smooth!)
 
 
-
-
-
-
-
-
------
-
-  2. Killing the select tool entirely — bigger, and it has one real obstacle.   
-   
-  Why clicking-anywhere-to-select isn't free today                              
-                  
-  Marker wrappers live on top of page content with pointer-events: none         
-  (content/marker.js:1321). That's deliberate — a pen stroke scribbled across an
-   article paragraph must not block the user from clicking links underneath. The
-   select tool "turns on" pointer events only while the mode is active (line
-  1322). So "always selectable" means removing that shield, which means a
-  freehand stroke over body text steals clicks from the page.
-
-  Stickies and the dock don't hit this because they're solid cards — you already
-   don't want to click through them. Paint objects are the hard case, and
-  they're the reason the select tool exists as a mode.                          
-                  
-  The workable path, if you want to pursue this                                 
-   
-  Keep pointer-events: none on shapes, but run the select handlers              
-  unconditionally at the document level (they already use geometric
-  isPointNearShape hit-testing, not DOM hit-testing — so wrapper pointer-events 
-  don't matter). Then gate "steal this click for selection" on:
-  - pointer is within a tight proximity (say 4–6px of the actual stroke path,
-  not just the bbox)                                                            
-  - AND the element under the pointer is not interactive (a, button, input,
-  [contenteditable], form fields)                                               
-  - AND no paint tool is currently active (pen/arrow/rect/etc. still own their  
-  clicks for drawing)                                                         
-                                                                                
-  If those hold, select. Otherwise fall through. Stickies and text boxes are
-  always selectable since they're opaque anyway. Select tool goes away, dock    
-  gets one fewer button.
-                                                                                
-  Concerns        
-
-  - Drag-to-move on pen mode: if you're drawing and your first pointerdown      
-  happens to be 3px from an existing stroke, does it drag or draw? Need the rule
-   "active paint tool always wins."                                             
-  - Tiny markers: an 8px arrow in the corner of a dense page would fight for
-  every click. Proximity threshold needs to scale down for small shapes.        
-  - Discoverability of the affordance: without a dedicated mode, how does the
-  user know a pen stroke is draggable? Cursor change on hover (already in place 
-  for select mode via html.adnota-select-mode) would need to become always-on
-  for Adnota elements — which is fine, just more CSS.                           
-                  
-  My take
-
-  Do (1) this week — it's the inconsistency you're actually running into. Then  
-  try (2) behind a one-liner feature flag; if the proximity+interactive-guard
-  rule feels good on a dense page like a news article, delete the select tool.  
-  If it feels janky (accidental selects on content, fights with page clicks),
-  the select tool earned its keep.
-
------
-
-
-
-
-
-
-HMMMM...:
-
-  Why HN showed a broken link: Not a Sites-page bug — it's baked into storage.  
-  lib/storage.js:59 keys every item by parsed.pathname only, dropping the query 
-  string. HN uses ?id= as the true page identity (each item is a distinct page  
-  that shares /item as the pathname), so every HN item you annotate gets lumped 
-  under the same /item key, and the Sites-page link (which only knows the
-  pathname) goes to https://news.ycombinator.com/item — no id → "No such item."
-
-  This tradeoff is fine for sites where the query is a filter (?sort=new) and   
-  breaks for sites where the query is the page (HN, YouTube ?v=, Google search
-  ?q=). The cleanest low-risk fix is to keep matching on pathname (preserves    
-  anchor-restoration for sticky params) but also store a lastHref on each item
-  so the Sites page can link to a URL it has actually seen. Want me to do that
-  in a follow-up?
-
-
-  7. Oversized functions worth splitting
-
-  - updateHUD() — eraser.js:336-420 (84 lines) mixes confidence scoring, ad detection,
-  badge building, and DOM updates
-  - renderMarker() — marker.js:708-879 (172 lines) handles text rendering, SVG shape
-  rendering, and position syncing all in one function
-
-
-  6. syncBounds / ResizeObserver anchoring pattern
-
-  Both marker and highlighter implement the same "get bounding rect → add scroll offset
-  → update wrapper position → watch with ResizeObserver + scroll listener" pattern:
-  - content/marker.js:756-771, 833-878
-  - content/highlighter.js:428-447
-
-    9. Inconsistent storage access
-
-  popup/popup.js:105-107 hits chrome.storage.local.get() directly rather than going
-  through the AdnotaStorage wrapper. Content scripts do this too in some places. Not a
-  bug, since the popup can't access window globals from content scripts, but worth
-  noting.
