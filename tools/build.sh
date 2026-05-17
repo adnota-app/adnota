@@ -10,10 +10,29 @@
 # have) or silently break that contract. So we minify each file in place
 # and let the manifest's existing load order do its job.
 #
-# --keep-names preserves function/class names so error stacks stay readable
-# and the cross-script handshake via window.AdnotaState / window.AdnotaUI
-# etc. survives. Property-name mangling stays off (default) — payloads use
-# stable field names that are referenced as strings in storage and JSON.
+# Minify granularly — whitespace + syntax (dead-code elim, expression
+# simplification), but NOT identifiers. Identifier mangling would force
+# --keep-names to preserve readable function names in prod stack traces,
+# and --keep-names triggers an esbuild/V8 interaction bug on
+# fuzzyAnchor.js's `const norm = (s) => ...` arrow: the emitted
+# `Object.defineProperty(fn, "name", ...)` wrapper throws "Property
+# description must be an object: undefined" at runtime, aborting every
+# restoration pass and silently breaking RESIZE re-application.
+# Reproduces on esbuild 0.24 and 0.25. Skipping --minify-identifiers
+# sidesteps the bug entirely and keeps stack traces readable. Bundle
+# lands near 491KB minified vs 406KB full --minify vs 1MB source — the
+# ~85KB delta vs full mangle is rounding-error for an extension that
+# loads once per page. Property-name mangling stays off (default) —
+# payloads use stable field names referenced as strings in storage and
+# JSON.
+#
+# npm audit on esbuild ≤0.24.2 flags GHSA-67mh-4wv8-2f99 (any website
+# can hit the esbuild dev-server endpoints and read responses). We
+# never run `esbuild --serve` — only one-shot minify and --watch — so
+# the vulnerable code path is dead. esbuild is also devDependency-only
+# and never ships in dist/. Skipping `npm audit fix --force` because
+# the fix bumps to esbuild 0.28 (major), which would need re-testing
+# against the --keep-names bug above and is not worth the churn.
 
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -60,8 +79,8 @@ npx esbuild \
   lib/*.js \
   popup/*.js \
   pages/*.js \
-  --minify \
-  --keep-names \
+  --minify-whitespace \
+  --minify-syntax \
   --target=chrome110 \
   --log-level=warning \
   --outbase=. \
