@@ -229,6 +229,9 @@ body {
   display: flex;
   align-items: center;
   flex-shrink: 0;
+  /* Lift above .tag-filter-bar (z-index: 1) so the popup, anchored to this
+     wrap, isn't painted under the sticky tag sub-header below the row. */
+  z-index: 2;
 }
 
 .header-menu-btn {
