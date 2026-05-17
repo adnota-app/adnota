@@ -2136,9 +2136,10 @@ function applyClipChipState(match) {
     return;
   }
   if (match.kind === 'clip-ancestor') {
+    const verb = match.gesture === 'position' ? 'movement' : 'growth';
     selectionClipChip.textContent = 'Container clipping';
     selectionClipChip.setAttribute('data-adnota-tooltip',
-      'Container is clipping growth — click to resize parent instead');
+      `Container is clipping ${verb} — click to resize parent instead`);
     selectionClipChip.removeAttribute('data-warn-only');
   } else {
     // size-cap — warn-only, no click action in v2.
@@ -2539,10 +2540,9 @@ function startPositionDrag(e) {
   dragStartX = e.clientX;
   dragStartY = e.clientY;
 
-  // Clear any latched clip-chip from a prior resize drag — the warning is
-  // about growth, not movement, so it shouldn't ride along into a position
-  // drag on the same selection. (Selection-change paths already clear via
-  // deselectElement; this catches resize → position on the same element.)
+  // Clear any latched clip-chip from a prior gesture so this drag re-evaluates
+  // from scratch. (Selection-change paths already clear via deselectElement;
+  // this catches resize → position on the same element.)
   if (currentClipMatch) {
     applyClipChipState(null);
     currentClipMatch = null;
@@ -2554,6 +2554,15 @@ function startPositionDrag(e) {
     currentLiftMatch = null;
   }
   lastOcclusionCheckRect = null;
+
+  // Pre-compute the clip-ancestor list once so the rAF onMove only does the
+  // per-frame rect compare. Mirrors the resize-drag snapshot at startDrag.
+  // Position never trips the size-cap branch (translation doesn't change
+  // width/height), so sizeCaps/fillModeRisk are deliberately omitted — the
+  // detector returns null for those when the fields are absent.
+  const posClipSnapshot = {
+    clipAncestors: window.AdnotaLayout?.detectClippingAncestors(el) || [],
+  };
 
   // Snapshot inline state with priority. After the first commit, a persisted
   // `<style>` rule exists for this selector with top/left/position/right/
@@ -2725,6 +2734,18 @@ function startPositionDrag(e) {
           currentLiftMatch = match;
         }
       }
+
+      // Clip-ancestor detection — same detector the resize-drag rAF uses.
+      // Here it fires when the translated rect leaves a clipping ancestor's
+      // padding box. Tagged gesture='position' so the chip tooltip reads
+      // "movement" instead of "growth"; dedup via clipMatchChanged means we
+      // only touch the DOM when the match flips (no every-frame writes).
+      const clipMatch = window.AdnotaLayout?.findGrowthOverflow(el, posClipSnapshot) || null;
+      if (clipMatch) clipMatch.gesture = 'position';
+      if (clipMatchChanged(clipMatch, currentClipMatch)) {
+        applyClipChipState(clipMatch);
+        currentClipMatch = clipMatch;
+      }
     });
   }
 
@@ -2739,12 +2760,16 @@ function startPositionDrag(e) {
     if (Math.abs(dx) < 3 && Math.abs(dy) < 3) {
       restoreInlineSnapshot();
       dragAxis = null;
-      // Tiny-drag cancel — also drop any lift chip that surfaced mid-drag.
-      // Position didn't actually change, so don't leave the "Bring to front"
-      // affordance dangling.
+      // Tiny-drag cancel — drop any lift/clip chip that surfaced mid-drag.
+      // Position didn't actually change, so don't leave warning affordances
+      // dangling against a nominally-no-op gesture.
       if (currentLiftMatch) {
         applyLiftChipState(null);
         currentLiftMatch = null;
+      }
+      if (currentClipMatch) {
+        applyClipChipState(null);
+        currentClipMatch = null;
       }
       lastOcclusionCheckRect = null;
       return;
