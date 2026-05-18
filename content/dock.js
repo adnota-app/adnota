@@ -60,7 +60,7 @@
   const logo = document.createElement('span');
   logo.className = 'adnota-dock-logo';
   logo.textContent = 'A';
-  logo.setAttribute('data-adnota-tooltip', 'My Edited Sites · drag to move');
+  logo.setAttribute('data-adnota-tooltip', 'My Edits · drag to move');
   logo.addEventListener('click', (e) => {
     e.stopPropagation();
     // Try/catch + .catch: after a Adnota reload, any tab already loaded
