@@ -1214,6 +1214,7 @@
     if (!payload) return;
     try { await navigator.clipboard.writeText(payload); }
     catch (_) { return; }
+    showScratchToast('Copied all');
     addClass(copyAllBtn, 'copied');
     copyAllBtn.innerHTML = ICON_CHECK;
     setTimeout(() => {
