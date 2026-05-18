@@ -40,6 +40,10 @@ body {
   background: var(--bg);
   color: var(--text-1);
   min-height: 100vh;
+  /* Clip the decorative .header::before orb that bleeds 40px past the
+     right edge (`right: -40px`). overflow-x on body (not header) lets the
+     kebab dropdown still drop past the header band into body. */
+  overflow-x: hidden;
 }
 
 /* ═══════════════════════════════════════════════
@@ -89,7 +93,10 @@ body {
   gap: 20px;
   padding: 16px 28px;
   position: relative;
-  z-index: 1;
+  /* Must beat .tag-filter-bar (z-index: 1) so the kebab dropdown — which
+     is trapped inside this stacking context — paints above a multi-row
+     tag bar that overlaps the dropdown's drop zone. */
+  z-index: 2;
 }
 
 .header-inner > .brand         { justify-self: start; }
