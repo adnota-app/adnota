@@ -200,7 +200,10 @@
   // Chevron-down — universal "click to open a menu" affordance for the
   // mode button. The popover's labels carry the actual category semantics;
   // the icon just needs to say "this is a dropdown."
-  const ICON_CHEVRON_DOWN = `<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><polyline points="5 8 10 13 15 8"/></svg>`;
+  // Horizontal-swap arrows for the binary Snippets ↔ Edits toggle. Replaces
+  // the old chevron-down (which implied "opens a menu" — true when this was
+  // a popover, misleading now that the button is a direct one-click flip).
+  const ICON_SWAP = `<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="14 4 17 7 14 10"/><path d="M3 7h14"/><polyline points="6 16 3 13 6 10"/><path d="M17 13H3"/></svg>`;
   // Eye / eye-off — per-row mute toggle on Edit-mode rows. Eye = currently
   // applied, click to mute. Eye-off = currently muted, click to re-apply.
   // Ephemeral (resets on page reload), same model as global Alt+S show/hide.
@@ -389,15 +392,15 @@
 
     // Mode-switcher icon button — far-left of the header. Outermost-left
     // reads as the primary category control (Snippets vs Edits); the
-    // sub-tabs that follow are filters within that category. Click opens
-    // a small popover listing both modes with counts.
+    // sub-tabs that follow are filters within that category. Direct toggle
+    // (no popover) since there are exactly two modes — one click flips.
     modeBtnEl = document.createElement('button');
     modeBtnEl.type = 'button';
     setClass(modeBtnEl, 'adnota-scratchpad-mode-btn');
-    modeBtnEl.title = 'Switch view';
+    updateModeBtnTooltip();
     modeBtnEl.addEventListener('click', (e) => {
       e.stopPropagation();
-      toggleModeMenu();
+      setMode(activeMode === 'snippets' ? 'edits' : 'snippets');
     });
     header.appendChild(modeBtnEl);
 
@@ -539,6 +542,7 @@
     activeTag = null;
     safeStorageSet({ [MODE_KEY]: mode, [FILTER_KEY]: activeFilter });
     buildSubTabs();
+    updateModeBtnTooltip();
     // Collapse any expanded edit-detail blocks when switching modes —
     // expansions belong to the previous mode's view.
     expandedIds.clear();
@@ -546,120 +550,27 @@
     window.AdnotaLog?.event('scratchpad', 'mode-change', { mode });
   }
 
+  // Tooltip names the destination, not the source — "Switch to Edits" reads
+  // as a direct verb. Refreshed on every setMode so it always points at the
+  // mode the user would land on next.
+  function updateModeBtnTooltip() {
+    if (!modeBtnEl) return;
+    modeBtnEl.title = activeMode === 'snippets' ? 'Switch to Edits' : 'Switch to Snippets';
+  }
+
   // ── Mode switcher (isolated render) ──────────────────────────────────────
   // Single point of truth for the Snippets/Edits affordance. The button
   // sits at the far-left of the header — outermost = primary category,
   // sub-tabs after it = filter within that category, right cluster = utility.
-  // The icon is a plain chevron-down: "click to open a menu." No data-driven
-  // tinting (the popover's count rows tell you what's in each mode); active
-  // state shows only when the popover is open.
+  // Horizontal-swap glyph: clicking flips between the two modes directly
+  // (no popover — there are only two, and the tooltip names the destination).
   function renderModeButton() {
     if (!modeBtnEl) return;
     while (modeBtnEl.firstChild) modeBtnEl.firstChild.remove();
     const glyph = document.createElement('span');
     setClass(glyph, 'adnota-scratchpad-mode-btn-glyph');
-    glyph.innerHTML = ICON_CHEVRON_DOWN;
+    glyph.innerHTML = ICON_SWAP;
     modeBtnEl.appendChild(glyph);
-  }
-
-  // ── Mode menu (popover) ──────────────────────────────────────────────────
-  // Light, frameless popover anchored below the mode button. Two rows:
-  // Snippets · N and Edits · N, with a checkmark on the active mode. Click
-  // an option → setMode + dismiss. Outside-click / Escape also dismiss.
-  let modeMenuEl = null;
-  let modeMenuOutsideHandler = null;
-  function toggleModeMenu() {
-    if (modeMenuEl) closeModeMenu();
-    else openModeMenu();
-  }
-  function openModeMenu() {
-    if (modeMenuEl || !modeBtnEl) return;
-    const menu = document.createElement('div');
-    setClass(menu, 'adnota-scratchpad-modemenu');
-    // The menu is appended to documentElement (it can't live inside the
-    // panel because the panel has overflow:hidden for the resize handle).
-    // CSS rules scope off `[data-role~="adnota-scratchpad-modemenu"]
-    // [data-adnota-ui="1"]` — specificity (0,2,0) beats host bleed AND
-    // survives the AdBlock scrambler that also rewrites `id` attributes
-    // on dynamically-inserted DOM (proven on mamagourmand.com — the panel
-    // root's id happens to survive, but freshly-created child IDs don't).
-    // The id below is just a debugging convenience for console queries;
-    // CSS does NOT depend on it.
-    menu.id = 'adnota-scratchpad-modemenu';
-    menu.setAttribute('data-adnota-ui', '1');
-
-    const allowedSnippets = TYPES_BY_MODE.snippets;
-    const allowedEdits    = TYPES_BY_MODE.edits;
-    const snipCount = snippetCache.filter(s => allowedSnippets.has(s.type)).length;
-    const editCount = snippetCache.filter(s => allowedEdits.has(s.type)).length;
-
-    for (const [val, label, count] of [
-      ['snippets', 'Snippets', snipCount],
-      ['edits',    'Edits',    editCount],
-    ]) {
-      const item = document.createElement('button');
-      item.type = 'button';
-      setClass(item, 'adnota-scratchpad-modemenu-item');
-      if (val === activeMode) addClass(item, 'active');
-
-      const check = document.createElement('span');
-      setClass(check, 'adnota-scratchpad-modemenu-check');
-      check.innerHTML = val === activeMode ? ICON_CHECK : '';
-      item.appendChild(check);
-
-      const lbl = document.createElement('span');
-      setClass(lbl, 'adnota-scratchpad-modemenu-label');
-      lbl.textContent = label;
-      item.appendChild(lbl);
-
-      const cnt = document.createElement('span');
-      setClass(cnt, 'adnota-scratchpad-modemenu-count');
-      cnt.textContent = `· ${count}`;
-      item.appendChild(cnt);
-
-      item.addEventListener('click', (e) => {
-        e.stopPropagation();
-        if (val !== activeMode) setMode(val);
-        closeModeMenu();
-      });
-      menu.appendChild(item);
-    }
-
-    // Position fixed below the button. Left-aligned with the icon now that
-    // the button lives at the far-left of the header.
-    const r = modeBtnEl.getBoundingClientRect();
-    Object.assign(menu.style, {
-      position: 'fixed',
-      top:  (r.bottom + 4) + 'px',
-      left: r.left + 'px',
-      width: '152px',
-      zIndex: '2147483646',
-    });
-    document.documentElement.appendChild(menu);
-    modeMenuEl = menu;
-    addClass(modeBtnEl, 'active');
-
-    // Outside-click dismissal. Defer attach so the click that opened the
-    // menu doesn't immediately close it.
-    setTimeout(() => {
-      modeMenuOutsideHandler = (e) => {
-        if (!modeMenuEl) return;
-        if (modeMenuEl.contains(e.target)) return;
-        if (modeBtnEl?.contains(e.target)) return;
-        closeModeMenu();
-      };
-      document.addEventListener('click', modeMenuOutsideHandler, true);
-    }, 0);
-  }
-  function closeModeMenu() {
-    if (!modeMenuEl) return;
-    modeMenuEl.remove();
-    modeMenuEl = null;
-    if (modeBtnEl) removeClass(modeBtnEl, 'active');
-    if (modeMenuOutsideHandler) {
-      document.removeEventListener('click', modeMenuOutsideHandler, true);
-      modeMenuOutsideHandler = null;
-    }
   }
 
   // ── Render ───────────────────────────────────────────────────────────────
@@ -1516,16 +1427,28 @@
       chrome.storage.local.get(POSITION_KEY).then((data) => {
         const all = data[POSITION_KEY] || {};
         const pos = all[host()];
-        if (!pos?.left || !pos?.top) return;
-        panel.style.right = 'auto';
-        panel.style.bottom = 'auto';
-        panel.style.left = pos.left;
-        panel.style.top = pos.top;
-        // Re-clamp in case the viewport shrank since the saved position.
-        const r = panel.getBoundingClientRect();
-        const c = clampPosition(parseFloat(pos.left), parseFloat(pos.top), r.width, r.height);
-        panel.style.left = c.left + 'px';
-        panel.style.top  = c.top + 'px';
+        if (pos?.left && pos?.top) {
+          panel.style.right = 'auto';
+          panel.style.bottom = 'auto';
+          panel.style.left = pos.left;
+          panel.style.top = pos.top;
+          // Re-clamp in case the viewport shrank since the saved position.
+          const r = panel.getBoundingClientRect();
+          const c = clampPosition(parseFloat(pos.left), parseFloat(pos.top), r.width, r.height);
+          panel.style.left = c.left + 'px';
+          panel.style.top  = c.top + 'px';
+        } else {
+          // No saved position — convert the right/bottom CSS defaults to the
+          // equivalent left/top so native resize:both grows in the cursor
+          // direction. Without this, the bottom-right resize handle drags
+          // the panel's left/top edges (right/bottom are pinned), which
+          // reads as backwards.
+          const r = panel.getBoundingClientRect();
+          panel.style.right = 'auto';
+          panel.style.bottom = 'auto';
+          panel.style.left = r.left + 'px';
+          panel.style.top  = r.top + 'px';
+        }
       }).catch(() => {});
     } catch (_) {}
   }
@@ -1624,7 +1547,15 @@
     // commits one storage write per gesture.
     resizeObserver = new ResizeObserver(() => {
       clearTimeout(resizePersistTimer);
-      resizePersistTimer = setTimeout(persistSize, 400);
+      // Persist position alongside size: with left/top anchoring the panel's
+      // top-left edge stays fixed during a resize, but its visual extent
+      // changes. Without saving position too, a resize-only session would
+      // bounce back to the CSS-default bottom-right corner on refresh — even
+      // though the user clearly "left" the panel in a different spot.
+      resizePersistTimer = setTimeout(() => {
+        persistSize();
+        persistPosition();
+      }, 400);
     });
     resizeObserver.observe(panel);
   }
@@ -1659,6 +1590,42 @@
     } catch (_) {}
 
     snippetCache = await loadSnippets();
+
+    // Auto-flip on initial open: if the resolved mode has no records on this
+    // page but the other mode does, show what's actually here instead of an
+    // empty "No snippets/edits yet." Only flips in-memory — storage retains
+    // the user's last explicit pick, so when both modes have content next
+    // time, that pick wins again. Caller-specified opens (openOn) bypass.
+    const otherMode = activeMode === 'snippets' ? 'edits' : 'snippets';
+    const activeHas = snippetCache.some(s => TYPES_BY_MODE[activeMode].has(s.type));
+    const otherHas  = snippetCache.some(s => TYPES_BY_MODE[otherMode].has(s.type));
+    if (!activeHas && otherHas) {
+      activeMode = otherMode;
+      activeFilter = defaultFilterForMode(activeMode);
+      buildSubTabs();
+    }
+
+    // Same idea one level down: if the resolved sub-tab is empty but another
+    // sub-tab in this mode has content, land on a populated one. Snippets has
+    // an 'all' tab that subsumes everything (the natural fallback); Edits
+    // has no 'all', so walk its tabs in order and pick the first non-empty.
+    const FILTER_TYPE = {
+      highlights: 'highlight', notes: 'note',
+      erased: 'erase', resized: 'resize', drawing: 'drawing',
+    };
+    const subTabHas = (f) => f === 'all'
+      ? snippetCache.some(s => TYPES_BY_MODE[activeMode].has(s.type))
+      : snippetCache.some(s => s.type === FILTER_TYPE[f]);
+    if (!subTabHas(activeFilter)) {
+      if (activeMode === 'snippets') {
+        activeFilter = 'all';
+      } else {
+        for (const [val] of TABS_BY_MODE.edits) {
+          if (subTabHas(val)) { activeFilter = val; break; }
+        }
+      }
+    }
+
     render();
 
     // Live updates: storage changes for this domain key OR the global filter
@@ -1691,7 +1658,6 @@
 
   function close() {
     if (!panel) return;
-    closeModeMenu();
     detachResizeObserver();
     panel.remove();
     panel = null;

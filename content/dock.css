@@ -8,9 +8,11 @@
 
 #adnota-dock {
   position: fixed;
-  bottom: 20px;
-  left: 50%;
-  transform: translateX(-50%);
+  /* Bottom-left default. Symmetric 32px inset clears Chrome's link-hover URL
+     preview in the same corner. No transform — anchoring left means tool-row
+     hover expansion grows rightward instead of symmetrically out of center. */
+  bottom: 32px;
+  left: 32px;
   z-index: 2147483646;
 
   display: flex;
