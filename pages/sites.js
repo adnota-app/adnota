@@ -1336,7 +1336,9 @@
       setOpen(menu.hidden);
     });
     // Clicking an item closes the menu; the link's default navigation/new-tab
-    // behavior still fires because we don't preventDefault.
+    // behavior still fires because we don't preventDefault. The Import/Export
+    // entry is a <button>, so clicks bubble here and the data-modal IIFE
+    // below handles open via its own listener on #header-menu-data.
     menu.addEventListener('click', (e) => {
       if (e.target.closest('.header-menu-item')) setOpen(false);
     });
@@ -1349,6 +1351,105 @@
         setOpen(false);
         btn.focus();
       }
+    });
+  })();
+
+  // ─── Import / Export modal ───────────────────────────────────────────────
+  // Big editable textarea pre-populated with every byte of chrome.storage.local.
+  // Copy writes the textarea's current value to the clipboard; Import parses,
+  // validates, prompts via the branded confirmDialog, then full-replaces
+  // storage (clear() + set()). The existing storage.onChanged listener below
+  // auto-rebuilds the page.
+  (() => {
+    const modal     = document.getElementById('data-modal');
+    if (!modal) return;
+    const openBtn   = document.getElementById('header-menu-data');
+    const closeBtn  = document.getElementById('data-modal-close');
+    const backdrop  = modal.querySelector('.data-modal-backdrop');
+    const textarea  = document.getElementById('data-modal-json');
+    const errorEl   = document.getElementById('data-modal-error');
+    const copyBtn   = document.getElementById('data-modal-copy');
+    const importBtn = document.getElementById('data-modal-import');
+
+    const setError = (msg) => {
+      if (!msg) { errorEl.hidden = true; errorEl.textContent = ''; return; }
+      errorEl.textContent = msg;
+      errorEl.hidden = false;
+    };
+
+    const open = async () => {
+      const all = await chrome.storage.local.get(null);
+      textarea.value = JSON.stringify(all, null, 2);
+      setError('');
+      modal.hidden = false;
+      // Move cursor to start so the user sees the top of their data,
+      // not the last byte after focus auto-scrolls to the caret.
+      textarea.focus();
+      textarea.setSelectionRange(0, 0);
+      textarea.scrollTop = 0;
+    };
+
+    const close = () => { modal.hidden = true; };
+
+    openBtn.addEventListener('click', () => { open(); });
+    closeBtn.addEventListener('click', close);
+    backdrop.addEventListener('click', close);
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && !modal.hidden) {
+        // Let confirmDialog handle Esc when it's up — it stops propagation.
+        close();
+      }
+    });
+
+    const COPY_LABEL = 'Copy to clipboard';
+    const COPY_REVERT_MS = 1400;
+    let copyRevertTimer = null;
+    copyBtn.addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(textarea.value);
+      } catch (err) {
+        showToast('Copy failed — try selecting and copying manually');
+        return;
+      }
+      copyBtn.classList.add('data-modal-btn-copied');
+      copyBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="4 11 8 15 16 5"/></svg><span>Copied</span>`;
+      clearTimeout(copyRevertTimer);
+      copyRevertTimer = setTimeout(() => {
+        copyBtn.classList.remove('data-modal-btn-copied');
+        copyBtn.textContent = COPY_LABEL;
+      }, COPY_REVERT_MS);
+    });
+
+    importBtn.addEventListener('click', async () => {
+      let parsed;
+      try {
+        parsed = JSON.parse(textarea.value);
+      } catch (err) {
+        setError(`Invalid JSON: ${err.message}`);
+        return;
+      }
+      if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+        setError('Top-level must be a JSON object.');
+        return;
+      }
+      setError('');
+      const ok = await window.AdnotaUI.confirmDialog({
+        title: 'Replace all your data?',
+        message: 'This overwrites every annotation, preference, and setting Adnota has stored.',
+        subtext: 'This cannot be undone. Copy first if you want a backup.',
+        confirmText: 'Replace All',
+      });
+      if (!ok) return;
+      try {
+        await chrome.storage.local.clear();
+        await chrome.storage.local.set(parsed);
+      } catch (err) {
+        setError(`Import failed: ${err && err.message ? err.message : String(err)}`);
+        return;
+      }
+      close();
+      showToast('Imported — your data has been replaced');
+      // storage.onChanged listener (below) rebuilds the page automatically.
     });
   })();
 
