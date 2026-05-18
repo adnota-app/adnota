@@ -1427,16 +1427,28 @@
       chrome.storage.local.get(POSITION_KEY).then((data) => {
         const all = data[POSITION_KEY] || {};
         const pos = all[host()];
-        if (!pos?.left || !pos?.top) return;
-        panel.style.right = 'auto';
-        panel.style.bottom = 'auto';
-        panel.style.left = pos.left;
-        panel.style.top = pos.top;
-        // Re-clamp in case the viewport shrank since the saved position.
-        const r = panel.getBoundingClientRect();
-        const c = clampPosition(parseFloat(pos.left), parseFloat(pos.top), r.width, r.height);
-        panel.style.left = c.left + 'px';
-        panel.style.top  = c.top + 'px';
+        if (pos?.left && pos?.top) {
+          panel.style.right = 'auto';
+          panel.style.bottom = 'auto';
+          panel.style.left = pos.left;
+          panel.style.top = pos.top;
+          // Re-clamp in case the viewport shrank since the saved position.
+          const r = panel.getBoundingClientRect();
+          const c = clampPosition(parseFloat(pos.left), parseFloat(pos.top), r.width, r.height);
+          panel.style.left = c.left + 'px';
+          panel.style.top  = c.top + 'px';
+        } else {
+          // No saved position — convert the right/bottom CSS defaults to the
+          // equivalent left/top so native resize:both grows in the cursor
+          // direction. Without this, the bottom-right resize handle drags
+          // the panel's left/top edges (right/bottom are pinned), which
+          // reads as backwards.
+          const r = panel.getBoundingClientRect();
+          panel.style.right = 'auto';
+          panel.style.bottom = 'auto';
+          panel.style.left = r.left + 'px';
+          panel.style.top  = r.top + 'px';
+        }
       }).catch(() => {});
     } catch (_) {}
   }
@@ -1535,7 +1547,15 @@
     // commits one storage write per gesture.
     resizeObserver = new ResizeObserver(() => {
       clearTimeout(resizePersistTimer);
-      resizePersistTimer = setTimeout(persistSize, 400);
+      // Persist position alongside size: with left/top anchoring the panel's
+      // top-left edge stays fixed during a resize, but its visual extent
+      // changes. Without saving position too, a resize-only session would
+      // bounce back to the CSS-default bottom-right corner on refresh — even
+      // though the user clearly "left" the panel in a different spot.
+      resizePersistTimer = setTimeout(() => {
+        persistSize();
+        persistPosition();
+      }, 400);
     });
     resizeObserver.observe(panel);
   }
