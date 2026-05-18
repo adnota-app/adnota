@@ -81,7 +81,7 @@
     const logo = document.createElement('span');
     logo.className = 'adnota-qh-logo';
     logo.textContent = 'A';
-    logo.setAttribute('data-adnota-tooltip', 'My Edited Sites');
+    logo.setAttribute('data-adnota-tooltip', 'Home');
     logo.addEventListener('click', (e) => {
       e.stopPropagation();
       try {

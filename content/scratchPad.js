@@ -1659,6 +1659,42 @@
     } catch (_) {}
 
     snippetCache = await loadSnippets();
+
+    // Auto-flip on initial open: if the resolved mode has no records on this
+    // page but the other mode does, show what's actually here instead of an
+    // empty "No snippets/edits yet." Only flips in-memory — storage retains
+    // the user's last explicit pick, so when both modes have content next
+    // time, that pick wins again. Caller-specified opens (openOn) bypass.
+    const otherMode = activeMode === 'snippets' ? 'edits' : 'snippets';
+    const activeHas = snippetCache.some(s => TYPES_BY_MODE[activeMode].has(s.type));
+    const otherHas  = snippetCache.some(s => TYPES_BY_MODE[otherMode].has(s.type));
+    if (!activeHas && otherHas) {
+      activeMode = otherMode;
+      activeFilter = defaultFilterForMode(activeMode);
+      buildSubTabs();
+    }
+
+    // Same idea one level down: if the resolved sub-tab is empty but another
+    // sub-tab in this mode has content, land on a populated one. Snippets has
+    // an 'all' tab that subsumes everything (the natural fallback); Edits
+    // has no 'all', so walk its tabs in order and pick the first non-empty.
+    const FILTER_TYPE = {
+      highlights: 'highlight', notes: 'note',
+      erased: 'erase', resized: 'resize', drawing: 'drawing',
+    };
+    const subTabHas = (f) => f === 'all'
+      ? snippetCache.some(s => TYPES_BY_MODE[activeMode].has(s.type))
+      : snippetCache.some(s => s.type === FILTER_TYPE[f]);
+    if (!subTabHas(activeFilter)) {
+      if (activeMode === 'snippets') {
+        activeFilter = 'all';
+      } else {
+        for (const [val] of TABS_BY_MODE.edits) {
+          if (subTabHas(val)) { activeFilter = val; break; }
+        }
+      }
+    }
+
     render();
 
     // Live updates: storage changes for this domain key OR the global filter
