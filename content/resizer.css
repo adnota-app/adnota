@@ -122,7 +122,10 @@
 
 .adnota-resizer-selection-dim {
   position: absolute;
-  z-index: 2147483647;
+  /* One below max so chip tooltips (which sit at the int-max ceiling) reliably
+     paint above the badge — the live W×H readout is passive info, the tooltip
+     is the active mid-gesture affordance. */
+  z-index: 2147483646;
   background: #3b82f6;
   color: #fff;
   font: 600 11px/1 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
