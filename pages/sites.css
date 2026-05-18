@@ -302,6 +302,179 @@ body {
 .header-menu-item:hover svg {
   color: #7c3aed;
 }
+/* Button variant of the menu item needs the usual <button> resets so it
+   sits flush with the <a> siblings. */
+button.header-menu-item {
+  border: 0;
+  background: transparent;
+  font-family: inherit;
+  text-align: left;
+  width: 100%;
+}
+
+/* ─── Import / Export modal ─────────────────────────────────────────────
+   Larger than .adnota-modal (which is sized for confirm prompts). Light
+   surface tokens so it reads as part of the Sites page chrome, not the
+   dark HUD aesthetic. The textarea fills the remainder of the panel. */
+.data-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+}
+.data-modal[hidden] { display: none; }
+
+.data-modal-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(15, 18, 28, 0.55);
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+  animation: data-modal-fade 0.15s ease-out;
+}
+
+.data-modal-panel {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: min(820px, 92vw);
+  height: min(640px, 84vh);
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-raise);
+  display: flex;
+  flex-direction: column;
+  padding: 18px 20px 16px;
+  animation: data-modal-pop 0.18s cubic-bezier(.2,.8,.3,1);
+}
+
+@keyframes data-modal-fade {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes data-modal-pop {
+  from { opacity: 0; transform: translate(-50%, -48%) scale(0.98); }
+  to   { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+}
+
+.data-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 4px;
+}
+.data-modal-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-1);
+  margin: 0;
+}
+.data-modal-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--text-3);
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+.data-modal-close:hover {
+  background: rgba(0,0,0,0.04);
+  color: var(--text-1);
+  border-color: var(--border);
+}
+
+.data-modal-sub {
+  margin: 0 0 10px;
+  font-size: 12.5px;
+  color: var(--text-2);
+}
+
+.data-modal-json {
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
+  resize: none;
+  padding: 12px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--text-1);
+  background: var(--surface-2);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  outline: none;
+  white-space: pre;
+  overflow: auto;
+  tab-size: 2;
+}
+.data-modal-json:focus {
+  border-color: rgba(124, 58, 237, 0.55);
+  box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.15);
+}
+
+.data-modal-error {
+  margin-top: 10px;
+  padding: 8px 10px;
+  font-size: 12.5px;
+  color: #b42318;
+  background: rgba(217, 45, 32, 0.08);
+  border: 1px solid rgba(217, 45, 32, 0.25);
+  border-radius: var(--radius-xs);
+  white-space: pre-wrap;
+}
+.data-modal-error[hidden] { display: none; }
+
+.data-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 12px;
+}
+.data-modal-btn {
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 8px 14px;
+  border-radius: var(--radius-xs);
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s, color 0.12s;
+}
+.data-modal-btn-secondary {
+  background: var(--surface);
+  border-color: var(--border-strong);
+  color: var(--text-1);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+.data-modal-btn-secondary:hover {
+  background: rgba(0,0,0,0.03);
+}
+/* Transient success state after Copy succeeds — reverts after ~1.4s.
+   Same idea as the scratch pad row-copy: confirmation lives where the
+   user's eye already is, no toast needed. */
+.data-modal-btn.data-modal-btn-copied {
+  background: rgba(34, 197, 94, 0.10);
+  border-color: rgba(34, 197, 94, 0.45);
+  color: #15803d;
+}
+.data-modal-btn-primary {
+  background: #7c3aed;
+  color: #fff;
+}
+.data-modal-btn-primary:hover {
+  background: #6d28d9;
+}
 
 /* Summary bar — now lives at the top of the By Site pane on a light
    background (site-level aggregates make no sense on the Snippets feed,
