@@ -122,7 +122,10 @@
 
 .adnota-resizer-selection-dim {
   position: absolute;
-  z-index: 2147483647;
+  /* One below max so chip tooltips (which sit at the int-max ceiling) reliably
+     paint above the badge — the live W×H readout is passive info, the tooltip
+     is the active mid-gesture affordance. */
+  z-index: 2147483646;
   background: #3b82f6;
   color: #fff;
   font: 600 11px/1 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
@@ -188,12 +191,12 @@
   border-color: rgba(147, 197, 253, 0.55);
 }
 
-/* ─── Clip / size-cap warning chip ───────────────────────────────────────
-   Surfaces during a drag when growth is being silently masked by a clipping
-   ancestor (overflow:hidden|clip) or capped by the element's own
-   max-width/max-height. Red TEXT (vs amber) to read as "warning" rather
-   than "action available." Inherits the dark frosted-glass shape from the
-   base chip; only the text color, border tint, and ⚠ prefix differ. */
+/* ─── Clip warning chip ──────────────────────────────────────────────────
+   Surfaces during a drag when growth or movement is being silently masked
+   by a clipping ancestor (overflow:hidden|clip). Red TEXT (vs amber) to
+   read as "warning" rather than "action available." Inherits the dark
+   frosted-glass shape from the base chip; only the text color, border
+   tint, and ⚠ prefix differ. */
 
 .adnota-resizer-clip-chip {
   color: #f87171;
@@ -206,18 +209,6 @@
 
 .adnota-resizer-clip-chip::before {
   content: '⚠ ';
-}
-
-/* Warn-only variant (size-cap kind): same color, default cursor, no
-   hover lift — communicates "no action available, just informing you." */
-.adnota-resizer-clip-chip[data-warn-only="1"] {
-  cursor: default;
-}
-
-.adnota-resizer-clip-chip[data-warn-only="1"]:hover {
-  transform: none;
-  filter: none;
-  border-color: rgba(248, 113, 113, 0.35);
 }
 
 /* ─── Drag overlay (captures mouse during drag) ──────────────────────────── */

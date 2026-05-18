@@ -836,11 +836,9 @@ function selectElement(el) {
   });
 
   // Clip chip — surfaces during drag (and latches after pointerup) when an
-  // ancestor's overflow:hidden|clip is masking growth, OR when the element's
-  // own max-width/max-height is capping growth. Click promotes selection to
-  // the constraining ancestor for the clip-ancestor case; size-cap is
-  // warn-only (no click action in v2). Visibility driven by onMove via
-  // AdnotaLayout.findGrowthOverflow.
+  // ancestor's overflow:hidden|clip is silently masking the resize. Click
+  // promotes selection to the clipping ancestor so the user can address the
+  // actual blocker. Visibility driven by onMove via AdnotaLayout.findGrowthOverflow.
   selectionClipChip = document.createElement('div');
   selectionClipChip.className = 'adnota-resizer-action-chip adnota-resizer-clip-chip';
   selectionClipChip.setAttribute('data-adnota-ui', '1');
@@ -851,7 +849,6 @@ function selectElement(el) {
     if (currentClipMatch?.kind === 'clip-ancestor' && currentClipMatch.ancestor) {
       selectElement(currentClipMatch.ancestor);
     }
-    // 'size-cap' is warn-only in v2 — no click action.
   });
 
   // Lift chip — surfaces during position drag when an overlapping non-Adnota
@@ -1010,7 +1007,7 @@ function selectElement(el) {
   Object.assign(chipRowStatus.style, { display: 'none', gap: '4px', alignItems: 'center' });
 
   // Row 1 order: parent → unstick → finite scroll → clip/scrollbar → text-size
-  // → recolor → lift → dimension. Row 2: the red clip/size-cap warning chip.
+  // → recolor → lift → dimension. Row 2: the red clip warning chip.
   chipRowPrimary.appendChild(selectionParentChip);
   chipRowPrimary.appendChild(selectionActionChip);
   chipRowPrimary.appendChild(selectionInfiniteChip);
@@ -2114,10 +2111,8 @@ async function resetElement(el) {
 
 // ─── Clip-chip state helpers ──────────────────────────────────────────────
 // `match` is the result of AdnotaLayout.findGrowthOverflow — null when no
-// growth blocker, or { kind, ancestor?, axis } when the live rect is being
-// clipped (by an overflow:hidden ancestor) or capped (by max-width/max-height
-// on the element itself). The chip is shared across both kinds; only the
-// label / cursor / click action differ. See plan v2.
+// growth blocker, or { kind: 'clip-ancestor', ancestor, axis } when an
+// overflow:hidden|clip ancestor is silently masking the resize.
 
 function clipMatchChanged(a, b) {
   if (a === b) return false;            // both null
@@ -2135,19 +2130,9 @@ function applyClipChipState(match) {
     syncStatusRowVisibility();
     return;
   }
-  if (match.kind === 'clip-ancestor') {
-    const verb = match.gesture === 'position' ? 'movement' : 'growth';
-    selectionClipChip.textContent = 'Container clipping';
-    selectionClipChip.setAttribute('data-adnota-tooltip',
-      `Container is clipping ${verb} — click to resize parent instead`);
-    selectionClipChip.removeAttribute('data-warn-only');
-  } else {
-    // size-cap — warn-only, no click action in v2.
-    selectionClipChip.textContent = 'At max size';
-    selectionClipChip.setAttribute('data-adnota-tooltip',
-      'Element has hit its max-width/max-height — can\'t grow further on this axis');
-    selectionClipChip.setAttribute('data-warn-only', '1');
-  }
+  selectionClipChip.textContent = 'Container clipping';
+  selectionClipChip.setAttribute('data-adnota-tooltip',
+    'Container is clipping — click to resize parent instead');
   selectionClipChip.style.display = '';
   syncStatusRowVisibility();
 }
@@ -2557,9 +2542,6 @@ function startPositionDrag(e) {
 
   // Pre-compute the clip-ancestor list once so the rAF onMove only does the
   // per-frame rect compare. Mirrors the resize-drag snapshot at startDrag.
-  // Position never trips the size-cap branch (translation doesn't change
-  // width/height), so sizeCaps/fillModeRisk are deliberately omitted — the
-  // detector returns null for those when the fields are absent.
   const posClipSnapshot = {
     clipAncestors: window.AdnotaLayout?.detectClippingAncestors(el) || [],
   };
@@ -2737,11 +2719,9 @@ function startPositionDrag(e) {
 
       // Clip-ancestor detection — same detector the resize-drag rAF uses.
       // Here it fires when the translated rect leaves a clipping ancestor's
-      // padding box. Tagged gesture='position' so the chip tooltip reads
-      // "movement" instead of "growth"; dedup via clipMatchChanged means we
-      // only touch the DOM when the match flips (no every-frame writes).
+      // padding box. Dedup via clipMatchChanged means we only touch the DOM
+      // when the match flips (no every-frame writes).
       const clipMatch = window.AdnotaLayout?.findGrowthOverflow(el, posClipSnapshot) || null;
-      if (clipMatch) clipMatch.gesture = 'position';
       if (clipMatchChanged(clipMatch, currentClipMatch)) {
         applyClipChipState(clipMatch);
         currentClipMatch = clipMatch;
@@ -3136,13 +3116,12 @@ function startDrag(e, axis) {
 
   // Layout-aware growth-blocker detection. detectClippingAncestors walks up
   // looking for overflow:hidden|clip ancestors that would silently mask growth;
-  // detectSizeCaps reads the element's own max-width/max-height. Both cached
-  // here so onMove just compares the live rect against pre-computed boundaries.
-  // Fresh drag clears any latched chip from a prior gesture before recompute.
+  // cached here so onMove just compares the live rect against the pre-computed
+  // padding boxes. Fresh drag clears any latched chip from a prior gesture
+  // before recompute.
   if (selectionClipChip) selectionClipChip.style.display = 'none';
   currentClipMatch = null;
   snapshot.clipAncestors = window.AdnotaLayout?.detectClippingAncestors(selectedEl) || [];
-  snapshot.sizeCaps = window.AdnotaLayout?.detectSizeCaps(selectedEl) || null;
   // Fill-mode risk: when the selected subtree contains an absolutely-
   // positioned replaced element with min/max-100% on both axes (Next.js
   // <Image fill>, Gatsby gatsby-image, etc.), our X-axis writes that
