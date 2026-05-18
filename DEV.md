@@ -118,7 +118,7 @@ Available in any host-page DevTools console while Adnota is injected. Useful for
 | `AdnotaStorage` | Storage wrapper — `saveItem`, `saveNote`, `deleteItem`, `getAnchorsForUrl`, `clearPage` |
 | `AdnotaTags` | Tag index — `.getAllTags()` async returns `[{ tag, count }]` |
 | `AdnotaUI` | Shared helpers — `bubbleToVisualRoot`, `dominatesViewport`, `setIframeShield`, etc. |
-| `AdnotaLayout` | `findGrowthOverflow`, `detectSizeCaps` — layout-blocker detection |
+| `AdnotaLayout` | `findGrowthOverflow`, `detectClippingAncestors` — layout-blocker detection |
 | `AdnotaCursor` | Global cursor lock (resizer uses this) |
 | `AdnotaDock` | `.mount(toolId, buildBodyFn)` / `.unmount(toolId)` |
 | `AdnotaEraser` / `AdnotaResizer` / `AdnotaSticky` / `AdnotaHighlighter` / `AdnotaMarker` | Per-tool engines |

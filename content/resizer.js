@@ -1007,7 +1007,7 @@ function selectElement(el) {
   Object.assign(chipRowStatus.style, { display: 'none', gap: '4px', alignItems: 'center' });
 
   // Row 1 order: parent → unstick → finite scroll → clip/scrollbar → text-size
-  // → recolor → lift → dimension. Row 2: the red clip/size-cap warning chip.
+  // → recolor → lift → dimension. Row 2: the red clip warning chip.
   chipRowPrimary.appendChild(selectionParentChip);
   chipRowPrimary.appendChild(selectionActionChip);
   chipRowPrimary.appendChild(selectionInfiniteChip);
@@ -2542,9 +2542,6 @@ function startPositionDrag(e) {
 
   // Pre-compute the clip-ancestor list once so the rAF onMove only does the
   // per-frame rect compare. Mirrors the resize-drag snapshot at startDrag.
-  // Position never trips the size-cap branch (translation doesn't change
-  // width/height), so sizeCaps/fillModeRisk are deliberately omitted — the
-  // detector returns null for those when the fields are absent.
   const posClipSnapshot = {
     clipAncestors: window.AdnotaLayout?.detectClippingAncestors(el) || [],
   };
