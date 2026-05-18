@@ -3,11 +3,12 @@
   "name": "Adnota",
   "short_name": "Adnota",
   "version": "0.9.3",
-  "description": "Annotate and edit the web. Erase, highlight, draw, and annotate any page — persistent across sessions, stored privately on your machine.",
+  "description": "Annotate and edit the web. Erase, highlight, draw, and annotate any page — saved across sessions, stored privately on your machine.",
   "author": "Adnota",
   "homepage_url": "https://adnota.app",
   "permissions": [
-    "storage"
+    "storage",
+    "favicon"
   ],
   "host_permissions": [
     "*://*/*"
