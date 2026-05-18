@@ -147,8 +147,15 @@
   }
 
   // ─── Favicon helper ───────────────────────────────────────────────────────
+  // Chrome's local favicon cache — served by the extension's own origin via
+  // the `favicon` permission. Zero network: Chrome already cached every
+  // favicon when the user visited the site, and an edited site is by
+  // definition a visited site. No hostname leaks to any third party.
   function faviconUrl(hostname) {
-    return `https://www.google.com/s2/favicons?sz=64&domain=${hostname}`;
+    const u = new URL(chrome.runtime.getURL('/_favicon/'));
+    u.searchParams.set('pageUrl', `https://${hostname}`);
+    u.searchParams.set('size', '64');
+    return u.toString();
   }
 
   function faviconFallbackChar(hostname) {
@@ -1420,6 +1427,59 @@
       }, COPY_REVERT_MS);
     });
 
+    // ── Import sanitizer ────────────────────────────────────────────────────
+    // Validates and normalizes a JSON blob before we wipe storage and write
+    // it. Three jobs: (1) reject obviously malformed payloads early so users
+    // see a useful error instead of a corrupted profile; (2) coerce + cap
+    // user-supplied strings (text, tag, comments[].text) so an imported note
+    // can't smuggle huge values or non-string payloads into storage; (3)
+    // report kept/dropped counts so the user gets a receipt.
+    const VALID_ACTIONS = new Set(['ERASE', 'NOTE', 'HIGHLIGHT', 'MARKER', 'RESIZE']);
+    const TEXT_CAP = 50000;
+    const TAG_CAP = 40;
+    // Hostname-shaped key — anything new URL().hostname could return.
+    // Permissive (allows localhost, IPs, IDN) but rejects URL fragments,
+    // whitespace, and obvious junk that'd never come from a real save path.
+    const isHostnameLike = (s) =>
+      typeof s === 'string' && s.length > 0 && !/[\s/:?#]/.test(s);
+
+    function sanitizeImport(raw) {
+      const out = {};
+      let kept = 0, dropped = 0, hosts = 0;
+      for (const [key, val] of Object.entries(raw)) {
+        if (key.startsWith('adnota')) { out[key] = val; continue; }
+        if (!isHostnameLike(key))     { dropped++; continue; }
+        if (!val || typeof val !== 'object' || !Array.isArray(val.items)) {
+          dropped++;
+          continue;
+        }
+        const filtered = [];
+        for (const it of val.items) {
+          if (!it || typeof it !== 'object')   { dropped++; continue; }
+          if (!VALID_ACTIONS.has(it.action))   { dropped++; continue; }
+          if (typeof it.path !== 'string')     { dropped++; continue; }
+          const clean = { ...it };
+          if (typeof clean.text === 'string') clean.text = clean.text.slice(0, TEXT_CAP);
+          else if ('text' in clean) delete clean.text;
+          if (typeof clean.tag === 'string') clean.tag = clean.tag.slice(0, TAG_CAP);
+          else if ('tag' in clean) delete clean.tag;
+          if (Array.isArray(clean.comments)) {
+            clean.comments = clean.comments.map(c => ({
+              ...c,
+              text: typeof c?.text === 'string' ? c.text.slice(0, TEXT_CAP) : '',
+            }));
+          }
+          filtered.push(clean);
+        }
+        if (filtered.length) {
+          out[key] = { ...val, items: filtered };
+          kept += filtered.length;
+          hosts++;
+        }
+      }
+      return { sanitized: out, kept, dropped, hosts };
+    }
+
     importBtn.addEventListener('click', async () => {
       let parsed;
       try {
@@ -1432,23 +1492,36 @@
         setError('Top-level must be a JSON object.');
         return;
       }
+      const { sanitized, kept, dropped, hosts } = sanitizeImport(parsed);
+      const hasPrefs = Object.keys(sanitized).some(k => k.startsWith('adnota'));
+      if (kept === 0 && !hasPrefs) {
+        setError('No valid annotation data found in this payload.');
+        return;
+      }
       setError('');
+      const summary = `Will import ${kept} item${kept === 1 ? '' : 's'} across ${hosts} host${hosts === 1 ? '' : 's'}.`;
+      const skipped = dropped
+        ? ` ${dropped} malformed item${dropped === 1 ? '' : 's'} will be skipped.`
+        : '';
       const ok = await window.AdnotaUI.confirmDialog({
         title: 'Replace all your data?',
-        message: 'This overwrites every annotation, preference, and setting Adnota has stored.',
-        subtext: 'This cannot be undone. Copy first if you want a backup.',
+        message: summary + skipped,
+        subtext: 'This overwrites every annotation, preference, and setting. Cannot be undone — copy first if you want a backup.',
         confirmText: 'Replace All',
       });
       if (!ok) return;
       try {
         await chrome.storage.local.clear();
-        await chrome.storage.local.set(parsed);
+        await chrome.storage.local.set(sanitized);
       } catch (err) {
         setError(`Import failed: ${err && err.message ? err.message : String(err)}`);
         return;
       }
       close();
-      showToast('Imported — your data has been replaced');
+      const toastMsg = dropped
+        ? `Imported ${kept} item${kept === 1 ? '' : 's'} (${dropped} skipped)`
+        : `Imported ${kept} item${kept === 1 ? '' : 's'}`;
+      showToast(toastMsg);
       // storage.onChanged listener (below) rebuilds the page automatically.
     });
   })();
@@ -1476,6 +1549,32 @@
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape' && !pop.hidden) setOpen(false);
     });
+
+    // Prefill the mailto with version + UA + storage usage so triage email
+    // arrives with the diagnostic stamp the popup's bug-link already provides.
+    // Opt-in by definition: user reviews the body in their mail client before
+    // sending and can edit or strip anything they don't want to share.
+    const link = document.getElementById('bug-report-email');
+    if (!link) return;
+    (async () => {
+      const version = chrome.runtime.getManifest().version;
+      let bytes = 'n/a';
+      try {
+        const used = await chrome.storage.local.getBytesInUse(null);
+        bytes = `${(used / 1024).toFixed(1)} KB`;
+      } catch {}
+      const body = [
+        'Describe what went wrong:',
+        '',
+        '',
+        '---',
+        `Extension: ${version}`,
+        `Browser: ${navigator.userAgent}`,
+        `Storage: ${bytes}`,
+      ].join('\n');
+      const subject = encodeURIComponent('Adnota bug');
+      link.href = `mailto:support@adnota.app?subject=${subject}&body=${encodeURIComponent(body)}`;
+    })();
   })();
 
   // ─── Live storage updates ─────────────────────────────────────────────────
