@@ -1,6 +1,6 @@
 {
   "name": "adnota",
-  "version": "0.9.3",
+  "version": "0.9.4",
   "private": true,
   "description": "Build tooling for the Adnota Chrome Extension. Source lives at the repo root and is loadable as unpacked for dev; `npm run build` emits a minified copy under dist/ for Web Store packaging.",
   "scripts": {
