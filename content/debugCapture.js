@@ -16,6 +16,23 @@
   if (window.__adnotaDebugCaptureLoaded) return;
   window.__adnotaDebugCaptureLoaded = true;
 
+  // Gate everything on the shared `adnotaDebugLog` flag (same flag that
+  // controls AdnotaLog). Default off, so end users don't get a hotkey
+  // installed on every page or a "[adnota debug] capture loaded" line in
+  // their console. Developers flip the flag once in
+  // chrome.storage.local and reload the tab to opt in. Read-once at script
+  // load (no live toggle) so the listener state is deterministic for the
+  // tab's lifetime — a developer who flips the flag mid-session just
+  // reloads.
+  if (typeof chrome === 'undefined' || !chrome.storage?.local) return;
+  chrome.storage.local.get(['adnotaDebugLog'], (result) => {
+    if (chrome.runtime.lastError) return;
+    if (!result?.adnotaDebugLog) return;
+    install();
+  });
+
+  function install() {
+
   const BUNDLE_VERSION = 1;
 
   // Edit this to rebind. e.code is the physical key, so it survives Alt
@@ -349,4 +366,5 @@
   window.adnotaDebugCapture = capture;
 
   console.log('[adnota debug] capture loaded — Cmd/Ctrl+Shift+K, or window.adnotaDebugCapture()');
+  } // end install()
 })();

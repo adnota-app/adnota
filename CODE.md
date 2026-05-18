@@ -21,7 +21,7 @@ Minimal service worker. `importScripts('lib/log.js')` at the top so the worker s
 ### Shared Libraries (injected into every page)
 
 #### `lib/log.js` — `window.AdnotaLog`
-Gated debug-event logger shared across content scripts, the background service worker, popup, and the Sites page. Default-on for pre-release; toggle off via `chrome.storage.local.set({ adnotaDebugLog: false })` (global, live — `storage.onChanged` flips the flag without reload) or `localStorage.setItem('adnotaDebugLog', '0')` (per-tab override on the page side only).
+Gated debug-event logger shared across content scripts, the background service worker, popup, and the Sites page. Default-off; toggle on via `chrome.storage.local.set({ adnotaDebugLog: true })` (global, live — `storage.onChanged` flips the flag without reload) or `localStorage.setItem('adnotaDebugLog', '1')` (per-tab override on the page side only).
 
 **Surface**: `event(channel, action, data)`, `el(node)` returns `{sel, tag, w, h, text}`, `group(channel, label, fn)`. Output format: `[Adnota:<source>:<channel>:<action>] {…data}`. Source tag distinguishes the four console contexts (`cs` content script / `bg` service worker / `popup` / `sites`) so a single flow can be reconstructed across them. Filter in DevTools by typing `Adnota:` (all), `Adnota:restorer:` (one channel), or `Adnota:cs:eraser:click` (one event).
 

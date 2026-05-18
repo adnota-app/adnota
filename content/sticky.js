@@ -658,13 +658,18 @@ window.StickyEngine = {
             </svg>
           </button>
         </div>
-        <textarea class="adnota-sticky-textarea" placeholder="Take a note...">${initialText}</textarea>
+        <textarea class="adnota-sticky-textarea" placeholder="Take a note..."></textarea>
         <div class="adnota-sticky-tag-row" data-adnota-ui="1">
           <span class="adnota-sticky-tag-icon">#</span>
           <input class="adnota-sticky-tag-input" type="text" placeholder="tag" maxlength="40" />
         </div>
       </div>
     `;
+    // Seed the body via .value (not template interpolation) so untrusted note
+    // text — e.g. a note brought in through Import/Export — can never break
+    // out of the textarea and inject HTML. Same pattern as the tag input below.
+    const textareaEl = container.querySelector('.adnota-sticky-textarea');
+    if (textareaEl) textareaEl.value = initialText;
 
     getStickyOverlay().appendChild(container);
 
