@@ -60,7 +60,7 @@
   const logo = document.createElement('span');
   logo.className = 'adnota-dock-logo';
   logo.textContent = 'A';
-  logo.setAttribute('data-adnota-tooltip', 'My Edited Sites · drag to move');
+  logo.setAttribute('data-adnota-tooltip', 'Home · drag to move');
   logo.addEventListener('click', (e) => {
     e.stopPropagation();
     // Try/catch + .catch: after a Adnota reload, any tab already loaded
@@ -563,6 +563,24 @@
     }).catch(() => {});
   }
 
+  // Same treatment for the visibility eye: toggling show/hide is a no-op on
+  // a page with zero annotations, so grey the button to signal that. Reuses
+  // the dock badge's all-types count (highlights + notes + erases + resizes
+  // + drawings) — anything the eye would actually hide.
+  function refreshVisEnabled() {
+    const entry = toolEls.find(t => t.tool.id === 'vis');
+    if (!entry || !window.AdnotaScratchPad?.pageSnippetCount) return;
+    window.AdnotaScratchPad.pageSnippetCount().then((count) => {
+      if (count > 0) {
+        entry.btn.removeAttribute('data-disabled');
+        entry.btn.removeAttribute('aria-disabled');
+      } else {
+        entry.btn.setAttribute('data-disabled', '1');
+        entry.btn.setAttribute('aria-disabled', 'true');
+      }
+    }).catch(() => {});
+  }
+
   // Update the page-edit count badge on the A-icon. Pulls the same total
   // the scratch pad would show across both modes (highlights + notes +
   // erases + resizes + drawings); hides at 0 to keep the dock untouched
@@ -579,11 +597,13 @@
   // path that creates/removes snippets). Cheap — getAnchorsForUrl reads one
   // domain key.
   refreshScratchEnabled();
+  refreshVisEnabled();
   refreshDockBadge();
   chrome.storage.onChanged.addListener((changes, area) => {
     if (area !== 'local') return;
     if (changes[location.hostname]) {
       refreshScratchEnabled();
+      refreshVisEnabled();
       refreshDockBadge();
     }
   });
@@ -595,12 +615,12 @@
   if (typeof window.navigation?.addEventListener === 'function') {
     try {
       window.navigation.addEventListener('navigate', () => {
-        setTimeout(() => { refreshScratchEnabled(); refreshDockBadge(); }, 50);
+        setTimeout(() => { refreshScratchEnabled(); refreshVisEnabled(); refreshDockBadge(); }, 50);
       });
     } catch (_) {}
   } else {
     window.addEventListener('popstate', () => {
-      setTimeout(() => { refreshScratchEnabled(); refreshDockBadge(); }, 50);
+      setTimeout(() => { refreshScratchEnabled(); refreshVisEnabled(); refreshDockBadge(); }, 50);
     });
   }
 
