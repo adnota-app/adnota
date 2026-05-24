@@ -25,16 +25,11 @@
   // the popup doesn't reappear from the still-live selection post-copy).
   let suppressUntilSelectionChange = false;
 
-  // Shared with the dock — dismissing the dock on a site also silences this
-  // popup. One off-switch for the whole product per site.
-  const hiddenDomains = new Set();
-  const isHiddenHere = () => hiddenDomains.has(location.hostname);
-
-  chrome.storage.local.get(['adnotaQuickHighlightEnabled', 'adnotaHiddenDomains'], (result) => {
+  // The highlighter is always on — independent of per-domain dock activation.
+  // Gated only by the user-facing kill switch adnotaQuickHighlightEnabled
+  // (default true; flippable via DevTools or a future setting).
+  chrome.storage.local.get(['adnotaQuickHighlightEnabled'], (result) => {
     if (result.adnotaQuickHighlightEnabled === false) enabled = false;
-    if (Array.isArray(result.adnotaHiddenDomains)) {
-      for (const host of result.adnotaHiddenDomains) hiddenDomains.add(host);
-    }
   });
 
   chrome.storage.onChanged.addListener((changes, area) => {
@@ -42,12 +37,6 @@
     if (changes.adnotaQuickHighlightEnabled) {
       enabled = changes.adnotaQuickHighlightEnabled.newValue !== false;
       if (!enabled) hidePopup();
-    }
-    if (changes.adnotaHiddenDomains) {
-      hiddenDomains.clear();
-      const next = changes.adnotaHiddenDomains.newValue;
-      if (Array.isArray(next)) for (const host of next) hiddenDomains.add(host);
-      if (isHiddenHere()) hidePopup();
     }
   });
 
@@ -216,7 +205,6 @@
 
   document.addEventListener('mouseup', (e) => {
     if (!enabled) return;
-    if (isHiddenHere()) return;
     if (suppressUntilSelectionChange) return;
     // When classic highlight mode is on, its mouseup handler auto-applies the
     // active color. Showing the popup on top would be redundant.

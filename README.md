@@ -42,7 +42,7 @@ Two layers: **global** (work anywhere, always) and **bare-key** (work only when 
 
 | Shortcut | Action |
 |---|---|
-| `Alt+A` | Toggle the Adnota dock on the current domain. Pressing on a hidden domain restores and un-blacklists; pressing on a visible domain hides and blacklists (per-domain persisted). While a tool is active, exits the tool *and* hides the dock in one keystroke. Symmetric counterpart to clicking the dock's X |
+| `Alt+A` | Turn Adnota on for the current domain (or off if it's already on, per-domain persisted). Pressing on an inactive domain activates the dock; pressing on an active domain deactivates it. While a tool is active, exits the tool *and* deactivates in one keystroke. Symmetric counterpart to clicking the dock's X |
 | `Alt+S` | Show / Hide all annotations |
 | `Ctrl+Z` / `Cmd+Z` | Undo last action (any tool) |
 | `Escape` | Deactivate active tool (universal — works from any tool, any state) / cancel text input |
