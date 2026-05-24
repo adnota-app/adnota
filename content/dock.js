@@ -147,20 +147,20 @@
   // The dock starts centered (left:50% + transform). On first drag OR first
   // tool mount, commit to absolute px and persist so the spot survives reloads.
   const POSITION_KEY = 'adnotaDockPosition';
-  const HIDDEN_DOMAINS_KEY = 'adnotaHiddenDomains';
+  const ACTIVATED_DOMAINS_KEY = 'adnotaActivatedDomains';
   const TUTORIAL_KEY = 'adnotaDockDismissTutorialShown';
   const TOOL_ESC_TUTORIAL_KEY = 'adnotaToolEscTutorialShown';
 
-  // Per-domain dismiss state. Mirrored to chrome.storage.local as an array;
-  // a Set in memory for O(1) checks. The X persists this. Alt+A and any
-  // popup-driven restore (popup-open, tool activation) clear it. Symmetric
-  // toggle — whatever the user last did is what sticks.
-  const hiddenDomains = new Set();
+  // Per-domain activation state. Mirrored to chrome.storage.local as an array;
+  // a Set in memory for O(1) checks. Domains start inactive (no dock).
+  // Activation triggers: Alt+A, opening the popup, or clicking a popup tool
+  // card. The X removes from the set. Whatever the user last did sticks.
+  const activatedDomains = new Set();
 
-  function persistHiddenDomains() {
+  function persistActivatedDomains() {
     try {
       chrome.storage.local.set({
-        [HIDDEN_DOMAINS_KEY]: Array.from(hiddenDomains),
+        [ACTIVATED_DOMAINS_KEY]: Array.from(activatedDomains),
       }).catch(() => {});
     } catch (_) { /* context invalidated after extension reload */ }
   }
@@ -275,15 +275,15 @@
     }
   }, true);
 
-  // ── Restore saved position + dismiss state ───────────────────────────────
+  // ── Restore saved position + activation state ─────────────────────────────
   // Dock is visibility:hidden until this resolves so we never flash at the
-  // default center position when a saved spot exists. Reading hidden-domains
-  // here too means a blacklisted domain never flashes the dock visible
-  // either — applyDismissState runs before .adnota-dock-ready is added.
+  // default center position when a saved spot exists. Reading activated-
+  // domains here too means an inactive domain never flashes the dock visible
+  // — applyDismissState runs before .adnota-dock-ready is added.
   function markReady() {
     dock.classList.add('adnota-dock-ready');
   }
-  chrome.storage.local.get([POSITION_KEY, HIDDEN_DOMAINS_KEY]).then((data) => {
+  chrome.storage.local.get([POSITION_KEY, ACTIVATED_DOMAINS_KEY]).then((data) => {
     const pos = data[POSITION_KEY];
     if (pos?.left && pos?.top) {
       dock.style.left = pos.left;
@@ -302,9 +302,9 @@
         persistPosition();
       }
     }
-    const stored = data[HIDDEN_DOMAINS_KEY];
+    const stored = data[ACTIVATED_DOMAINS_KEY];
     if (Array.isArray(stored)) {
-      for (const h of stored) hiddenDomains.add(h);
+      for (const h of stored) activatedDomains.add(h);
     }
     applyDismissState();
     markReady();
@@ -337,26 +337,25 @@
   }
 
   // ── Dismiss / restore ────────────────────────────────────────────────────
-  // Per-domain persisted via the hiddenDomains Set. Symmetric toggle:
-  // X writes hidden, Alt+A / popup-open / tool-activation-via-popup all
-  // clear hidden. Whatever the user last did is what sticks.
-  function isHiddenHere() {
-    return hiddenDomains.has(location.hostname);
+  // Per-domain persisted via the activatedDomains Set. Symmetric toggle:
+  // Alt+A / popup-open / tool-activation-via-popup add to the set.
+  // The X removes. Whatever the user last did is what sticks.
+  function isActiveHere() {
+    return activatedDomains.has(location.hostname);
   }
 
   function applyDismissState() {
     const modeActive = window.AdnotaState?.mode != null;
-    if (isHiddenHere() && !modeActive) {
+    if (isActiveHere() || modeActive) {
+      dock.style.display = '';
+      // Tool activation is a strong "I want this here" signal — activate
+      // the domain so the dock persists on the next load too.
+      if (modeActive && !isActiveHere()) {
+        activatedDomains.add(location.hostname);
+        persistActivatedDomains();
+      }
+    } else {
       dock.style.display = 'none';
-      return;
-    }
-    dock.style.display = '';
-    // Tool activation is a strong "I want this here" signal — un-blacklist
-    // the domain so it persists visible on the next load too. Symmetric to
-    // the X writing hidden.
-    if (modeActive && isHiddenHere()) {
-      hiddenDomains.delete(location.hostname);
-      persistHiddenDomains();
     }
   }
 
@@ -366,7 +365,7 @@
       if (data[TUTORIAL_KEY]) return;
       await chrome.storage.local.set({ [TUTORIAL_KEY]: true });
       window.AdnotaUI?.showToast(
-        `Adnota hidden on ${location.hostname}. Open the popup or press Alt+A to bring it back.`,
+        `Adnota off on ${location.hostname}. Press Alt+A or click the Adnota icon to use the tools here.`,
         { id: 'adnota-dock-dismiss-tutorial', timeout: 7000 }
       );
     } catch (_) { /* context invalidated after extension reload */ }
@@ -392,55 +391,56 @@
   dismissBtn.addEventListener('click', (e) => {
     e.stopPropagation();
     window.AdnotaLog?.event('dock', 'dismiss-x', { host: location.hostname });
-    hiddenDomains.add(location.hostname);
-    persistHiddenDomains();
+    activatedDomains.delete(location.hostname);
+    persistActivatedDomains();
     applyDismissState();
     maybeShowDismissTutorial();
   });
 
-  // ── Alt+A → toggle dock visibility (per-domain persisted) ─────────────────
-  // Symmetric counterpart to the X button: press on a hidden domain → restore
-  // and un-blacklist; press on a visible domain → hide and blacklist. While
-  // a tool is active, exits the tool AND hides in one keystroke.
-  // applyDismissState would otherwise force-show + un-blacklist when mode !=
-  // null, so we clear the mode BEFORE flipping the hidden state.
+  // ── Alt+A → toggle dock activation (per-domain persisted) ─────────────────
+  // Symmetric counterpart to the X button: press on an inactive domain →
+  // activate; press on an active domain → deactivate. While a tool is active,
+  // exits the tool AND deactivates in one keystroke. applyDismissState would
+  // otherwise force-show when mode != null, so we clear the mode BEFORE
+  // flipping the activation state.
   //
   // restore-dock is the popup's "I'm engaging — bring it back" ping. It only
-  // un-hides; it doesn't toggle, so opening the popup on an already-visible
-  // dock is a no-op rather than accidentally hiding it.
+  // activates; it doesn't toggle, so opening the popup on an already-active
+  // dock is a no-op rather than accidentally deactivating it.
   chrome.runtime.onMessage.addListener((msg) => {
     if (msg?.action === 'toggle-dock') {
-      const willHide = dock.style.display !== 'none';
-      if (willHide && window.AdnotaState?.mode != null) {
-        window.AdnotaState.set({ mode: null });
-      }
-      if (willHide) {
-        hiddenDomains.add(location.hostname);
+      if (isActiveHere()) {
+        // Deactivate: exit any tool first so applyDismissState doesn't
+        // force-show, then remove from the activated set.
+        if (window.AdnotaState?.mode != null) {
+          window.AdnotaState.set({ mode: null });
+        }
+        activatedDomains.delete(location.hostname);
       } else {
-        hiddenDomains.delete(location.hostname);
+        activatedDomains.add(location.hostname);
       }
-      persistHiddenDomains();
+      persistActivatedDomains();
       applyDismissState();
       return;
     }
     if (msg?.action === 'restore-dock') {
-      if (isHiddenHere()) {
-        hiddenDomains.delete(location.hostname);
-        persistHiddenDomains();
+      if (!isActiveHere()) {
+        activatedDomains.add(location.hostname);
+        persistActivatedDomains();
         applyDismissState();
       }
     }
   });
 
   // Cross-tab consistency: if another tab on the same domain (or the popup)
-  // mutates the hidden set, mirror it here within ~1 frame. Pattern matches
+  // mutates the activated set, mirror it here within ~1 frame. Pattern matches
   // lib/log.js's live debug-flag listener.
   chrome.storage.onChanged.addListener((changes, area) => {
-    if (area !== 'local' || !(HIDDEN_DOMAINS_KEY in changes)) return;
-    const next = changes[HIDDEN_DOMAINS_KEY].newValue;
-    hiddenDomains.clear();
+    if (area !== 'local' || !(ACTIVATED_DOMAINS_KEY in changes)) return;
+    const next = changes[ACTIVATED_DOMAINS_KEY].newValue;
+    activatedDomains.clear();
     if (Array.isArray(next)) {
-      for (const h of next) hiddenDomains.add(h);
+      for (const h of next) activatedDomains.add(h);
     }
     applyDismissState();
   });

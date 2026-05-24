@@ -2,6 +2,7 @@
 node_modules/
 dist/
 adnota.zip
+.git.bak/
 
 # Local dev scratch — not for the public repo
 TODO
