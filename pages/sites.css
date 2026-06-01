@@ -1580,6 +1580,167 @@ a.page-path:hover .page-path-icon {
 }
 
 /* ═══════════════════════════════════════════════
+   SETTINGS MODAL
+═══════════════════════════════════════════════ */
+.settings-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+}
+.settings-modal[hidden] { display: none; }
+
+.settings-modal-panel {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: min(480px, 92vw);
+  max-height: min(560px, 84vh);
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-raise);
+  display: flex;
+  flex-direction: column;
+  padding: 18px 20px 20px;
+  animation: data-modal-pop 0.18s cubic-bezier(.2,.8,.3,1);
+  overflow-y: auto;
+}
+
+.settings-body {
+  margin-top: 12px;
+}
+
+/* Group (fieldset) */
+.settings-group {
+  border: none;
+  padding: 0;
+  margin: 0;
+}
+
+.settings-group-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-1);
+  letter-spacing: -0.2px;
+  margin-bottom: 4px;
+}
+
+.settings-group-icon {
+  color: #7c3aed;
+  flex-shrink: 0;
+}
+
+.settings-group-desc {
+  font-size: 12.5px;
+  color: var(--text-2);
+  line-height: 1.5;
+  margin: 0 0 14px;
+}
+
+/* Radio group */
+.settings-radios {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.settings-radio {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.15s, box-shadow 0.15s;
+  position: relative;
+}
+
+.settings-radio:hover {
+  background: rgba(124, 58, 237, 0.03);
+  border-color: var(--border-strong);
+}
+
+/* The native radio — visually hidden but still focusable. */
+.settings-radio input[type="radio"] {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
+
+/* Custom radio circle */
+.settings-radio-fill {
+  position: relative;
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 2px solid var(--border-strong);
+  margin-top: 1px;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.settings-radio-fill::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #7c3aed;
+  transform: translate(-50%, -50%) scale(0);
+  transition: transform 0.15s cubic-bezier(.2,.8,.3,1);
+}
+
+/* Checked states */
+.settings-radio:has(input:checked) {
+  border-color: rgba(124, 58, 237, 0.35);
+  background: rgba(124, 58, 237, 0.04);
+}
+
+.settings-radio:has(input:checked) .settings-radio-fill {
+  border-color: #7c3aed;
+}
+
+.settings-radio:has(input:checked) .settings-radio-fill::after {
+  transform: translate(-50%, -50%) scale(1);
+}
+
+/* Focus-visible ring on the card when the radio is keyboard-focused */
+.settings-radio:has(input:focus-visible) {
+  outline: 2px solid rgba(124, 58, 237, 0.6);
+  outline-offset: 2px;
+}
+
+/* Text */
+.settings-radio-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.settings-radio-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-1);
+  line-height: 1.3;
+}
+
+.settings-radio-desc {
+  font-size: 12px;
+  color: var(--text-2);
+  line-height: 1.45;
+}
+
+/* ═══════════════════════════════════════════════
    RESPONSIVE
 ═══════════════════════════════════════════════ */
 @media (max-width: 780px) {
