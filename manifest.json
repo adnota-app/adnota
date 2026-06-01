@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Adnota",
   "short_name": "Adnota",
-  "version": "0.9.6",
+  "version": "0.9.7",
   "description": "Annotate and edit the web. Erase, highlight, draw, and annotate any page — saved across sessions, stored privately on your machine.",
   "author": "Adnota",
   "homepage_url": "https://adnota.app",
