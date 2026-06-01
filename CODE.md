@@ -229,7 +229,7 @@ Also exposes `generateCSSSelector(el)` as a shared utility (used by the resizer)
 
 #### `content/quickHighlight.js`
 - Medium-style contextual popup that appears above any non-empty text selection after a ~400 ms dwell — independent of the Draw HUD's highlight mode and independent of per-domain dock activation
-- **Always on**: the highlighter is the always-on low-friction baseline. It does not activate the dock — a user who only ever highlights+tags never ends up with a permanent dock on every site they touch. Gated only by `chrome.storage.local.adnotaQuickHighlightEnabled` (default `true`; no behavior change for this kill switch)
+- **Always on**: the highlighter is the always-on low-friction baseline. It does not activate the dock — a user who only ever highlights+tags never ends up with a permanent dock on every site they touch. Gated by `chrome.storage.local.adnotaQuickHighlightEnabled` (default `'sites-only'`, with support for `'always'` and `false` modes)
 - **Two-row layout**. Row 1: Adnota "A" brand chip (visually distinct from the host site's own toolbar) → five color swatches → session-dismiss `✕`. Row 2: an optional tag input (`#` glyph + text field). Clicking a swatch reads the current tag value and forwards it to `AdnotaHighlighter.createHighlightFromRange(range, color, tag)` so the created HIGHLIGHT carries the tag; leaving the input blank preserves the original one-tap flow
 - Each new selection re-prompts — colors and tag are not "sticky" between highlights; the user picks per-action. The tag input clears on every `hidePopup`
 - **Selection preservation**: clicking the tag input collapses the live selection, so the popup caches a clone of the range at show-time and `applyHighlight()` falls back to it. `selectionchange` hide is suppressed while the tag input has focus
@@ -237,7 +237,7 @@ Also exposes `generateCSSSelector(el)` as a shared utility (used by the resizer)
 - Dismisses on: selection collapse, `Escape`, scroll, resize, click-away, or `Ctrl/Cmd+C` (copy is never intercepted)
 - Skips editable contexts (`input`, `textarea`, `contenteditable`) and selections inside Adnota UI
 - Suppressed while `AdnotaState.mode === 'highlight'` so it doesn't double up with the Draw-HUD's auto-apply mouseup (the HUD path stays a zero-UI fast path with no tag input)
-- Reuses `AdnotaHighlighter.createHighlightFromRange()`; feature-gated by `chrome.storage.local.adnotaQuickHighlightEnabled` (default `true`)
+- Reuses `AdnotaHighlighter.createHighlightFromRange()`; feature-gated by `chrome.storage.local.adnotaQuickHighlightEnabled` (default `'sites-only'`)
 
 #### `content/debugCapture.js` — developer-only DOM/state capture
 Curated DOM/style snapshot of the page plus any registered Adnota tool state, copied to the clipboard as a JSON bundle for pasting into Claude Code while iterating on heuristics. **Hotkey**: `Cmd+Shift+K` (Mac) / `Ctrl+Shift+K` (Win/Linux). **Console**: `window.adnotaDebugCapture("optional label")`. Each capture flashes a green outline on the captured element, surfaces a top-right toast naming the target + bundle size, and console-logs the full bundle.
