@@ -4,16 +4,23 @@
 // a brief dwell. Offers the 5-color Adnota palette + a "drop a sticky note"
 // shortcut. Designed to never interfere with a plain Ctrl/Cmd+C copy.
 //
-// Settings: chrome.storage.local.adnotaQuickHighlightEnabled (default true).
-//   false → feature is silent. Anticipates a future popup/radial toggle UI;
-//   no content-script change needed when that lands.
+// Settings: chrome.storage.local.adnotaQuickHighlightEnabled
+//   Three modes:
+//     true           → always on (popup on every page)
+//     'sites-only'   → only on domains in adnotaActivatedDomains (DEFAULT)
+//     false          → completely off
+//   Undefined storage key falls through to 'sites-only'.
 
 (function () {
   // Short dwell — just enough to debounce against transient mid-drag mouseups.
   // Ctrl+C protection comes from the keydown handler, not from a long delay.
   const SHOW_DELAY_MS = 120;
 
-  let enabled = true;
+  // Three-mode gating. `mode` holds the raw storage value (true / 'sites-only' /
+  // false / undefined). `activatedDomains` mirrors the dock's per-domain set so
+  // we can gate in 'sites-only' mode without a separate storage read per popup.
+  let mode = undefined;   // resolved on first storage read below
+  let activatedDomains = new Set();
   let showTimer = null;
   let popup = null;
   let tagInput = null;
@@ -25,18 +32,42 @@
   // the popup doesn't reappear from the still-live selection post-copy).
   let suppressUntilSelectionChange = false;
 
+  // Resolve whether the popup should show on the CURRENT page.
+  function isEnabled() {
+    if (mode === false) return false;
+    if (mode === true) return true;
+    // Default / 'sites-only': only on domains the user has activated.
+    return activatedDomains.has(location.hostname);
+  }
+
   // The highlighter is always on — independent of per-domain dock activation.
-  // Gated only by the user-facing kill switch adnotaQuickHighlightEnabled
-  // (default true; flippable via DevTools or a future setting).
-  chrome.storage.local.get(['adnotaQuickHighlightEnabled'], (result) => {
-    if (result.adnotaQuickHighlightEnabled === false) enabled = false;
-  });
+  // Gated by the user-facing mode switch adnotaQuickHighlightEnabled
+  // (default 'sites-only'; configurable via Home → Settings).
+  chrome.storage.local.get(
+    ['adnotaQuickHighlightEnabled', 'adnotaActivatedDomains'],
+    (result) => {
+      mode = result.adnotaQuickHighlightEnabled;
+      // undefined → treat as 'sites-only' (new-install default)
+      if (mode === undefined) mode = 'sites-only';
+      if (Array.isArray(result.adnotaActivatedDomains)) {
+        activatedDomains = new Set(result.adnotaActivatedDomains);
+      }
+      if (!isEnabled()) hidePopup();
+    }
+  );
 
   chrome.storage.onChanged.addListener((changes, area) => {
     if (area !== 'local') return;
     if (changes.adnotaQuickHighlightEnabled) {
-      enabled = changes.adnotaQuickHighlightEnabled.newValue !== false;
-      if (!enabled) hidePopup();
+      const nv = changes.adnotaQuickHighlightEnabled.newValue;
+      mode = (nv === undefined) ? 'sites-only' : nv;
+      if (!isEnabled()) hidePopup();
+    }
+    if (changes.adnotaActivatedDomains) {
+      const arr = changes.adnotaActivatedDomains.newValue;
+      activatedDomains = new Set(Array.isArray(arr) ? arr : []);
+      // If mode is 'sites-only' and the domain just got removed, hide.
+      if (!isEnabled()) hidePopup();
     }
   });
 
@@ -204,7 +235,7 @@
   // ── Triggers ──────────────────────────────────────────────────────────────
 
   document.addEventListener('mouseup', (e) => {
-    if (!enabled) return;
+    if (!isEnabled()) return;
     if (suppressUntilSelectionChange) return;
     // When classic highlight mode is on, its mouseup handler auto-applies the
     // active color. Showing the popup on top would be redundant.

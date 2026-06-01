@@ -80,6 +80,13 @@
               </svg>
               <span>Import / Export</span>
             </button>
+            <button id="header-menu-settings" class="header-menu-item" role="menuitem" type="button">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <circle cx="12" cy="12" r="3"/>
+                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1.08-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1.08 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9c.26.604.852.997 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1.08z"/>
+              </svg>
+              <span>Settings</span>
+            </button>
             <a class="header-menu-item" role="menuitem" href="https://adnota.app/" target="_blank" rel="noopener noreferrer">
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                 <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
@@ -254,6 +261,63 @@
         <button id="data-modal-copy" class="data-modal-btn data-modal-btn-secondary" type="button">Copy to clipboard</button>
         <button id="data-modal-import" class="data-modal-btn data-modal-btn-primary" type="button">Import (replace all)</button>
       </footer>
+    </div>
+  </div>
+
+  <!-- ─── Settings modal ───
+       Opened from the kebab menu. Lightweight settings panel for global
+       preferences that live outside any per-domain scope. -->
+  <div id="settings-modal" class="settings-modal" hidden>
+    <div class="data-modal-backdrop"></div>
+    <div class="settings-modal-panel" role="dialog" aria-modal="true" aria-labelledby="settings-modal-title">
+      <header class="data-modal-header">
+        <h2 id="settings-modal-title" class="data-modal-title">Settings</h2>
+        <button id="settings-modal-close" class="data-modal-close" type="button" aria-label="Close">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+            <path d="M18 6 6 18M6 6l12 12"/>
+          </svg>
+        </button>
+      </header>
+
+      <div class="settings-body">
+        <!-- Quick Highlighter mode -->
+        <fieldset class="settings-group">
+          <legend class="settings-group-title">
+            <svg class="settings-group-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="m9 11-6 6v3h9l3-3"/>
+              <path d="m22 12-4.6 4.6a2 2 0 0 1-2.8 0l-5.2-5.2a2 2 0 0 1 0-2.8L14 4"/>
+            </svg>
+            Quick Highlighter
+          </legend>
+          <p class="settings-group-desc">The color palette that appears when you select text on any page.</p>
+          <div class="settings-radios" id="settings-qh-radios" role="radiogroup" aria-label="Quick Highlighter mode">
+            <label class="settings-radio">
+              <input type="radio" name="qh-mode" value="sites-only">
+              <span class="settings-radio-fill"></span>
+              <span class="settings-radio-body">
+                <span class="settings-radio-label">Only on Adnota sites</span>
+                <span class="settings-radio-desc">Show only on domains where you've activated the dock (Alt+A).</span>
+              </span>
+            </label>
+            <label class="settings-radio">
+              <input type="radio" name="qh-mode" value="always">
+              <span class="settings-radio-fill"></span>
+              <span class="settings-radio-body">
+                <span class="settings-radio-label">Always on</span>
+                <span class="settings-radio-desc">Show on every page, regardless of dock status.</span>
+              </span>
+            </label>
+            <label class="settings-radio">
+              <input type="radio" name="qh-mode" value="off">
+              <span class="settings-radio-fill"></span>
+              <span class="settings-radio-body">
+                <span class="settings-radio-label">Off</span>
+                <span class="settings-radio-desc">Never show the popup. You can still highlight from the Draw tool.</span>
+              </span>
+            </label>
+          </div>
+        </fieldset>
+      </div>
     </div>
   </div>
 

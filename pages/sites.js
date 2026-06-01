@@ -16,6 +16,22 @@
     'adnotaHomeFeedType',
     'adnotaHomeSortSnippets',
     'adnotaHomeSortSites',
+    'adnotaQuickHighlightEnabled',
+    'adnotaActivatedDomains',
+    'adnotaDockPosition',
+    'adnotaDockDismissTutorialShown',
+    'adnotaToolEscTutorialShown',
+    'adnotaEraserDomainTutorialShown',
+    'adnotaPositionTipShown',
+    'adnotaTextSizeTipShown',
+    'adnotaRecolorTipShown',
+    'adnotaHiddenDomains',
+    'adnotaDebugLog',
+    'adnotaScratchFilter',
+    'adnotaScratchMode',
+    'adnotaScratchTagBarVisible',
+    'adnotaScratchPosition',
+    'adnotaScratchSize',
   ]);
 
   // ─── Elements ─────────────────────────────────────────────────────────────
@@ -1524,6 +1540,62 @@
       showToast(toastMsg);
       // storage.onChanged listener (below) rebuilds the page automatically.
     });
+  })();
+
+  // ─── Settings modal ──────────────────────────────────────────────────────
+  // Lightweight settings panel for global preferences. Currently houses the
+  // Quick Highlighter 3-mode toggle (always / sites-only / off). Reads the
+  // current value on open so it always reflects reality; writes on radio
+  // change so there's no separate "save" step. The storage.onChanged listener
+  // in quickHighlight.js picks up the write within the same tick.
+  (() => {
+    const modal    = document.getElementById('settings-modal');
+    if (!modal) return;
+    const openBtn  = document.getElementById('header-menu-settings');
+    const closeBtn = document.getElementById('settings-modal-close');
+    const backdrop = modal.querySelector('.data-modal-backdrop');
+    const radios   = modal.querySelectorAll('input[name="qh-mode"]');
+    const QH_KEY   = 'adnotaQuickHighlightEnabled';
+
+    // Map stored values → radio values and back.
+    // Storage: true ("always"), 'sites-only', false ("off").
+    // Radio value attr: 'always', 'sites-only', 'off'.
+    function storageToRadio(val) {
+      if (val === false) return 'off';
+      if (val === 'sites-only') return 'sites-only';
+      if (val === true) return 'always';
+      // Undefined / first install → default is 'sites-only'.
+      return 'sites-only';
+    }
+    function radioToStorage(val) {
+      if (val === 'off') return false;
+      if (val === 'sites-only') return 'sites-only';
+      return true;
+    }
+
+    const open = async () => {
+      const data = await chrome.storage.local.get(QH_KEY);
+      const current = storageToRadio(data[QH_KEY]);
+      for (const r of radios) r.checked = (r.value === current);
+      modal.hidden = false;
+    };
+
+    const close = () => { modal.hidden = true; };
+
+    if (openBtn) openBtn.addEventListener('click', open);
+    closeBtn.addEventListener('click', close);
+    backdrop.addEventListener('click', close);
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && !modal.hidden) close();
+    });
+
+    // Write on change — no save button needed.
+    for (const r of radios) {
+      r.addEventListener('change', () => {
+        if (!r.checked) return;
+        chrome.storage.local.set({ [QH_KEY]: radioToStorage(r.value) });
+      });
+    }
   })();
 
   // ─── Bug-report popover ──────────────────────────────────────────────────
